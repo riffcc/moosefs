@@ -27,3 +27,4 @@ int merger_start(uint32_t files,char **filenames,uint64_t maxhole,uint64_t minlv
 int merger_loop(uint8_t verblevel);
 
 #endif
+

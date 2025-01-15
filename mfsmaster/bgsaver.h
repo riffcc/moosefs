@@ -32,3 +32,4 @@ int bgsaver_rotatelog(void);
 int bgsaver_init(void);
 
 #endif
+

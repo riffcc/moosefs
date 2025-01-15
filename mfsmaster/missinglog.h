@@ -29,3 +29,4 @@ uint32_t missing_log_getdata(uint8_t *buff,uint8_t mode);
 int missing_log_init(void);
 
 #endif
+

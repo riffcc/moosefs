@@ -11,10 +11,10 @@
 #define MASTER_STATE_CANDIDATE 3
 
 // Function prototypes
-int get_my_id();
-int get_quorum_size();
-double monotonic_seconds();
+int get_my_id(void);
+int get_quorum_size(void);
+double monotonic_seconds(void);
 void send_vote_response(int candidate_id, int term);
-void request_votes();
+void request_votes(void);
 
 #endif // MFSMASTER_H

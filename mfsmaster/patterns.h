@@ -42,3 +42,4 @@ int patterns_load(bio *fd,uint8_t mver,int ignoreflag);
 int patterns_init(void);
 
 #endif
+

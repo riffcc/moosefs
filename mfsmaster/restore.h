@@ -27,3 +27,4 @@ int restore_net(uint64_t lv,const char *ptr,uint32_t *rts);
 int restore_file(void *shfilename,uint64_t lv,const char *ptr,uint8_t verblevel);
 
 #endif
+

@@ -38,3 +38,4 @@ void posix_lock_cleanup(void);
 int posix_lock_init(void);
 
 #endif
+

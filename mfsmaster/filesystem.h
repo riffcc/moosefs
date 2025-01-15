@@ -233,3 +233,4 @@ void fs_del_aclflag(uint32_t inode,uint8_t acltype);
 uint16_t fs_get_mode(uint32_t inode);
 
 #endif
+

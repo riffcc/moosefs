@@ -1111,11 +1111,11 @@ void meta_store_task(void) {
 	}
 }
 
-void meta_do_store_metadata() {
+void meta_do_store_metadata(void) {
 	if (meta_storeall(1,0)<=0) {
 		mfs_log(MFSLOG_SYSLOG,MFSLOG_WARNING,"can't store metadata");
 	} else {
-		last_store_htime = main_time() / STORE_UNIT;
+			last_store_htime = main_time() / STORE_UNIT;
 	}
 }
 

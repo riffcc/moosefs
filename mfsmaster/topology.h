@@ -32,3 +32,4 @@ uint8_t topology_distance(uint32_t ip1,uint32_t ip2);
 int topology_init(void);
 
 #endif
+

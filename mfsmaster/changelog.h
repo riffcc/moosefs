@@ -47,3 +47,4 @@ uint64_t changelog_findlastversion(const char *fname);
 int changelog_checkname(const char *fname);
 
 #endif
+

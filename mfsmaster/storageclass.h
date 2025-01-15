@@ -101,3 +101,4 @@ void sclass_cleanup(void);
 int sclass_init(void);
 
 #endif
+

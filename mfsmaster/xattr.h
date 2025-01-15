@@ -40,3 +40,4 @@ int xattr_load(bio *fd,uint8_t mver,int ignoreflag);
 int xattr_init(void);
 
 #endif
+
