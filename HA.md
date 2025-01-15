@@ -7,6 +7,7 @@ This guide explains how to set up MooseFS with multiple master servers in a high
 The HA setup uses:
 - DNS-based master discovery (multiple A records for `mfsmaster`)
 - Raft leader leases for safe leader election
+- Chunkservers to vote for the leader
 - Automatic failover between masters
 - Web interface showing master states
 
@@ -72,7 +73,7 @@ The masters will:
 
 Access the web interface to monitor master states:
 ```
-http://any-master:9425/masters.cgi
+http://any-master:9425/
 ```
 
 The interface shows:
@@ -108,7 +109,7 @@ Clients (mfsmount) will automatically:
 
 ### 7. Best Practices
 
-1. Use odd number of masters (3, 5, etc.) for proper quorum
+1. Use odd number of chunkservers (3, 5, etc.) for proper quorum
 2. Place masters in different failure domains (racks/datacenters)
 3. Ensure reliable network between masters
 4. Monitor lease durations and failover events
@@ -127,7 +128,7 @@ The lease system prevents split-brain by:
 - Only allowing one active lease at a time
 - Requiring lease expiry before new leader
 - Using monotonic clocks for timing
-- Maintaining lease history in metadata
+- Maintaining lease history in lease.log
 
 #### Monitoring Lease Health
 Watch for:
