@@ -551,7 +551,7 @@ configure:14721: $? = 0
 configure:14741: result: none required
 configure:14751: checking for library containing kvm_open
 configure:14781: gcc -o conftest -O2 -g -O2 -g -std=c11 -Wall -Wextra -Wshadow -pedantic -fwrapv  -D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -DDEFAULT_SUGID_CLEAR_MODE_EXT  conftest.c  >&5
-/usr/bin/ld: /tmp/ccPdIogI.o: in function `main':
+/usr/bin/ld: /tmp/ccNisk3E.o: in function `main':
 /workspace/moosefs/conftest.c:47: undefined reference to `kvm_open'
 collect2: error: ld returned 1 exit status
 configure:14781: $? = 1
@@ -2907,7 +2907,7 @@ configure:17111: $? = 0
 configure:17111: result: yes
 configure:17117: checking for reallocf
 configure:17117: gcc -o conftest -O2 -g -O2 -g -std=c11 -Wall -Wextra -Wshadow -pedantic -fwrapv  -D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -DDEFAULT_SUGID_CLEAR_MODE_EXT  conftest.c  >&5
-/usr/bin/ld: /tmp/ccknOjNE.o: in function `main':
+/usr/bin/ld: /tmp/ccOGYB7a.o: in function `main':
 /workspace/moosefs/conftest.c:102: undefined reference to `reallocf'
 collect2: error: ld returned 1 exit status
 configure:17117: $? = 1
@@ -3114,7 +3114,7 @@ configure:17144: $? = 0
 configure:17144: result: yes
 configure:17150: checking for mktemp
 configure:17150: gcc -o conftest -O2 -g -O2 -g -std=c11 -Wall -Wextra -Wshadow -pedantic -fwrapv  -D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -DDEFAULT_SUGID_CLEAR_MODE_EXT  conftest.c  >&5
-/usr/bin/ld: /tmp/ccDdboya.o: in function `main':
+/usr/bin/ld: /tmp/ccclQaPQ.o: in function `main':
 /workspace/moosefs/conftest.c:121: warning: the use of `mktemp' is dangerous, better use `mkstemp' or `mkdtemp'
 configure:17150: $? = 0
 configure:17150: result: yes
@@ -3140,7 +3140,7 @@ configure:17186: $? = 0
 configure:17186: result: yes
 configure:17192: checking for setproctitle
 configure:17192: gcc -o conftest -O2 -g -O2 -g -std=c11 -Wall -Wextra -Wshadow -pedantic -fwrapv  -D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -DDEFAULT_SUGID_CLEAR_MODE_EXT  conftest.c  >&5
-/usr/bin/ld: /tmp/ccxZDgOy.o: in function `main':
+/usr/bin/ld: /tmp/cchHHrn8.o: in function `main':
 /workspace/moosefs/conftest.c:127: undefined reference to `setproctitle'
 collect2: error: ld returned 1 exit status
 configure:17192: $? = 1
