@@ -148,6 +148,18 @@ The leader lease system:
 4. New election after lease expiry
 5. Prevents multiple leaders
 
+The lease mechanism uses monotonic clocks to ensure accurate timing:
+- CLOCK_MONOTONIC on Linux/BSD systems
+- mach_absolute_time() on macOS
+- GetTickCount64() on Windows
+- Fallback to gettimeofday() if needed
+
+This ensures lease timing is:
+- Not affected by system clock changes
+- Consistent across system sleep/resume
+- Accurate to microsecond precision
+- Reliable for distributed consensus
+
 ### Master States
 
 Masters can be in one of three states:
