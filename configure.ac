@@ -1,15 +1,15 @@
 #                                               -*- Autoconf -*-
 # Process this file with autoconf to produce a configure script.
 
-AC_PREREQ(2.63)
-AC_INIT([MFS], [4.57.1], [bugs@moosefs.com], [moosefs])
+AC_PREREQ([2.71])
+AC_INIT([MFS],[4.57.1],[bugs@moosefs.com],[moosefs])
 release=1
 buildno=$(cat buildno.txt)
 
 AC_CONFIG_AUX_DIR([build-aux])
 
 dnl AC_CONFIG_SRCDIR([MFSCommunication.h])
-AC_CONFIG_HEADER([config.h])
+AC_CONFIG_HEADERS([config.h])
 AC_CANONICAL_TARGET
 AM_INIT_AUTOMAKE([-Wall -Werror foreign subdir-objects])
 AM_SILENT_RULES([yes])
@@ -57,7 +57,7 @@ AM_PROG_AR
 AC_PROG_CC(mycc gcc llvm-gcc clang)
 AM_PROG_CC_C_O
 AC_PROG_LN_S
-AC_PROG_LIBTOOL
+LT_INIT
 
 AC_ARG_ENABLE([externalcflags], [AS_HELP_STRING([--enable-externalcflags], [Build with default CFLAGS])], [ enable_externalcflags=yes ])
 AC_ARG_ENABLE([gperftools], [AS_HELP_STRING([--enable-gperftools], [Build with google perftools on (debug only)])], [ enable_gperftools=yes ])
@@ -173,7 +173,15 @@ AC_SUBST([MATH_LIBS])
 
 # Checks for header files.
 AC_HEADER_DIRENT
-AC_HEADER_STDC
+m4_warn([obsolete],
+[The preprocessor macro `STDC_HEADERS' is obsolete.
+  Except in unusual embedded environments, you can safely include all
+  ISO C90 headers unconditionally.])dnl
+# Autoupdate added the next two lines to ensure that your configure
+# script's behavior did not change.  They are probably safe to remove.
+AC_CHECK_INCLUDES_DEFAULT
+AC_PROG_EGREP
+
 AC_HEADER_SYS_WAIT
 AC_CHECK_HEADERS([arpa/inet.h fcntl.h inttypes.h limits.h netdb.h netinet/in.h stddef.h stdlib.h string.h sys/socket.h sys/statvfs.h sys/time.h syslog.h unistd.h],, [AC_MSG_ERROR([One of required headers was not found])])
 
@@ -208,7 +216,20 @@ AC_CHECK_MEMBER([struct sockaddr_in.sin_len], [ AC_DEFINE([HAVE_SOCKADDR_SIN_LEN
 #include <netinet/in.h>
 ])
 
-AC_HEADER_TIME
+m4_warn([obsolete],
+[Update your code to rely only on HAVE_SYS_TIME_H,
+then remove this warning and the obsolete code below it.
+All current systems provide time.h; it need not be checked for.
+Not all systems provide sys/time.h, but those that do, all allow
+you to include it and time.h simultaneously.])dnl
+AC_CHECK_HEADERS_ONCE([sys/time.h])
+# Obsolete code to be removed.
+if test $ac_cv_header_sys_time_h = yes; then
+  AC_DEFINE([TIME_WITH_SYS_TIME],[1],[Define to 1 if you can safely include both <sys/time.h>
+	     and <time.h>.  This macro is obsolete.])
+fi
+# End of obsolete code.
+
 AC_STRUCT_TM
 AC_CHECK_MEMBERS([struct tm.tm_gmtoff],,, [
 #ifdef TM_IN_SYS_TIME

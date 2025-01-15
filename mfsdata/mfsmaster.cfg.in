@@ -2,6 +2,23 @@
 # STARTUP OPTIONS - changes in this section require process restart. #
 ######################################################################
 
+# High Availability Options
+# Enable HA mode (default is 0)
+# HA_ENABLED = 0
+
+# Leader lease duration in seconds (default is 2)
+# LEADER_LEASE_DURATION = 2
+
+# Master-to-master communication port (default is 9420)
+# MASTER_PORT = 9420
+
+# Time in seconds between DNS resolution attempts (default is 5)
+# DNS_REFRESH_TIME = 5
+
+# Comma-separated list of master servers (optional, alternative to DNS-based discovery)
+# Format: hostname1:port1,hostname2:port2,hostname3:port3
+# MASTER_SERVERS = 
+
 # user to run daemon as (default is @DEFAULT_USER@)
 # WORKING_USER = @DEFAULT_USER@
 

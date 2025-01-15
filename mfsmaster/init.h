@@ -38,46 +38,48 @@
 #include "globengine.h"
 #include "bgsaver.h"
 #include "multilan.h"
+#include "ha.h"
 
 #define MODULE_OPTIONS_GETOPT "iax"
 #define MODULE_OPTIONS_SWITCH \
-	case 'i': \
-		meta_setignoreflag(); \
-		break; \
-	case 'a': \
-		meta_allowautorestore(); \
-		break; \
-	case 'x': \
-		meta_incverboselevel(); \
-		break;
+        case 'i': \
+                meta_setignoreflag(); \
+                break; \
+        case 'a': \
+                meta_allowautorestore(); \
+                break; \
+        case 'x': \
+                meta_incverboselevel(); \
+                break;
 #define MODULE_OPTIONS_SYNOPIS "[-i] [-a] [-x [-x]] "
 #define MODULE_OPTIONS_DESC "-i : ignore some metadata structure errors (attach orphans to root, ignore names without inode, etc.). DO NOT USE unless you are absoluttely sure that there are no other options to restore your metadata.\n-a : automatically restore metadata from change logs\n-x : produce more verbose output\n-xx : even more verbose output\n"
 
 /* Run Tab */
 typedef int (*runfn)(void);
 struct {
-	runfn fn;
-	char *name;
+        runfn fn;
+        char *name;
 } RunTab[]={
-	{rnd_init,"random generator"},
-	{bgsaver_init,"bgsaver"},
-	{glob_cache_init,"glob engine"},
-	{multilan_init,"multilan map"},
-	{changelog_init,"change log"},
-	{missing_log_init,"missing chunks/files log"}, // has to be before 'fs_init'
-	{dcm_init,"data cache manager"}, // has to be before 'fs_init' and 'matoclserv_init'
-	{exports_init,"exports manager"},
-	{topology_init,"net topology module"},
-	{meta_init,"metadata manager"},
-	{chartsdata_init,"charts module"},
-	{matomlserv_init,"communication with metalogger"},
-	{matocsserv_init,"communication with chunkserver"},
-	{matoclserv_init,"communication with clients"},
-	{(runfn)0,"****"}
+        {rnd_init,"random generator"},
+        {ha_init,"high availability"},
+        {bgsaver_init,"bgsaver"},
+        {glob_cache_init,"glob engine"},
+        {multilan_init,"multilan map"},
+        {changelog_init,"change log"},
+        {missing_log_init,"missing chunks/files log"}, // has to be before 'fs_init'
+        {dcm_init,"data cache manager"}, // has to be before 'fs_init' and 'matoclserv_init'
+        {exports_init,"exports manager"},
+        {topology_init,"net topology module"},
+        {meta_init,"metadata manager"},
+        {chartsdata_init,"charts module"},
+        {matomlserv_init,"communication with metalogger"},
+        {matocsserv_init,"communication with chunkserver"},
+        {matoclserv_init,"communication with clients"},
+        {(runfn)0,"****"}
 },LateRunTab[]={
-	{(runfn)0,"****"}
+        {(runfn)0,"****"}
 },RestoreRunTab[]={
-	{dcm_init,"data cache manager"},
-	{meta_restore,"metadata restore"},
-	{(runfn)0,"****"}
+        {dcm_init,"data cache manager"},
+        {meta_restore,"metadata restore"},
+        {(runfn)0,"****"}
 };
