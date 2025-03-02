@@ -23,7 +23,7 @@
 /* #undef CLOSEDIR_VOID */
 
 /* Data directory */
-#define DATA_PATH "/usr/local/var/mfs"
+#define DATA_PATH "/var/lib/mfs"
 
 /* Default cgiserver http port */
 #define DEFAULT_CGISERV_HTTP_PORT "9425"
@@ -32,7 +32,7 @@
 #define DEFAULT_CS_DATA_PORT "9422"
 
 /* Default working group */
-#define DEFAULT_GROUP ""
+#define DEFAULT_GROUP "mfs"
 
 /* Default master name */
 #define DEFAULT_MASTERNAME "mfsmaster"
@@ -50,10 +50,10 @@
 #define DEFAULT_PORTBASE 9400
 
 /* Default working user */
-#define DEFAULT_USER "nobody"
+#define DEFAULT_USER "mfs"
 
 /* Configuration directory */
-#define ETC_PATH "/usr/local/etc"
+#define ETC_PATH "/etc"
 
 /* Define to nothing if C supports flexible array members, and to 1 if it does
    not. That way, with a declaration like `struct s { int n; double
@@ -487,7 +487,7 @@
 #define PACKAGE_VERSION "4.57.5"
 
 /* Installation prefix */
-#define PREFIX "/usr/local"
+#define PREFIX "/usr"
 
 /* Base value for protocol commands */
 #define PROTO_BASE 0

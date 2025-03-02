@@ -5,10 +5,10 @@ After=network.target network-online.target
 
 [Service]
 Type=forking
-ExecStart=/usr/local/sbin/mfsmaster -c /usr/local/etc/mfs-%I/mfsmaster.cfg start
-ExecStop=/usr/local/sbin/mfsmaster -c /usr/local/etc/mfs-%I/mfsmaster.cfg stop
-ExecReload=/usr/local/sbin/mfsmaster -c /usr/local/etc/mfs-%I/mfsmaster.cfg reload
-PIDFile=/usr/local/var/mfs-%I/.mfsmaster.lock
+ExecStart=/usr/sbin/mfsmaster -c /etc/mfs-%I/mfsmaster.cfg start
+ExecStop=/usr/sbin/mfsmaster -c /etc/mfs-%I/mfsmaster.cfg stop
+ExecReload=/usr/sbin/mfsmaster -c /etc/mfs-%I/mfsmaster.cfg reload
+PIDFile=/var/lib/mfs-%I/.mfsmaster.lock
 TimeoutStopSec=1800
 TimeoutStartSec=1800
 Restart=no

@@ -5,10 +5,10 @@ After=network.target network-online.target
 
 [Service]
 Type=forking
-ExecStart=/usr/local/sbin/mfschunkserver -c /usr/local/etc/mfs-%I/mfschunkserver.cfg start
-ExecStop=/usr/local/sbin/mfschunkserver -c /usr/local/etc/mfs-%I/mfschunkserver.cfg stop
-ExecReload=/usr/local/sbin/mfschunkserver -c /usr/local/etc/mfs-%I/mfschunkserver.cfg reload
-PIDFile=/usr/local/var/mfs-%I/.mfschunkserver.lock
+ExecStart=/usr/sbin/mfschunkserver -c /etc/mfs-%I/mfschunkserver.cfg start
+ExecStop=/usr/sbin/mfschunkserver -c /etc/mfs-%I/mfschunkserver.cfg stop
+ExecReload=/usr/sbin/mfschunkserver -c /etc/mfs-%I/mfschunkserver.cfg reload
+PIDFile=/var/lib/mfs-%I/.mfschunkserver.lock
 Restart=on-abnormal
 
 [Install]

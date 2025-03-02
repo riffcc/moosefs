@@ -6437,6 +6437,8 @@ void matoclserv_beforedisconnect(matoclserventry *eptr) {
 }
 
 void matoclserv_gotpacket(matoclserventry *eptr,uint32_t type,const uint8_t *data,uint32_t length) {
+	// Log packet
+	mfs_log(MFSLOG_SYSLOG_STDERR, MFSLOG_INFO, "Received packet type: %u, length: %u", type, length);
 	if (type==ANTOAN_NOP) {
 		return;
 	}
@@ -6447,6 +6449,7 @@ void matoclserv_gotpacket(matoclserventry *eptr,uint32_t type,const uint8_t *dat
 		return;
 	}
 //	printf("AQQ\n");
+
 	if (eptr->registered==NOTREGISTERED) {	// unregistered clients - beware that in this context sesdata is NULL
 		switch (type) {
 			case ANTOAN_GET_VERSION:
@@ -6464,6 +6467,10 @@ void matoclserv_gotpacket(matoclserventry *eptr,uint32_t type,const uint8_t *dat
 			case CLTOMA_FUSE_REGISTER:
 //				printf("REGISTER\n");
 				matoclserv_fuse_register(eptr,data,length);
+				break;
+			case CLTOMA_HA_INFO:
+				mfs_log(MFSLOG_SYSLOG_STDERR, MFSLOG_INFO, "Received CLTOMA_HA_INFO packet");
+				matoclserv_ha_info(eptr, data, length);
 				break;
 			case CLTOMA_CSERV_LIST:
 				matoclserv_cserv_list(eptr,data,length);
@@ -6538,7 +6545,7 @@ void matoclserv_gotpacket(matoclserventry *eptr,uint32_t type,const uint8_t *dat
 				matoclserv_instance_name(eptr,data,length);
 				break;
 			default:
-				mfs_log(MFSLOG_SYSLOG,MFSLOG_WARNING,"main master server module: got unknown message from unregistered (type:%"PRIu32")",type);
+				mfs_log(MFSLOG_SYSLOG,MFSLOG_WARNING,"main masterx server module: got unknown message from unregistered (type:%"PRIu32")",type);
 				eptr->mode=KILL;
 		}
 	} else if (eptr->registered==REGISTERED) {	// mounts and new tools
@@ -6842,6 +6849,7 @@ void matoclserv_gotpacket(matoclserventry *eptr,uint32_t type,const uint8_t *dat
 				matoclserv_instance_name(eptr,data,length);
 				break;
 			case CLTOMA_HA_INFO:
+				mfs_log(MFSLOG_SYSLOG_STDERR, MFSLOG_ERR, "Received CLTOMA_HA_INFO packet");
 				matoclserv_ha_info(eptr, data, length);
 				break;
 			default:
@@ -7510,8 +7518,15 @@ int matoclserv_init(void) {
 
 	// Initialize HA subsystem
 	matoclserv_ha_init();
+
+	// Register HA packet handler
+	matoclserv_ha_register_packet_handlers();
+
 	matoclserv_ha_register_shutdown();
 
 	return 0;
 }
+
+
+
 

@@ -39,6 +39,8 @@ int matoclserv_init(void);
 /* High Availability related functions */
 void matoclserv_ha_state_changed(uint8_t is_leader);
 void matoclserv_ha_redirect(uint32_t leader_id);
+void matoclserv_ha_info(void *eptr, const uint8_t *data, uint32_t length);
+
 uint8_t matoclserv_get_node_ip_port(uint32_t node_id, char **ip_ptr, uint16_t *port_ptr);
 
 /* Packet creation function */

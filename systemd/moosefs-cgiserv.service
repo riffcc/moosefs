@@ -5,9 +5,9 @@ After=network.target network-online.target
 
 [Service]
 Type=forking
-ExecStart=/usr/local/sbin/mfscgiserv start
-ExecStop=/usr/local/sbin/mfscgiserv stop
-PIDFile=/usr/local/var/mfs/.mfscgiserv.lock
+ExecStart=/usr/sbin/mfscgiserv start
+ExecStop=/usr/sbin/mfscgiserv stop
+PIDFile=/var/lib/mfs/.mfscgiserv.lock
 Restart=on-abnormal
 
 [Install]

@@ -20,7 +20,6 @@
 
 import os
 import sys
-import random
 cgimode = 1 if 'GATEWAY_INTERFACE' in os.environ else 0
 if sys.version_info[0]<3 or (sys.version_info[0]==3 and sys.version_info[1]<4):
 	if cgimode:
@@ -91,10 +90,6 @@ CLTOMA_PATTERN_INFO = (PROTO_BASE+548)
 MATOCL_PATTERN_INFO = (PROTO_BASE+549)
 CLTOMA_INSTANCE_NAME = (PROTO_BASE+550)
 MATOCL_INSTANCE_NAME = (PROTO_BASE+551)
-
-# HA system
-CLTOMA_HA_INFO = (PROTO_BASE+990)
-MATOCL_HA_INFO = (PROTO_BASE+991)
 
 CLTOCS_HDD_LIST = (PROTO_BASE+600)
 CSTOCL_HDD_LIST = (PROTO_BASE+601)
@@ -192,244 +187,6 @@ def gettzoff(t):
 
 def shiftts(t):
 	return t - gettzoff(t)
-
-
-# handle HA functionality
-def handle_ha_info(masterhost, masterport, mastercontrolport):
-    # Connect to master and request HA information
-    try:
-        print("Connecting to master at %s:%d" % (masterhost, masterport))
-        s = socket.socket()
-        s.settimeout(5.0)  # Add timeout to avoid hanging
-        try:
-            s.connect((masterhost, masterport))
-        except Exception as e:
-            print(f"Error connecting to master at {masterhost}:{masterport}: {str(e)}")
-            return None
-        
-        # Create a random message ID between 1 and 1000000
-        msgid = 1337
-        
-        # Create packet with command, payload length, and message ID
-        packet = struct.pack(">LLL", CLTOMA_HA_INFO, 0, msgid)
-
-        try:
-            s.sendall(packet)
-        except Exception as e:
-            print(f"Error sending HA info request: {str(e)}")
-            s.close()
-            return None
-        
-        # Receive response
-        try:
-            header = s.recv(8)
-            if len(header) < 8:
-                print(f"Received truncated response header: {len(header)} bytes")
-                print(f"Header bytes (hex): {header.hex()}")
-                s.close()
-                return None
-                
-            cmd, length = struct.unpack(">LL", header)
-            
-            print(f"Received response command: {cmd} (expected {MATOCL_HA_INFO})")
-            print(f"Response length: {length} bytes")
-            
-            if length < 9:  # Minimum response size (1 + 4 + 4)
-                print(f"Response too short: {length} bytes")
-                
-            data = s.recv(length)
-            print(f"Received data length: {len(data)} bytes")
-            print(f"Data bytes (hex): {data.hex()}")
-            
-            if len(data) < length:
-                print(f"Received truncated data: {len(data)} of {length} bytes")
-                s.close()
-                return None
-                
-        except socket.timeout:
-            print("Timeout waiting for response from master")
-            s.close()
-            return None
-        except Exception as e:
-            print(f"Error receiving HA info response: {str(e)}")
-            s.close()
-            return None
-        
-        # Parse response
-        try:
-            pos = 0
-            is_leader = data[pos]
-            pos += 1
-            
-            node_count = struct.unpack(">L", data[pos:pos+4])[0]
-            pos += 4
-            
-            region_count = struct.unpack(">L", data[pos:pos+4])[0]
-            pos += 4
-            
-            # Parse node information
-            nodes = []
-            for i in range(node_count):
-                if pos + 4 > len(data):
-                    print(f"Data truncated while parsing node {i+1}")
-                    break
-                    
-                node_id = struct.unpack(">L", data[pos:pos+4])[0]
-                pos += 4
-                
-                if pos + 2 > len(data):
-                    print(f"Data truncated while parsing node {i+1} address length")
-                    break
-                    
-                addr_len = struct.unpack(">H", data[pos:pos+2])[0]
-                pos += 2
-                
-                if pos + addr_len > len(data):
-                    print(f"Data truncated while parsing node {i+1} address")
-                    break
-                    
-                address = data[pos:pos+addr_len].decode('utf-8')
-                pos += addr_len
-                
-                if pos + 4 > len(data):
-                    print(f"Data truncated while parsing node {i+1} region ID")
-                    break
-                    
-                region_id = struct.unpack(">L", data[pos:pos+4])[0]
-                pos += 4
-                
-                if pos + 1 > len(data):
-                    print(f"Data truncated while parsing node {i+1} local flag")
-                    break
-                    
-                is_local = data[pos]
-                pos += 1
-                
-                nodes.append({
-                    'id': node_id,
-                    'address': address,
-                    'region_id': region_id,
-                    'is_local': is_local
-                })
-            
-            # Parse region information
-            regions = []
-            for i in range(region_count):
-                if pos + 4 > len(data):
-                    print(f"Data truncated while parsing region {i+1}")
-                    break
-                    
-                region_id = struct.unpack(">L", data[pos:pos+4])[0]
-                pos += 4
-                
-                if pos + 2 > len(data):
-                    print(f"Data truncated while parsing region {i+1} name length")
-                    break
-                    
-                name_len = struct.unpack(">H", data[pos:pos+2])[0]
-                pos += 2
-                
-                if pos + name_len > len(data):
-                    print(f"Data truncated while parsing region {i+1} name")
-                    break
-                    
-                name = data[pos:pos+name_len].decode('utf-8')
-                pos += name_len
-                
-                if pos + 4 > len(data):
-                    print(f"Data truncated while parsing region {i+1} node count")
-                    break
-                    
-                region_node_count = struct.unpack(">L", data[pos:pos+4])[0]
-                pos += 4
-                
-                region_nodes = []
-                for j in range(region_node_count):
-                    if pos + 4 > len(data):
-                        print(f"Data truncated while parsing region {i+1} node {j+1}")
-                        break
-                        
-                    node_id = struct.unpack(">L", data[pos:pos+4])[0]
-                    pos += 4
-                    region_nodes.append(node_id)
-                
-                regions.append({
-                    'id': region_id,
-                    'name': name,
-                    'nodes': region_nodes
-                })
-            
-            return {
-                'is_leader': is_leader,
-                'node_count': node_count,
-                'region_count': region_count,
-                'nodes': nodes,
-                'regions': regions
-            }
-        except Exception as e:
-            print(f"Error parsing HA info response: {str(e)}")
-            return None
-    
-    except Exception as e:
-        print(f"Error getting HA info: {str(e)}")
-        return None
-
-def print_ha_info(masterhost, masterport, mastercontrolport):
-    ha_info = handle_ha_info(masterhost, masterport, mastercontrolport)
-    
-    if not ha_info:
-        print("\nHA functionality may not be enabled on this MooseFS instance.")
-        print("To enable HA, make sure:")
-        print("1. The server is compiled with HA support")
-        print("2. Multiple master nodes are configured in the cluster")
-        print("3. The MASTER_HOST configuration includes all master nodes")
-        print("4. Regions are properly configured if using multi-region mode")
-        return
-    
-    # Print basic HA status
-    print("MooseFS High Availability Status:")
-    print("--------------------------------")
-    print(f"Instance Name: {instancename}")
-    print(f"Leader Status: {'LEADER' if ha_info['is_leader'] else 'FOLLOWER'}")
-    print(f"Total Nodes: {ha_info['node_count']}")
-    print(f"Total Regions: {ha_info['region_count']}")
-    print("")
-    
-    # Print node information
-    if ha_info['node_count'] > 0:
-        print("Node Information:")
-        print("----------------")
-        print(f"{'ID':4} {'Address':30} {'Region':15} {'Status':10}")
-        print("-" * 65)
-        
-        for node in ha_info['nodes']:
-            # Find region name
-            region_name = "None"
-            for region in ha_info['regions']:
-                if region['id'] == node['region_id']:
-                    region_name = region['name']
-                    break
-            
-            status = "LOCAL" if node['is_local'] else "REMOTE"
-            if node['is_local'] and ha_info['is_leader']:
-                status = "LEADER"
-            
-            print(f"{node['id']:4} {node['address']:30} {region_name:15} {status:10}")
-        
-        print("")
-    
-    # Print region information
-    if ha_info['region_count'] > 0:
-        print("Region Information:")
-        print("------------------")
-        print(f"{'ID':4} {'Name':15} {'Node Count':10} {'Nodes'}")
-        print("-" * 65)
-        
-        for region in ha_info['regions']:
-            nodes_str = ", ".join(map(str, region['nodes']))
-            print(f"{region['id']:4} {region['name']:15} {len(region['nodes']):10} {nodes_str}")
-        
-        print("")
 
 #parse parameters and auxiliary functions
 if cgimode:
@@ -875,7 +632,6 @@ else: # CLI mode
 			print("\t\t-SQU : show quota info")
 			print("\t\t-SMC : show master charts data")
 			print("\t\t-SCC : show chunkserver charts data")
-			print("\t\t-SHA : show HA cluster information")
 			print("\t-o order_id : sort data by column specified by 'order id' (depends on data set)")
 			print("\t-r : reverse order")
 			print("\t-m mode_id : show data specified by 'mode id' (depends on data set)")
@@ -935,8 +691,6 @@ else: # CLI mode
 				sys.exit(1)
 		elif opt=='-S':
 			lastsval = val
-			if 'HA' in val:
-				sectionset.append("HA")
 			if 'IN' in val:
 				sectionset.append("IN")
 				sectionsubset.append("IM")
@@ -3963,17 +3717,17 @@ if leaderfound==0:
 if not cgimode:
 	if leaderfound:
 		if masterconn.version_less_than(1,7,0):
-			allowedsections = ["HA", "IN","CS","HD","EX","MS","MO","MC","CC"]
+			allowedsections = ["IN","CS","HD","EX","MS","MO","MC","CC"]
 		elif masterconn.version_less_than(2,1,0):
-			allowedsections = ["HA", "IN","CS","HD","EX","MS","MO","QU","MC","CC"]
+			allowedsections = ["IN","CS","HD","EX","MS","MO","QU","MC","CC"]
 		else:
-			allowedsections = ["HA", "IN","CS","HD","EX","MS","MO","RS","QU","MC","CC"]
+			allowedsections = ["IN","CS","HD","EX","MS","MO","RS","QU","MC","CC"]
 	elif electfound:
-		allowedsections = ["HA", "IN","CS","HD","EX","QU","MC","CC"]
+		allowedsections = ["IN","CS","HD","EX","QU","MC","CC"]
 	elif followerfound or usurperfound:
-		allowedsections = ["HA", "IN","MC"]
+		allowedsections = ["IN","MC"]
 	elif len(masterlist)>0:
-		allowedsections = ["HA", "IN"]
+		allowedsections = ["IN"]
 	else:
 		sys.exit(1)
 
@@ -4402,10 +4156,6 @@ if "ST" in sectionset and cgimode and (leaderfound or electfound):
 			print_exception()
 	except Exception:
 		print_exception()
-
-# HA section
-if "HA" in sectionset:
-    print_ha_info(masterhost, masterport, mastercontrolport)
 
 # Info section
 if "IN" in sectionset:

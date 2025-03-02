@@ -5,10 +5,10 @@ After=network.target network-online.target
 
 [Service]
 Type=forking
-ExecStart=/usr/local/sbin/mfsmetalogger -c /usr/local/etc/mfs-%I/mfsmetalogger.cfg start
-ExecStop=/usr/local/sbin/mfsmetalogger -c /usr/local/etc/mfs-%I/mfsmetalogger.cfg stop
-ExecReload=/usr/local/sbin/mfsmetalogger -c /usr/local/etc/mfs-%I/mfsmetalogger.cfg reload
-PIDFile=/usr/local/var/mfs-%I/.mfsmetalogger.lock
+ExecStart=/usr/sbin/mfsmetalogger -c /etc/mfs-%I/mfsmetalogger.cfg start
+ExecStop=/usr/sbin/mfsmetalogger -c /etc/mfs-%I/mfsmetalogger.cfg stop
+ExecReload=/usr/sbin/mfsmetalogger -c /etc/mfs-%I/mfsmetalogger.cfg reload
+PIDFile=/var/lib/mfs-%I/.mfsmetalogger.lock
 Restart=on-abnormal
 
 [Install]
