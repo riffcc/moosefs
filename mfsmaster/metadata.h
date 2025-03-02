@@ -26,6 +26,7 @@
 
 uint64_t meta_version_inc(void);
 uint64_t meta_version(void);
+uint8_t meta_lversion_inc(void);
 void meta_cleanup(void);
 void meta_setignoreflag(void);
 void meta_allowautorestore(void);
@@ -34,6 +35,13 @@ void meta_incverboselevel(void);
 void meta_sendall(int socket);
 int meta_downloadall(int socket);
 void meta_do_store_metadata(void);
+void meta_send_back_metaversion(void);
+uint64_t meta_get_metaversion(void);
+void meta_reload(void);
+int meta_init(void);
+
+// Function to check if an operation is a write operation
+uint8_t metadata_is_write_operation(uint8_t op_type);
 
 uint64_t meta_get_id(void);
 void meta_set_id(uint64_t newmetaid);
@@ -41,7 +49,6 @@ void meta_set_id(uint64_t newmetaid);
 uint8_t meta_mr_setmetaid(uint64_t newmetaid);
 
 void meta_info(uint32_t *lsstore,uint32_t *lstime,uint8_t *lsstat,uint64_t *lsmetavers,uint32_t *lschecksum);
-int meta_init(void);
 
 int meta_restore(void);
 

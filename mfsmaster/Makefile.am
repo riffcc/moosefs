@@ -4,6 +4,8 @@ AM_CFLAGS =
 AM_CPPFLAGS = -I$(top_srcdir)/mfscommon
 AM_LDFLAGS =
 
+SUBDIRS = ha
+
 mfsstatsdump_SOURCES = \
 	chartsdefs.h \
 	../mfscommon/statsdump.c \
@@ -44,6 +46,7 @@ mfsmaster_SOURCES = \
 	sharedpointer.c sharedpointer.h \
 	matocsserv.c matocsserv.h \
 	matoclserv.c matoclserv.h \
+	matoclserv_ha.c \
 	matomlserv.c matomlserv.h \
 	datacachemgr.c datacachemgr.h \
 	chartsdata.c chartsdata.h \
@@ -90,6 +93,7 @@ mfsmaster_SOURCES = \
 mfsmaster_CFLAGS = $(DYNLINKER_FLAGS)
 mfsmaster_CPPFLAGS = $(AM_CPPFLAGS) -DMFSMAXFILES=16384 -DAPPNAME=mfsmaster
 mfsmaster_LDFLAGS = $(ZLIB_LIBS)
+mfsmaster_LDADD = ha/libmasterha.a
 
 mfssupervisor_SOURCES = \
 	mfssupervisor.c \

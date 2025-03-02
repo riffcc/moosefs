@@ -36,4 +36,9 @@ void matoclserv_disconnect_all(void);
 void matoclserv_close_lsock(void);
 int matoclserv_init(void);
 
+/* High Availability related functions */
+void matoclserv_ha_state_changed(uint8_t is_leader);
+void matoclserv_ha_redirect(uint32_t leader_id);
+uint8_t matoclserv_get_node_ip_port(uint32_t node_id, char **ip_ptr, uint16_t *port_ptr);
+
 #endif

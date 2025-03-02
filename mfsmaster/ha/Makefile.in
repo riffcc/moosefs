@@ -1,0 +1,45 @@
+# Makefile.in for MooseFS HA module
+
+prefix = @prefix@
+exec_prefix = @exec_prefix@
+bindir = @bindir@
+sbindir = @sbindir@
+libexecdir = @libexecdir@
+datarootdir = @datarootdir@
+mandir = @mandir@
+sysconfdir = @sysconfdir@
+localstatedir = @localstatedir@
+
+INSTALL = @INSTALL@
+INSTALL_DATA = @INSTALL_DATA@
+INSTALL_PROGRAM = @INSTALL_PROGRAM@
+
+# Main targets
+all:
+	@echo "Building HA module as part of mfsmaster"
+
+# Install target necessary for the build system
+install: install-am
+
+install-am:
+	@echo "HA module installed as part of mfsmaster"
+
+install-data-am:
+
+install-exec-am:
+
+clean-am:
+	@echo "Cleaning HA module"
+
+clean: clean-am
+
+distclean-am:
+	-rm -f Makefile
+
+distclean: distclean-am
+
+uninstall:
+	@echo "Nothing to uninstall separately for HA module"
+
+# Include automake standard targets
+.PHONY: all install clean distclean uninstall install-am install-data-am install-exec-am 

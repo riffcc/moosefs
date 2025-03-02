@@ -1,0 +1,14 @@
+[Unit]
+Description=MooseFS CGI server
+Wants=network-online.target
+After=network.target network-online.target
+
+[Service]
+Type=forking
+ExecStart=/usr/local/sbin/mfscgiserv start
+ExecStop=/usr/local/sbin/mfscgiserv stop
+PIDFile=/usr/local/var/mfs/.mfscgiserv.lock
+Restart=on-abnormal
+
+[Install]
+WantedBy=multi-user.target
