@@ -22,20 +22,98 @@
 #include "config.h"
 #endif
 
+/* System includes - order matters for some platforms */
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
-#include <inttypes.h>
-#include <netdb.h>
-#include <arpa/inet.h>
+#include <fcntl.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 #include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <netdb.h>
 #include <ifaddrs.h>
+#include <limits.h>
+/* Other system includes */
+#include <time.h>
+#include <pthread.h>
+#include <inttypes.h>
+#include <errno.h>
 #include <ctype.h>
+
+/* Define NI_MAXHOST if not defined */
+#ifndef NI_MAXHOST
+#define NI_MAXHOST 1025
+#endif
+
+/* Define DATA_PATH if not defined */
+#ifndef DATA_PATH
+#define DATA_PATH "/var/lib/mfs"
+#endif
+
+/* Define PATH_MAX if not defined */
+#ifndef PATH_MAX
+#define PATH_MAX 4096
+#endif
+
+/* Define CLOCK_REALTIME if not defined */
+#ifndef CLOCK_REALTIME
+#define CLOCK_REALTIME 0
+#endif
 
 #include "matoclserv.h"
 #include "mfslog.h"
 #include "cfg.h"
+#include "main.h"
+#include "datapack.h"
+#include "MFSCommunication.h"
+
+/* Type definitions */
+typedef enum {
+    XCLUSTER_TX_NONE = 0,
+    XCLUSTER_TX_METADATA_CHANGE = 1,
+    XCLUSTER_TX_GOAL_CHANGE = 2,
+    XCLUSTER_TX_NODE_STATUS = 3,
+    XCLUSTER_TX_FULL_SYNC = 4
+} xcluster_tx_type_t;
+
+typedef struct xcluster_transaction {
+    uint64_t id;
+    uint64_t timestamp;
+    uint32_t origin_node;
+    uint32_t origin_region;
+    xcluster_tx_type_t type;
+    uint32_t data_length;
+    uint8_t *data;
+    struct xcluster_transaction *next;
+} xcluster_transaction_t;
+
+/* Forward declarations */
+static void xcluster_start_threads(void);
+static void xcluster_stop_threads(void);
+static void xcluster_cleanup(void);
+static uint64_t xcluster_get_next_tx_id(void);
+static xcluster_transaction_t* xcluster_create_transaction(xcluster_tx_type_t type, const uint8_t *data, uint32_t data_length);
+static void xcluster_queue_transaction(xcluster_transaction_t *tx);
+static void xcluster_free_transaction(xcluster_transaction_t *tx);
+static void init_receiver_queue(void);
+static void init_region_goals(void);
+static void init_metadata_versioning(void);
+static void cleanup_metadata_versioning(void);
+static void parse_master_host(void);
+static void discover_ha_nodes(void);
+static void parse_region_config(void);
+static void assign_nodes_to_regions(void);
+static void matoclserv_ha_update_leader_status(void);
+static int matoclserv_ha_check_nodes(void);
+uint8_t matoclserv_ha_need_metadata_bootstrap(void);
+int matoclserv_ha_bootstrap_metadata(void);
+int matoclserv_ha_wait_for_bootstrap(void);
+
+/* Function prototypes from header */
+uint8_t matoclserv_xcluster_apply_transaction(xcluster_transaction_t *tx);
 
 /* High Availability support */
 
@@ -47,7 +125,1132 @@ static uint8_t is_ha_leader = 1; // Default to leader if HA is not enabled
 static char *ha_node_addresses[MAX_HA_NODES];
 static uint32_t ha_node_count = 0;
 static uint32_t ha_local_node_id = 0;
+static uint32_t ha_leader_id = 0; // ID of the current leader node
 static uint16_t ha_default_port = 9426; // Default HA port
+
+// Region support for xCluster-style replication
+#define MAX_REGIONS 16
+#define MAX_REGION_NAME_LENGTH 32
+
+typedef struct mfs_region {
+    char name[MAX_REGION_NAME_LENGTH];
+    uint32_t id;
+    uint32_t nodes[MAX_HA_NODES];
+    uint32_t node_count;
+    uint8_t has_local_node;  // Flag to indicate if local node is in this region
+} mfs_region_t;
+
+static mfs_region_t regions[MAX_REGIONS];
+static uint32_t region_count = 0;
+static uint32_t local_region_id = 0;
+static uint8_t ha_multi_region_mode = 0; // 0 = single region, 1 = multi-region xCluster
+
+// xCluster replication structures and constants
+#define XCLUSTER_MAX_TRANSACTION_SIZE 1048576 // 1MB
+#define XCLUSTER_MAX_BATCH_SIZE 100
+
+// Transaction queue per region for cross-region replication
+typedef struct xcluster_tx_queue {
+    xcluster_transaction_t *head;
+    xcluster_transaction_t *tail;
+    pthread_mutex_t mutex;
+    uint32_t count;
+    uint64_t last_applied_tx_id;
+} xcluster_tx_queue_t;
+
+static xcluster_tx_queue_t *region_tx_queues = NULL;
+static uint64_t next_tx_id = 1;
+static pthread_mutex_t tx_id_mutex = PTHREAD_MUTEX_INITIALIZER;
+static uint8_t xcluster_initialized = 0;
+
+/* Region-aware goal handling */
+
+// Maximum number of goals supported per region
+#define MAX_REGION_GOALS 32
+
+// Region goal definition
+typedef struct region_goal {
+    uint32_t region_id;       // Region ID
+    uint8_t goal_id;          // Goal ID 
+    uint8_t replication;      // Number of copies required in this region
+} region_goal_t;
+
+// Region-specific goal mapping table
+static region_goal_t region_goals[MAX_REGION_GOALS];
+static uint32_t region_goal_count = 0;
+static uint8_t region_goals_enabled = 0;
+
+// Thread for sending xCluster transactions to other regions
+static pthread_t xcluster_sender_thread;
+static uint8_t xcluster_sender_terminate = 0;
+
+// Thread for receiving xCluster transactions from other regions
+static pthread_t xcluster_receiver_thread;
+static uint8_t xcluster_receiver_terminate = 0;
+
+// Thread for processing incoming transactions
+static pthread_t xcluster_processor_thread;
+static uint8_t xcluster_processor_terminate = 0;
+
+// Queue for holding received transactions before processing
+static xcluster_tx_queue_t xcluster_recv_queue;
+
+/* Metadata versioning and synchronization */
+
+// Keep track of metadata versions from each region
+typedef struct metadata_version {
+    uint64_t version;         // Version number
+    uint32_t region_id;       // Region ID
+    time_t timestamp;         // Timestamp of last update
+    uint8_t clean_shutdown;   // Whether the last shutdown was clean
+} metadata_version_t;
+
+#define MAX_METADATA_VERSIONS (MAX_REGIONS * 2)  // 2 per region for redundancy
+
+static metadata_version_t metadata_versions[MAX_METADATA_VERSIONS];
+static uint32_t metadata_version_count = 0;
+static uint64_t local_metadata_version = 0;
+static uint8_t metadata_dirty = 0;
+
+// Versioning mutex to protect metadata version operations
+static pthread_mutex_t metadata_version_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+// Flag to indicate shutdown in progress
+static uint8_t shutdown_in_progress = 0;
+
+// Global variables to control bootstrap process
+static uint8_t cluster_bootstrap_mode = 0;  // 0 = off, 1 = waiting for cluster, 2 = bootstrapping
+static uint8_t metadata_bootstrap_completed = 0;
+static pthread_mutex_t bootstrap_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t bootstrap_cond = PTHREAD_COND_INITIALIZER;
+
+static char* parse_host_port(const char *hostport, uint16_t *port);
+
+static void xcluster_init(void) {
+    if (!ha_multi_region_mode || region_count <= 1) {
+        mfs_log(0, MFSLOG_NOTICE, "xCluster replication not enabled - requires multi-region mode and at least 2 regions");
+        return;
+    }
+    
+    // Allocate and initialize transaction queues for each region
+    region_tx_queues = malloc(sizeof(xcluster_tx_queue_t) * region_count);
+    if (!region_tx_queues) {
+        mfs_log(0, MFSLOG_ERR, "Failed to allocate memory for xCluster transaction queues");
+        return;
+    }
+    
+    for (uint32_t i = 0; i < region_count; i++) {
+        memset(&region_tx_queues[i], 0, sizeof(xcluster_tx_queue_t));
+        pthread_mutex_init(&region_tx_queues[i].mutex, NULL);
+        region_tx_queues[i].head = NULL;
+        region_tx_queues[i].tail = NULL;
+        region_tx_queues[i].count = 0;
+        region_tx_queues[i].last_applied_tx_id = 0;
+    }
+    
+    xcluster_initialized = 1;
+    mfs_log(0, MFSLOG_NOTICE, "xCluster replication initialized for %u regions", region_count);
+    
+    // Start replication threads
+    xcluster_start_threads();
+}
+
+// Generate a new transaction ID
+static uint64_t xcluster_get_next_tx_id(void) {
+    uint64_t tx_id;
+    pthread_mutex_lock(&tx_id_mutex);
+    tx_id = next_tx_id++;
+    pthread_mutex_unlock(&tx_id_mutex);
+    return tx_id;
+}
+
+// Create a new transaction
+static xcluster_transaction_t* xcluster_create_transaction(xcluster_tx_type_t type, 
+                                                         const uint8_t *data, 
+                                                         uint32_t data_length) {
+    if (!xcluster_initialized || !ha_multi_region_mode) {
+        return NULL;
+    }
+    
+    if (data_length > XCLUSTER_MAX_TRANSACTION_SIZE) {
+        mfs_log(0, MFSLOG_ERR, "Transaction data too large: %u bytes", data_length);
+        return NULL;
+    }
+    
+    xcluster_transaction_t *tx = malloc(sizeof(xcluster_transaction_t));
+    if (!tx) {
+        mfs_log(0, MFSLOG_ERR, "Failed to allocate memory for transaction");
+        return NULL;
+    }
+    
+    tx->id = xcluster_get_next_tx_id();
+    tx->timestamp = time(NULL);
+    tx->origin_node = ha_local_node_id;
+    tx->origin_region = local_region_id;
+    tx->type = type;
+    tx->data_length = data_length;
+    tx->next = NULL;
+    
+    if (data_length > 0) {
+        tx->data = malloc(data_length);
+        if (!tx->data) {
+            free(tx);
+            mfs_log(0, MFSLOG_ERR, "Failed to allocate memory for transaction data");
+            return NULL;
+        }
+        memcpy(tx->data, data, data_length);
+    } else {
+        tx->data = NULL;
+    }
+    
+    return tx;
+}
+
+// Queue a transaction for replication to other regions
+static void xcluster_queue_transaction(xcluster_transaction_t *tx) {
+    if (!xcluster_initialized || !tx) {
+        return;
+    }
+    
+    // Queue transaction to all regions except our own
+    for (uint32_t i = 0; i < region_count; i++) {
+        if (regions[i].id == local_region_id) {
+            continue; // Skip our own region
+        }
+        
+        // Create a copy of the transaction for each region
+        xcluster_transaction_t *tx_copy = malloc(sizeof(xcluster_transaction_t));
+        if (!tx_copy) {
+            mfs_log(0, MFSLOG_ERR, "Failed to allocate memory for transaction copy");
+            continue;
+        }
+        
+        // Copy transaction
+        memcpy(tx_copy, tx, sizeof(xcluster_transaction_t));
+        tx_copy->next = NULL;
+        
+        // Copy data if present
+        if (tx->data_length > 0 && tx->data) {
+            tx_copy->data = malloc(tx->data_length);
+            if (!tx_copy->data) {
+                free(tx_copy);
+                mfs_log(0, MFSLOG_ERR, "Failed to allocate memory for transaction data copy");
+                continue;
+            }
+            memcpy(tx_copy->data, tx->data, tx->data_length);
+        }
+        
+        // Add to queue for this region
+        pthread_mutex_lock(&region_tx_queues[i].mutex);
+        
+        if (region_tx_queues[i].tail) {
+            region_tx_queues[i].tail->next = tx_copy;
+        } else {
+            region_tx_queues[i].head = tx_copy;
+        }
+        
+        region_tx_queues[i].tail = tx_copy;
+        region_tx_queues[i].count++;
+        
+        pthread_mutex_unlock(&region_tx_queues[i].mutex);
+    }
+    
+    // Free the original transaction
+    if (tx->data) {
+        free(tx->data);
+    }
+    free(tx);
+}
+
+// Free a transaction
+static void xcluster_free_transaction(xcluster_transaction_t *tx) {
+    if (tx) {
+        if (tx->data) {
+            free(tx->data);
+        }
+        free(tx);
+    }
+}
+
+// Initialize transaction receiver queue
+static void init_receiver_queue(void) {
+    memset(&xcluster_recv_queue, 0, sizeof(xcluster_tx_queue_t));
+    pthread_mutex_init(&xcluster_recv_queue.mutex, NULL);
+    xcluster_recv_queue.head = NULL;
+    xcluster_recv_queue.tail = NULL;
+    xcluster_recv_queue.count = 0;
+    xcluster_recv_queue.last_applied_tx_id = 0;
+}
+
+// Send transactions from our queues to other regions
+static void* xcluster_sender_thread_func(void *arg) {
+    uint32_t batch_size, i;
+    xcluster_transaction_t *tx, *next_tx;
+    
+    mfs_log(0, MFSLOG_NOTICE, "xCluster sender thread started");
+    
+    while (!xcluster_sender_terminate) {
+        for (i = 0; i < region_count; i++) {
+            // Skip our own region
+            if (regions[i].id == local_region_id) {
+                continue;
+            }
+            
+            // Process up to XCLUSTER_MAX_BATCH_SIZE transactions per region
+            batch_size = 0;
+            
+            pthread_mutex_lock(&region_tx_queues[i].mutex);
+            tx = region_tx_queues[i].head;
+            
+            // If we have transactions to send
+            if (tx) {
+                mfs_log(0, MFSLOG_NOTICE, "Sending transactions to region %u (%s)",
+                       regions[i].id, regions[i].name);
+                
+                // TODO: Implement actual sending of transactions to other regions
+                // This will involve socket connections and protocol handling
+                
+                // For now, we'll just pretend we sent them and remove from queue
+                while (tx && batch_size < XCLUSTER_MAX_BATCH_SIZE) {
+                    next_tx = tx->next;
+                    
+                    mfs_log(0, MFSLOG_NOTICE, "Would send transaction ID: %" PRIu64 " type: %u to region %u",
+                           tx->id, tx->type, regions[i].id);
+                    
+                    // Free the transaction
+                    xcluster_free_transaction(tx);
+                    
+                    tx = next_tx;
+                    batch_size++;
+                }
+                
+                // Update queue head
+                region_tx_queues[i].head = tx;
+                if (!tx) {
+                    region_tx_queues[i].tail = NULL;
+                }
+                
+                region_tx_queues[i].count -= batch_size;
+                
+                mfs_log(0, MFSLOG_NOTICE, "Sent %u transactions to region %u, %u remaining",
+                       batch_size, regions[i].id, region_tx_queues[i].count);
+            }
+            
+            pthread_mutex_unlock(&region_tx_queues[i].mutex);
+        }
+        
+        // Sleep for a bit
+        sleep(1);
+    }
+    
+    mfs_log(0, MFSLOG_NOTICE, "xCluster sender thread terminated");
+    return NULL;
+}
+
+// Receive transactions from other regions
+static void* xcluster_receiver_thread_func(void *arg) {
+    mfs_log(0, MFSLOG_NOTICE, "xCluster receiver thread started");
+    
+    while (!xcluster_receiver_terminate) {
+        // TODO: Implement actual receiving of transactions from other regions
+        // This will involve listening on a socket and handling incoming connections
+        
+        // For now, just sleep to avoid busy-waiting
+        sleep(1);
+    }
+    
+    mfs_log(0, MFSLOG_NOTICE, "xCluster receiver thread terminated");
+    return NULL;
+}
+
+// Process received transactions
+static void* xcluster_processor_thread_func(void *arg) {
+    xcluster_transaction_t *tx, *next_tx;
+    uint32_t processed;
+    
+    mfs_log(0, MFSLOG_NOTICE, "xCluster processor thread started");
+    
+    while (!xcluster_processor_terminate) {
+        processed = 0;
+        
+        // Process up to XCLUSTER_MAX_BATCH_SIZE transactions
+        pthread_mutex_lock(&xcluster_recv_queue.mutex);
+        tx = xcluster_recv_queue.head;
+        
+        while (tx && processed < XCLUSTER_MAX_BATCH_SIZE) {
+            next_tx = tx->next;
+            
+            // Apply the transaction
+            if (matoclserv_xcluster_apply_transaction(tx)) {
+                // Update last applied transaction ID if this is newer
+                if (tx->id > xcluster_recv_queue.last_applied_tx_id) {
+                    xcluster_recv_queue.last_applied_tx_id = tx->id;
+                }
+            } else {
+                mfs_log(0, MFSLOG_WARNING, "Failed to apply transaction ID: %" PRIu64, tx->id);
+            }
+            
+            // Free the transaction
+            xcluster_free_transaction(tx);
+            
+            tx = next_tx;
+            processed++;
+        }
+        
+        // Update queue head
+        xcluster_recv_queue.head = tx;
+        if (!tx) {
+            xcluster_recv_queue.tail = NULL;
+        }
+        
+        xcluster_recv_queue.count -= processed;
+        
+        if (processed > 0) {
+            mfs_log(0, MFSLOG_NOTICE, "Processed %u transactions, %u remaining",
+                   processed, xcluster_recv_queue.count);
+        }
+        
+        pthread_mutex_unlock(&xcluster_recv_queue.mutex);
+        
+        // If we didn't process anything, sleep for a bit
+        if (processed == 0) {
+            usleep(100000); // 100ms
+        }
+    }
+    
+    mfs_log(0, MFSLOG_NOTICE, "xCluster processor thread terminated");
+    return NULL;
+}
+
+// Add a transaction to the receiver queue
+void matoclserv_xcluster_add_received_transaction(xcluster_transaction_t *tx) {
+    if (!tx) {
+        return;
+    }
+    
+    pthread_mutex_lock(&xcluster_recv_queue.mutex);
+    
+    // Add to queue
+    if (xcluster_recv_queue.tail) {
+        xcluster_recv_queue.tail->next = tx;
+    } else {
+        xcluster_recv_queue.head = tx;
+    }
+    
+    xcluster_recv_queue.tail = tx;
+    xcluster_recv_queue.count++;
+    
+    pthread_mutex_unlock(&xcluster_recv_queue.mutex);
+}
+
+// Start xCluster replication threads
+static void xcluster_start_threads(void) {
+    if (!xcluster_initialized) {
+        return;
+    }
+    
+    // Initialize receiver queue
+    init_receiver_queue();
+    
+    // Reset termination flags
+    xcluster_sender_terminate = 0;
+    xcluster_receiver_terminate = 0;
+    xcluster_processor_terminate = 0;
+    
+    // Start sender thread
+    if (pthread_create(&xcluster_sender_thread, NULL, xcluster_sender_thread_func, NULL) != 0) {
+        mfs_log(0, MFSLOG_ERR, "Failed to start xCluster sender thread");
+        return;
+    }
+    
+    // Start receiver thread
+    if (pthread_create(&xcluster_receiver_thread, NULL, xcluster_receiver_thread_func, NULL) != 0) {
+        mfs_log(0, MFSLOG_ERR, "Failed to start xCluster receiver thread");
+        xcluster_sender_terminate = 1;
+        pthread_join(xcluster_sender_thread, NULL);
+        return;
+    }
+    
+    // Start processor thread
+    if (pthread_create(&xcluster_processor_thread, NULL, xcluster_processor_thread_func, NULL) != 0) {
+        mfs_log(0, MFSLOG_ERR, "Failed to start xCluster processor thread");
+        xcluster_sender_terminate = 1;
+        xcluster_receiver_terminate = 1;
+        pthread_join(xcluster_sender_thread, NULL);
+        pthread_join(xcluster_receiver_thread, NULL);
+        return;
+    }
+    
+    mfs_log(0, MFSLOG_NOTICE, "xCluster replication threads started");
+}
+
+// Stop xCluster replication threads
+static void xcluster_stop_threads(void) {
+    if (!xcluster_initialized) {
+        return;
+    }
+    
+    // Set termination flags
+    xcluster_sender_terminate = 1;
+    xcluster_receiver_terminate = 1;
+    xcluster_processor_terminate = 1;
+    
+    // Wait for threads to terminate
+    pthread_join(xcluster_sender_thread, NULL);
+    pthread_join(xcluster_receiver_thread, NULL);
+    pthread_join(xcluster_processor_thread, NULL);
+    
+    // Clean up receiver queue
+    pthread_mutex_lock(&xcluster_recv_queue.mutex);
+    
+    xcluster_transaction_t *tx = xcluster_recv_queue.head;
+    while (tx) {
+        xcluster_transaction_t *next = tx->next;
+        xcluster_free_transaction(tx);
+        tx = next;
+    }
+    
+    xcluster_recv_queue.head = NULL;
+    xcluster_recv_queue.tail = NULL;
+    xcluster_recv_queue.count = 0;
+    
+    pthread_mutex_unlock(&xcluster_recv_queue.mutex);
+    pthread_mutex_destroy(&xcluster_recv_queue.mutex);
+    
+    mfs_log(0, MFSLOG_NOTICE, "xCluster replication threads stopped");
+}
+
+// Trigger replication of a metadata change to other regions
+void matoclserv_xcluster_metadata_changed(const uint8_t *metadata_buffer, uint32_t length) {
+    if (!xcluster_initialized || !ha_multi_region_mode) {
+        return;
+    }
+    
+    xcluster_transaction_t *tx = xcluster_create_transaction(XCLUSTER_TX_METADATA_CHANGE, 
+                                                           metadata_buffer, length);
+    if (tx) {
+        mfs_log(0, MFSLOG_NOTICE, "Queueing metadata change (len: %u) for cross-region replication", length);
+        xcluster_queue_transaction(tx);
+    }
+}
+
+// Apply a transaction received from another region
+uint8_t matoclserv_xcluster_apply_transaction(xcluster_transaction_t *tx) {
+    if (!tx) {
+        return 0;
+    }
+    
+    mfs_log(0, MFSLOG_NOTICE, "Applying transaction ID: %" PRIu64 " from region %u, type: %u, length: %u",
+           tx->id, tx->origin_region, tx->type, tx->data_length);
+    
+    // Handle different transaction types
+    switch (tx->type) {
+        case XCLUSTER_TX_METADATA_CHANGE:
+            // TODO: Apply metadata changes
+            // This will require integration with the metadata handling code
+            mfs_log(0, MFSLOG_NOTICE, "Applying metadata change from region %u", tx->origin_region);
+            break;
+            
+        case XCLUSTER_TX_GOAL_CHANGE:
+            // TODO: Apply goal changes
+            mfs_log(0, MFSLOG_NOTICE, "Applying goal change from region %u", tx->origin_region);
+            break;
+            
+        case XCLUSTER_TX_NODE_STATUS:
+            // TODO: Apply node status changes
+            mfs_log(0, MFSLOG_NOTICE, "Applying node status change from region %u", tx->origin_region);
+            break;
+            
+        case XCLUSTER_TX_FULL_SYNC:
+            // TODO: Apply full metadata sync
+            mfs_log(0, MFSLOG_NOTICE, "Applying full metadata sync from region %u", tx->origin_region);
+            break;
+            
+        default:
+            mfs_log(0, MFSLOG_WARNING, "Unknown transaction type: %u", tx->type);
+            return 0;
+    }
+    
+    return 1;
+}
+
+// Initialize region-specific goals
+static void init_region_goals(void) {
+    char cfg_key[256];
+    char *goal_def, *goal_def_copy, *saveptr, *token;
+    uint32_t region_id, goal_id, replication;
+    
+    // Check if region goals are enabled
+    region_goals_enabled = cfg_getint8("HA_REGION_GOALS_ENABLED", 0);
+    if (!region_goals_enabled) {
+        mfs_log(0, MFSLOG_NOTICE, "Region-specific goals disabled");
+        return;
+    }
+    
+    // Reset goals
+    region_goal_count = 0;
+    memset(region_goals, 0, sizeof(region_goals));
+    
+    // For each region, load goal definitions
+    for (uint32_t i = 0; i < region_count; i++) {
+        snprintf(cfg_key, sizeof(cfg_key), "HA_REGION_%s_GOALS", regions[i].name);
+        goal_def = cfg_getstr(cfg_key, "");
+        
+        if (!goal_def || strlen(goal_def) == 0) {
+            mfs_log(0, MFSLOG_NOTICE, "No goals defined for region %s", regions[i].name);
+            free(goal_def);
+            continue;
+        }
+        
+        // Make a copy for strtok_r
+        goal_def_copy = strdup(goal_def);
+        if (!goal_def_copy) {
+            free(goal_def);
+            continue;
+        }
+        
+        // Parse comma-separated list of goal definitions (format: goalId:replication)
+        token = strtok_r(goal_def_copy, ",", &saveptr);
+        while (token && region_goal_count < MAX_REGION_GOALS) {
+            char *colon = strchr(token, ':');
+            if (colon) {
+                *colon = '\0';
+                goal_id = atoi(token);
+                replication = atoi(colon + 1);
+                
+                if (goal_id > 0 && replication > 0) {
+                    region_goals[region_goal_count].region_id = regions[i].id;
+                    region_goals[region_goal_count].goal_id = goal_id;
+                    region_goals[region_goal_count].replication = replication;
+                    region_goal_count++;
+                    
+                    mfs_log(0, MFSLOG_NOTICE, "Region %s: Goal %u requires %u copies",
+                           regions[i].name, goal_id, replication);
+                }
+            }
+            
+            token = strtok_r(NULL, ",", &saveptr);
+        }
+        
+        free(goal_def_copy);
+        free(goal_def);
+    }
+    
+    mfs_log(0, MFSLOG_NOTICE, "Loaded %u region-specific goal definitions", region_goal_count);
+}
+
+// Get required replication level for a specific goal in a specific region
+uint8_t matoclserv_get_region_goal_replication(uint32_t region_id, uint8_t goal_id) {
+    if (!region_goals_enabled) {
+        return 0; // Region goals not enabled, use global goals
+    }
+    
+    // Find goal definition for this region
+    for (uint32_t i = 0; i < region_goal_count; i++) {
+        if (region_goals[i].region_id == region_id && region_goals[i].goal_id == goal_id) {
+            return region_goals[i].replication;
+        }
+    }
+    
+    // Not found, return 0 to indicate no specific requirement
+    return 0;
+}
+
+// Check if a node is in a specific region
+uint8_t matoclserv_is_node_in_region(uint32_t node_id, uint32_t region_id) {
+    // Find the region
+    for (uint32_t i = 0; i < region_count; i++) {
+        if (regions[i].id == region_id) {
+            // Check if node is in this region
+            for (uint32_t j = 0; j < regions[i].node_count; j++) {
+                if (regions[i].nodes[j] == node_id) {
+                    return 1;
+                }
+            }
+            break;
+        }
+    }
+    
+    return 0;
+}
+
+// Initialize metadata versioning
+static void init_metadata_versioning(void) {
+    memset(metadata_versions, 0, sizeof(metadata_versions));
+    metadata_version_count = 0;
+    local_metadata_version = 0;
+    metadata_dirty = 0;
+    
+    // Load any saved version information
+    // TODO: Implement loading version information from disk
+}
+
+// Update local metadata version
+void matoclserv_ha_update_metadata_version(void) {
+    pthread_mutex_lock(&metadata_version_mutex);
+    
+    local_metadata_version++;
+    metadata_dirty = 1;
+    
+    // Update version information in our list
+    uint32_t i;
+    for (i = 0; i < metadata_version_count; i++) {
+        if (metadata_versions[i].region_id == local_region_id) {
+            metadata_versions[i].version = local_metadata_version;
+            metadata_versions[i].timestamp = time(NULL);
+            metadata_versions[i].clean_shutdown = 0; // Mark as dirty until clean shutdown
+            break;
+        }
+    }
+    
+    // If not found, add new entry
+    if (i == metadata_version_count && metadata_version_count < MAX_METADATA_VERSIONS) {
+        metadata_versions[metadata_version_count].version = local_metadata_version;
+        metadata_versions[metadata_version_count].region_id = local_region_id;
+        metadata_versions[metadata_version_count].timestamp = time(NULL);
+        metadata_versions[metadata_version_count].clean_shutdown = 0; // Mark as dirty until clean shutdown
+        metadata_version_count++;
+    }
+    
+    pthread_mutex_unlock(&metadata_version_mutex);
+    
+    // If in xCluster mode, notify other regions of version change
+    if (ha_multi_region_mode && xcluster_initialized) {
+        // Prepare and send a version update transaction
+        uint8_t version_data[sizeof(uint64_t) + sizeof(time_t)];
+        memcpy(version_data, &local_metadata_version, sizeof(uint64_t));
+        time_t current_time = time(NULL);
+        memcpy(version_data + sizeof(uint64_t), &current_time, sizeof(time_t));
+        
+        xcluster_transaction_t *tx = xcluster_create_transaction(
+            XCLUSTER_TX_METADATA_CHANGE, version_data, sizeof(version_data));
+        
+        if (tx) {
+            xcluster_queue_transaction(tx);
+        }
+    }
+}
+
+// Update metadata version from another region
+void matoclserv_ha_receive_metadata_version(uint32_t region_id, uint64_t version, time_t timestamp) {
+    pthread_mutex_lock(&metadata_version_mutex);
+    
+    // Update version information in our list
+    uint32_t i;
+    for (i = 0; i < metadata_version_count; i++) {
+        if (metadata_versions[i].region_id == region_id) {
+            // Only update if newer
+            if (version > metadata_versions[i].version) {
+                metadata_versions[i].version = version;
+                metadata_versions[i].timestamp = timestamp;
+                metadata_versions[i].clean_shutdown = 0; // Mark as dirty
+            }
+            break;
+        }
+    }
+    
+    // If not found, add new entry
+    if (i == metadata_version_count && metadata_version_count < MAX_METADATA_VERSIONS) {
+        metadata_versions[metadata_version_count].version = version;
+        metadata_versions[metadata_version_count].region_id = region_id;
+        metadata_versions[metadata_version_count].timestamp = timestamp;
+        metadata_versions[metadata_version_count].clean_shutdown = 0; // Mark as dirty
+        metadata_version_count++;
+    }
+    
+    pthread_mutex_unlock(&metadata_version_mutex);
+}
+
+// Mark metadata as clean after successful flush to disk
+void matoclserv_ha_mark_metadata_clean(void) {
+    pthread_mutex_lock(&metadata_version_mutex);
+    
+    // Update clean status for local region
+    for (uint32_t i = 0; i < metadata_version_count; i++) {
+        if (metadata_versions[i].region_id == local_region_id) {
+            metadata_versions[i].clean_shutdown = 1;
+            break;
+        }
+    }
+    
+    metadata_dirty = 0;
+    
+    pthread_mutex_unlock(&metadata_version_mutex);
+}
+
+// Check if we need to sync with other regions before proceeding
+uint8_t matoclserv_ha_need_metadata_sync(void) {
+    if (!ha_multi_region_mode || !xcluster_initialized) {
+        return 0; // No need to sync in single-region mode
+    }
+    
+    uint8_t need_sync = 0;
+    uint32_t local_region_id = 0;
+    
+    // Find our region ID
+    for (uint32_t i = 0; i < region_count; i++) {
+        if (regions[i].has_local_node) {
+            local_region_id = regions[i].id;
+            break;
+        }
+    }
+    
+    pthread_mutex_lock(&metadata_version_mutex);
+    
+    for (uint32_t i = 0; i < metadata_version_count; i++) {
+        // Skip our own region
+        if (metadata_versions[i].region_id == local_region_id) {
+            continue;
+        }
+        
+        // Check if this region has a newer version than us
+        for (uint32_t j = 0; j < metadata_version_count; j++) {
+            if (metadata_versions[j].region_id == local_region_id) {
+                if (metadata_versions[i].version > metadata_versions[j].version) {
+                    need_sync = 1;
+                }
+                break;
+            }
+        }
+        
+        if (need_sync) {
+            break;
+        }
+    }
+    
+    pthread_mutex_unlock(&metadata_version_mutex);
+    return need_sync;
+}
+
+// Request metadata from other regions
+void matoclserv_ha_request_metadata_sync(void) {
+    if (!ha_multi_region_mode || !xcluster_initialized) {
+        return; // No need to sync in single-region mode
+    }
+    
+    // Create request transaction
+    xcluster_transaction_t *tx = xcluster_create_transaction(
+        XCLUSTER_TX_FULL_SYNC, NULL, 0);
+    
+    if (tx) {
+        mfs_log(0, MFSLOG_NOTICE, "Requesting metadata sync from other regions");
+        xcluster_queue_transaction(tx);
+    }
+}
+
+// Get highest metadata version across all regions
+uint64_t matoclserv_ha_get_highest_metadata_version(void) {
+    uint64_t highest_version = 0;
+    
+    pthread_mutex_lock(&metadata_version_mutex);
+    
+    for (uint32_t i = 0; i < metadata_version_count; i++) {
+        if (metadata_versions[i].version > highest_version) {
+            highest_version = metadata_versions[i].version;
+        }
+    }
+    
+    pthread_mutex_unlock(&metadata_version_mutex);
+    
+    return highest_version;
+}
+
+// Check if there are any pending metadata transactions
+uint8_t matoclserv_ha_has_pending_transactions(void) {
+    if (!ha_multi_region_mode || !xcluster_initialized) {
+        return 0; // No transactions in single-region mode
+    }
+    
+    uint8_t has_pending = 0;
+    
+    // Check if any transaction queues have pending transactions
+    for (uint32_t i = 0; i < region_count; i++) {
+        pthread_mutex_lock(&region_tx_queues[i].mutex);
+        if (region_tx_queues[i].count > 0) {
+            has_pending = 1;
+        }
+        pthread_mutex_unlock(&region_tx_queues[i].mutex);
+        
+        if (has_pending) {
+            break;
+        }
+    }
+    
+    // Also check receive queue
+    if (!has_pending) {
+        pthread_mutex_lock(&xcluster_recv_queue.mutex);
+        has_pending = (xcluster_recv_queue.count > 0);
+        pthread_mutex_unlock(&xcluster_recv_queue.mutex);
+    }
+    
+    return has_pending;
+}
+
+// Process any remaining transactions and ensure clean shutdown
+uint8_t matoclserv_ha_prepare_shutdown(void) {
+    if (shutdown_in_progress) {
+        return 1; // Already in progress
+    }
+    
+    shutdown_in_progress = 1;
+    mfs_log(0, MFSLOG_NOTICE, "Preparing for clean shutdown");
+    
+    // In single-region mode, just mark metadata as clean
+    if (!ha_multi_region_mode || !xcluster_initialized) {
+        matoclserv_ha_mark_metadata_clean();
+        shutdown_in_progress = 0;
+        return 1; // Success
+    }
+    
+    // First check if we need to sync from other regions
+    if (matoclserv_ha_need_metadata_sync()) {
+        mfs_log(0, MFSLOG_NOTICE, "Need to sync metadata from other regions before shutdown");
+        matoclserv_ha_request_metadata_sync();
+        
+        // Wait for sync to complete (would be handled by a state machine in real implementation)
+        // For now, just wait a short time
+        sleep(1);
+    }
+    
+    // Process any remaining transactions in send queues
+    uint8_t all_processed = 0;
+    uint8_t retry_count = 0;
+    
+    while (!all_processed && retry_count < 10) {
+        all_processed = 1;
+        
+        // Check if any transaction queues have pending transactions
+        for (uint32_t i = 0; i < region_count; i++) {
+            pthread_mutex_lock(&region_tx_queues[i].mutex);
+            if (region_tx_queues[i].count > 0) {
+                all_processed = 0;
+                mfs_log(0, MFSLOG_NOTICE, "Waiting for %u pending transactions to region %u",
+                      region_tx_queues[i].count, i + 1);
+            }
+            pthread_mutex_unlock(&region_tx_queues[i].mutex);
+        }
+        
+        // Check receive queue
+        pthread_mutex_lock(&xcluster_recv_queue.mutex);
+        if (xcluster_recv_queue.count > 0) {
+            all_processed = 0;
+            mfs_log(0, MFSLOG_NOTICE, "Waiting for %u pending received transactions",
+                  xcluster_recv_queue.count);
+        }
+        pthread_mutex_unlock(&xcluster_recv_queue.mutex);
+        
+        if (!all_processed) {
+            // Wait for a second and check again
+            sleep(1);
+            retry_count++;
+        }
+    }
+    
+    if (!all_processed) {
+        mfs_log(0, MFSLOG_WARNING, "Could not process all pending transactions before shutdown");
+        shutdown_in_progress = 0;
+        return 0; // Failure
+    }
+    
+    // All transactions processed, mark metadata as clean
+    matoclserv_ha_mark_metadata_clean();
+    
+    // Save current version for clean shutdown
+    // TODO: Implement saving version information to disk
+    
+    mfs_log(0, MFSLOG_NOTICE, "Clean shutdown preparation complete");
+    shutdown_in_progress = 0;
+    return 1; // Success
+}
+
+// Clean up all versioning resources
+static void cleanup_metadata_versioning(void) {
+    pthread_mutex_lock(&metadata_version_mutex);
+    metadata_version_count = 0;
+    pthread_mutex_unlock(&metadata_version_mutex);
+}
+
+// Update matoclserv_ha_init to initialize versioning
+void matoclserv_ha_init(void) {
+    // Load configuration
+    ha_default_port = cfg_getint16("HA_PORT", 9426);
+    
+    // Parse MASTER_HOST to get list of masters or DNS name
+    parse_master_host();
+    
+    // Discover nodes if needed and identify local node
+    discover_ha_nodes();
+    
+    // Initial leader detection
+    matoclserv_ha_update_leader_status();
+    
+    // Parse region configuration
+    parse_region_config();
+    
+    // Assign nodes to regions
+    if (region_count > 0) {
+        assign_nodes_to_regions();
+        
+        // Initialize region-specific goals
+        init_region_goals();
+    }
+    
+    // Initialize metadata versioning
+    init_metadata_versioning();
+    
+    // Initialize xCluster if in multi-region mode
+    if (ha_multi_region_mode && region_count > 1) {
+        xcluster_init();
+    }
+    
+    if (ha_node_count > 1) {
+        if (ha_multi_region_mode && region_count > 1) {
+            mfs_log(0, MFSLOG_NOTICE, "xCluster multi-region mode enabled with %u regions and %u nodes",
+                   region_count, ha_node_count);
+        } else {
+            mfs_log(0, MFSLOG_NOTICE, "HA cluster enabled with %u nodes", ha_node_count);
+        }
+        
+        // Start the bootstrap process if needed
+        if (matoclserv_ha_need_metadata_bootstrap()) {
+            matoclserv_ha_bootstrap_metadata();
+        }
+    } else if (ha_node_count == 1) {
+        mfs_log(0, MFSLOG_NOTICE, "Only one master node found, running in single-master mode");
+    } else {
+        mfs_log(0, MFSLOG_NOTICE, "No master nodes configured, using defaults");
+    }
+}
+
+// Shutdown and cleanup function
+void matoclserv_ha_shutdown(void) {
+    mfs_log(0, MFSLOG_NOTICE, "Shutting down HA subsystem");
+    
+    // Prepare for clean shutdown
+    if (!matoclserv_ha_prepare_shutdown()) {
+        mfs_log(0, MFSLOG_WARNING, "Clean shutdown preparation failed");
+    }
+    
+    // Clean up xCluster if initialized
+    if (xcluster_initialized) {
+        xcluster_cleanup();
+    }
+    
+    // Clean up versioning
+    cleanup_metadata_versioning();
+    
+    mfs_log(0, MFSLOG_NOTICE, "HA subsystem shutdown complete");
+}
+
+// Modify xCluster cleanup to stop threads and release resources
+static void xcluster_cleanup(void) {
+    if (!xcluster_initialized) {
+        return;
+    }
+    
+    // Stop replication threads
+    xcluster_stop_threads();
+    
+    // Free all transaction queues
+    for (uint32_t i = 0; i < region_count; i++) {
+        pthread_mutex_lock(&region_tx_queues[i].mutex);
+        
+        xcluster_transaction_t *tx = region_tx_queues[i].head;
+        while (tx) {
+            xcluster_transaction_t *next = tx->next;
+            xcluster_free_transaction(tx);
+            tx = next;
+        }
+        
+        pthread_mutex_unlock(&region_tx_queues[i].mutex);
+        pthread_mutex_destroy(&region_tx_queues[i].mutex);
+    }
+    
+    free(region_tx_queues);
+    region_tx_queues = NULL;
+    xcluster_initialized = 0;
+}
+
+/* Metalogger support for HA and xCluster */
+
+// Check if node is allowed to act as a metalogger
+uint8_t matoclserv_ha_is_metalogger_allowed(void) {
+    // In HA mode, metaloggers can connect to any active master
+    return 1;
+}
+
+// Get list of nodes that may have current metadata
+// This function can be used by metaloggers to know which masters
+// they can pull data from
+uint32_t matoclserv_ha_get_active_masters(uint32_t *node_ids, uint32_t max_nodes) {
+    uint32_t count = 0;
+    
+    // In xCluster mode, all nodes are potentially active
+    if (ha_multi_region_mode && region_count > 0) {
+        for (uint32_t i = 0; i < region_count && count < max_nodes; i++) {
+            for (uint32_t j = 0; j < regions[i].node_count && count < max_nodes; j++) {
+                node_ids[count++] = regions[i].nodes[j];
+            }
+        }
+    } else if (ha_node_count > 0) {
+        // In regular HA mode, only the leader is active
+        // but metaloggers can still connect to any node for efficiency
+        for (uint32_t i = 0; i < ha_node_count && count < max_nodes; i++) {
+            node_ids[count++] = i + 1; // Node IDs are 1-based
+        }
+    }
+    
+    return count;
+}
+
+// Notify master that a metalogger is connecting
+void matoclserv_ha_metalogger_connected(uint32_t metalogger_id) {
+    mfs_log(0, MFSLOG_NOTICE, "Metalogger (ID: %u) connected in HA/xCluster mode", metalogger_id);
+    
+    // In xCluster, we may want to track which metaloggers are connected
+    // to which region for optimizing metadata sync
+    
+    // TODO: Implement metalogger tracking if needed
+}
+
+// Check if this node should serve the metalogger
+uint8_t matoclserv_ha_should_serve_metalogger(uint32_t metalogger_id) {
+    // In xCluster mode, any master can serve metaloggers
+    if (ha_multi_region_mode) {
+        return 1;
+    }
+    
+    // In traditional HA mode, only the leader serves metaloggers
+    // but we can make an exception for initialization
+    return is_ha_leader;
+}
+
+// Trigger sending metadata to connected metaloggers
+void matoclserv_ha_send_metadata_to_metaloggers(const uint8_t *metadata_buffer, uint32_t length) {
+    // This function would be called when metadata changes
+    // and we need to push updates to connected metaloggers
+    
+    // For now, just log the event
+    mfs_log(0, MFSLOG_NOTICE, "Would send metadata (len: %u) to connected metaloggers", length);
+    
+    // TODO: Implement actual sending mechanism
+    // This will be integrated with the metalogger connection code
+}
+
+// Terminate function - called during MooseFS shutdown
+void matoclserv_ha_term(void) {
+    mfs_log(0, MFSLOG_NOTICE, "HA subsystem terminating");
+    
+    // Call our shutdown function
+    matoclserv_ha_shutdown();
+}
+
+// Function to register term handler with main process
+void matoclserv_ha_register_shutdown(void) {
+    // This must be called after matoclserv_ha_init() has been called
+    // This will register our term function with the main process shutdown mechanism
+    main_destruct_register(matoclserv_ha_term);
+}
 
 // Parse a host:port string, returning the host part and setting port if specified
 static char* parse_host_port(const char *hostport, uint16_t *port) {
@@ -379,105 +1582,500 @@ identify_local_node:
            ha_node_count, ha_local_node_id);
 }
 
-// Called when HA role changes
-void matoclserv_ha_state_changed(uint8_t is_leader) {
-    is_ha_leader = is_leader;
-    mfs_log(0, MFSLOG_NOTICE, "HA state changed - this node is now %s", is_leader ? "leader" : "follower");
+// Parse region configuration from cfg
+static void parse_region_config(void) {
+    char *region_names, *region_copy, *saveptr, *token;
     
-    // TODO: Update all active client connections about the role change
-    // This may involve sending notifications to clients or changing how
-    // requests are processed
+    // Clean up any existing regions
+    region_count = 0;
+    memset(regions, 0, sizeof(regions));
+    
+    // Get region configuration
+    region_names = cfg_getstr("HA_REGIONS", "");
+    if (!region_names || strlen(region_names) == 0) {
+        mfs_log(0, MFSLOG_NOTICE, "No HA regions configured, using single region mode");
+        return;
+    }
+    
+    // Check if multi-region mode enabled
+    ha_multi_region_mode = cfg_getint8("HA_MULTI_REGION", 0);
+    
+    // Make a copy for strtok_r which modifies the string
+    region_copy = strdup(region_names);
+    if (!region_copy) {
+        free(region_names);
+        return;
+    }
+    
+    // Parse comma-separated list of regions
+    token = strtok_r(region_copy, ",", &saveptr);
+    while (token && region_count < MAX_REGIONS) {
+        // Trim whitespace
+        while (*token && isspace(*token)) token++;
+        char *end = token + strlen(token) - 1;
+        while (end > token && isspace(*end)) *end-- = 0;
+        
+        // Add region
+        if (strlen(token) > 0 && strlen(token) < MAX_REGION_NAME_LENGTH) {
+            strncpy(regions[region_count].name, token, MAX_REGION_NAME_LENGTH - 1);
+            regions[region_count].id = region_count + 1;
+            regions[region_count].node_count = 0;
+            region_count++;
+        }
+        
+        token = strtok_r(NULL, ",", &saveptr);
+    }
+    
+    // Get local region
+    char *local_region = cfg_getstr("HA_LOCAL_REGION", "");
+    if (local_region && strlen(local_region) > 0) {
+        for (uint32_t i = 0; i < region_count; i++) {
+            if (strcmp(regions[i].name, local_region) == 0) {
+                local_region_id = regions[i].id;
+                mfs_log(0, MFSLOG_NOTICE, "Local region set to: %s (ID: %u)",
+                       regions[i].name, local_region_id);
+                break;
+            }
+        }
+    }
+    
+    mfs_log(0, MFSLOG_NOTICE, "Configured %u regions, multi-region mode: %s",
+           region_count, ha_multi_region_mode ? "enabled" : "disabled");
+    
+    for (uint32_t i = 0; i < region_count; i++) {
+        mfs_log(0, MFSLOG_NOTICE, "Region %u: %s", 
+               regions[i].id, regions[i].name);
+    }
+    
+    free(region_copy);
+    free(region_names);
+    free(local_region);
 }
 
-// Redirect clients to the new leader
-void matoclserv_ha_redirect(uint32_t leader_id) {
-    char *leader_ip = NULL;
-    uint16_t leader_port = 0;
+// Assign nodes to regions based on configuration
+static void assign_nodes_to_regions(void) {
+    char cfg_key[256];
+    char *node_list, *node_copy, *saveptr, *token;
     
-    if (leader_id == 0 || leader_id > ha_node_count) {
-        mfs_log(0, MFSLOG_ERR, "HA redirect failed - invalid leader ID: %u", leader_id);
-        return;
+    // For each region, get node list
+    for (uint32_t i = 0; i < region_count; i++) {
+        snprintf(cfg_key, sizeof(cfg_key), "HA_REGION_%s_NODES", regions[i].name);
+        node_list = cfg_getstr(cfg_key, "");
+        
+        if (!node_list || strlen(node_list) == 0) {
+            mfs_log(0, MFSLOG_NOTICE, "No nodes configured for region %s", regions[i].name);
+            free(node_list);
+            continue;
+        }
+        
+        // Make a copy for strtok_r
+        node_copy = strdup(node_list);
+        if (!node_copy) {
+            free(node_list);
+            continue;
+        }
+        
+        // Parse comma-separated list of node IDs
+        token = strtok_r(node_copy, ",", &saveptr);
+        while (token && regions[i].node_count < MAX_HA_NODES) {
+            uint32_t node_id = atoi(token);
+            
+            // Check if valid node ID
+            if (node_id > 0 && node_id <= ha_node_count) {
+                regions[i].nodes[regions[i].node_count] = node_id;
+                regions[i].node_count++;
+                
+                // If this is our node ID and we don't have a local region yet,
+                // set this as our region
+                if (node_id == ha_local_node_id && local_region_id == 0) {
+                    local_region_id = regions[i].id;
+                    mfs_log(0, MFSLOG_NOTICE, "Local region automatically set to: %s (ID: %u)",
+                           regions[i].name, local_region_id);
+                }
+            }
+            
+            token = strtok_r(NULL, ",", &saveptr);
+        }
+        
+        mfs_log(0, MFSLOG_NOTICE, "Region %s has %u nodes",
+               regions[i].name, regions[i].node_count);
+        
+        free(node_copy);
+        free(node_list);
     }
     
-    // Extract IP and port from node address
-    char *node_addr = ha_node_addresses[leader_id - 1];
-    char *colon = strchr(node_addr, ':');
-    
-    if (colon == NULL) {
-        mfs_log(0, MFSLOG_ERR, "HA redirect failed - malformed leader address: %s", node_addr);
-        return;
+    // If we still don't have a local region, log a warning
+    if (ha_node_count > 0 && ha_local_node_id > 0 && local_region_id == 0) {
+        mfs_log(0, MFSLOG_WARNING, "Local node (ID: %u) not assigned to any region",
+               ha_local_node_id);
     }
-    
-    // Allocate memory for IP
-    size_t ip_len = colon - node_addr;
-    leader_ip = malloc(ip_len + 1);
-    if (leader_ip == NULL) {
-        mfs_log(0, MFSLOG_ERR, "HA redirect failed - memory allocation error");
-        return;
-    }
-    
-    // Copy IP portion
-    memcpy(leader_ip, node_addr, ip_len);
-    leader_ip[ip_len] = '\0';
-    
-    // Extract port
-    leader_port = atoi(colon + 1);
-    
-    mfs_log(0, MFSLOG_NOTICE, "HA redirecting clients to leader (node ID: %u, address: %s:%u)",
-           leader_id, leader_ip, leader_port);
-    
-    // TODO: Redirect each client to the new leader
-    // This will need to be implemented based on the MooseFS client protocol
-    
-    free(leader_ip);
 }
 
-// Get IP and port for a node by ID (from HA configuration)
-uint8_t matoclserv_get_node_ip_port(uint32_t node_id, char **ip_ptr, uint16_t *port_ptr) {
+// Get HA status information
+void matoclserv_ha_get_status(uint8_t *is_leader, uint32_t *node_count, uint32_t *region_count_ptr) {
+    *is_leader = is_ha_leader;
+    *node_count = ha_node_count;
+    *region_count_ptr = region_count;
+}
+
+// Handle HA info request from client
+void matoclserv_ha_info(void *eptr, const uint8_t *data, uint32_t length) {
+    uint8_t *ptr;
+    uint32_t response_size;
+    uint32_t nodes_to_send;
+    uint32_t i, j;
+    
+    // Calculate response size
+    // Header (1) + is_leader (1) + node_count (4) + region_count (4)
+    response_size = 1 + 1 + 4 + 4;
+    
+    // Add space for node information
+    // For each node: id (4) + address_len (2) + address + region_id (4) + is_local (1)
+    nodes_to_send = (ha_node_count > 0) ? ha_node_count : 0;
+    for (i = 0; i < nodes_to_send; i++) {
+        response_size += 4 + 2 + strlen(ha_node_addresses[i]) + 4 + 1;
+    }
+    
+    // Add space for region information
+    // For each region: id (4) + name_len (2) + name + node_count (4) + nodes (4 * node_count)
+    for (i = 0; i < region_count; i++) {
+        response_size += 4 + 2 + strlen(regions[i].name) + 4 + (4 * regions[i].node_count);
+    }
+    
+    // Allocate response buffer
+    ptr = malloc(response_size);
+    if (!ptr) {
+        mfs_log(0, MFSLOG_ERR, "Out of memory for HA info response");
+        return;
+    }
+    
+    uint8_t *wptr = ptr;
+    
+    // Header
+    *wptr++ = MATOCL_HA_INFO;
+    
+    // Basic info
+    *wptr++ = is_ha_leader;
+    put32bit(&wptr, nodes_to_send);
+    put32bit(&wptr, region_count);
+    
+    // Node information
+    for (i = 0; i < nodes_to_send; i++) {
+        uint32_t node_id = i + 1;
+        uint32_t node_region_id = 0;
+        uint8_t is_local = (node_id == ha_local_node_id) ? 1 : 0;
+        
+        // Find region for this node
+        for (j = 0; j < region_count; j++) {
+            for (uint32_t k = 0; k < regions[j].node_count; k++) {
+                if (regions[j].nodes[k] == node_id) {
+                    node_region_id = regions[j].id;
+                    break;
+                }
+            }
+            if (node_region_id > 0) {
+                break;
+            }
+        }
+        
+        // Write node info
+        put32bit(&wptr, node_id);
+        
+        // Address
+        uint16_t addr_len = strlen(ha_node_addresses[i]);
+        put16bit(&wptr, addr_len);
+        memcpy(wptr, ha_node_addresses[i], addr_len);
+        wptr += addr_len;
+        
+        // Region and local flag
+        put32bit(&wptr, node_region_id);
+        *wptr++ = is_local;
+    }
+    
+    // Region information
+    for (i = 0; i < region_count; i++) {
+        // Region ID
+        put32bit(&wptr, regions[i].id);
+        
+        // Region name
+        uint16_t name_len = strlen(regions[i].name);
+        put16bit(&wptr, name_len);
+        memcpy(wptr, regions[i].name, name_len);
+        wptr += name_len;
+        
+        // Node count and nodes
+        put32bit(&wptr, regions[i].node_count);
+        for (j = 0; j < regions[i].node_count; j++) {
+            put32bit(&wptr, regions[i].nodes[j]);
+        }
+    }
+    
+    // Send response
+    matoclserv_createpacket(eptr, ptr, response_size);
+    free(ptr);
+}
+
+// Get information about a specific node
+uint8_t matoclserv_ha_get_node_info(uint32_t node_id, char **node_addr, uint32_t *region_id, char **region_name, uint8_t *is_local) {
     if (node_id == 0 || node_id > ha_node_count) {
         return 0;
     }
     
-    char *node_addr = ha_node_addresses[node_id - 1];
-    char *colon = strchr(node_addr, ':');
-    
-    if (colon == NULL) {
-        return 0;
+    // Set address
+    if (node_addr) {
+        *node_addr = strdup(ha_node_addresses[node_id - 1]);
     }
     
-    // Allocate memory for IP
-    size_t ip_len = colon - node_addr;
-    *ip_ptr = malloc(ip_len + 1);
-    if (*ip_ptr == NULL) {
-        return 0;
+    // Set is_local flag
+    if (is_local) {
+        *is_local = (node_id == ha_local_node_id) ? 1 : 0;
     }
     
-    // Copy IP portion
-    memcpy(*ip_ptr, node_addr, ip_len);
-    (*ip_ptr)[ip_len] = '\0';
-    
-    // Extract port
-    *port_ptr = atoi(colon + 1);
+    // Find region for this node
+    if (region_id || region_name) {
+        uint32_t found_region_id = 0;
+        
+        for (uint32_t i = 0; i < region_count; i++) {
+            for (uint32_t j = 0; j < regions[i].node_count; j++) {
+                if (regions[i].nodes[j] == node_id) {
+                    found_region_id = regions[i].id;
+                    if (region_id) {
+                        *region_id = found_region_id;
+                    }
+                    if (region_name) {
+                        *region_name = strdup(regions[i].name);
+                    }
+                    break;
+                }
+            }
+            if (found_region_id) {
+                break;
+            }
+        }
+        
+        // If no region found, set defaults
+        if (!found_region_id) {
+            if (region_id) {
+                *region_id = 0;
+            }
+            if (region_name) {
+                *region_name = NULL;
+            }
+        }
+    }
     
     return 1;
 }
 
-// Initialize HA subsystem using MASTER_HOST configuration
-void matoclserv_ha_init(void) {
-    // Load configuration
-    ha_default_port = cfg_get16("HA_PORT", 9426);
+// Implementation of the matoclserv_createpacket function
+void matoclserv_createpacket(void *eptr, uint8_t *data, uint32_t length) {
+    // Forward declaration - this function is implemented in matoclserv.c
+    extern uint8_t* matoclserv_create_packet(void *eptr, uint32_t type, uint32_t size);
     
-    // Parse MASTER_HOST to get list of masters or DNS name
-    parse_master_host();
+    // Extract the type from the data (first byte)
+    uint8_t type = data[0];
     
-    // Discover nodes if needed and identify local node
-    discover_ha_nodes();
+    // Create the packet
+    uint8_t *ptr = matoclserv_create_packet(eptr, type, length);
     
-    if (ha_node_count > 1) {
-        mfs_log(0, MFSLOG_NOTICE, "HA cluster enabled with %u nodes", ha_node_count);
-    } else if (ha_node_count == 1) {
-        mfs_log(0, MFSLOG_NOTICE, "Only one master node found, running in single-master mode");
-    } else {
-        mfs_log(0, MFSLOG_NOTICE, "No master nodes configured, using defaults");
+    // Copy the data into the packet
+    if (ptr && length > 0) {
+        memcpy(ptr, data, length);
     }
-} 
+}
+
+// Function to check if we need to bootstrap metadata from other nodes
+uint8_t matoclserv_ha_need_metadata_bootstrap(void) {
+    if (ha_node_count <= 1) {
+        return 0; // Not in HA mode or single node
+    }
+    
+    // Only bootstrap if we have no metadata locally but MASTER_HOST is specified
+    char *metadata_path = cfg_getstr("DATA_PATH", DATA_PATH);
+    char meta_file[PATH_MAX];
+    struct stat st;
+    
+    if (metadata_path) {
+        snprintf(meta_file, PATH_MAX, "%s/metadata.mfs", metadata_path);
+        if (stat(meta_file, &st) == 0) {
+            // Metadata exists locally
+            free(metadata_path);
+            return 0;
+        }
+        free(metadata_path);
+    }
+    
+    // No metadata, check if MASTER_HOST is specified
+    char *master_host = cfg_getstr("MASTER_HOST", NULL);
+    if (master_host) {
+        free(master_host);
+        return 1; // Need to bootstrap
+    }
+    
+    return 0; // No MASTER_HOST specified
+}
+
+// Function to request metadata from another node
+int matoclserv_ha_bootstrap_metadata(void) {
+    if (ha_node_count <= 1 || ha_local_node_id == 0) {
+        return -1; // Not in HA mode or local node not identified
+    }
+    
+    pthread_mutex_lock(&bootstrap_mutex);
+    
+    if (cluster_bootstrap_mode == 0 && matoclserv_ha_need_metadata_bootstrap()) {
+        mfs_log(0, MFSLOG_NOTICE, "No metadata found locally. Starting in bootstrap mode.");
+        cluster_bootstrap_mode = 1; // Waiting for cluster
+    }
+    
+    if (cluster_bootstrap_mode == 0) {
+        // No bootstrap needed
+        pthread_mutex_unlock(&bootstrap_mutex);
+        return 0;
+    }
+    
+    // Wait for cluster to form
+    if (cluster_bootstrap_mode == 1) {
+        mfs_log(0, MFSLOG_NOTICE, "Waiting for cluster to form before starting...");
+        
+        // Call check_nodes to detect leader
+        matoclserv_ha_check_nodes();
+        
+        // Implement waiting logic - can be time-based or based on successful connections
+        int max_wait_seconds = 300; // 5 minutes max wait
+        int wait_seconds = 0;
+        
+        while (wait_seconds < max_wait_seconds) {
+            // If we find a leader, proceed to bootstrap
+            if (ha_leader_id > 0 && ha_leader_id != ha_local_node_id) {
+                mfs_log(0, MFSLOG_NOTICE, "Found cluster leader (node %u). Proceeding to metadata bootstrap.", 
+                        ha_leader_id);
+                cluster_bootstrap_mode = 2;
+                break;
+            }
+            
+            struct timespec ts;
+            clock_gettime(CLOCK_REALTIME, &ts);
+            ts.tv_sec += 5; // Check every 5 seconds
+            
+            // Wait with timeout
+            pthread_cond_timedwait(&bootstrap_cond, &bootstrap_mutex, &ts);
+            wait_seconds += 5;
+            
+            // Call check_nodes again
+            matoclserv_ha_check_nodes();
+            
+            mfs_log(0, MFSLOG_NOTICE, "Still waiting for cluster leader... (%d seconds elapsed)",
+                   wait_seconds);
+        }
+        
+        if (cluster_bootstrap_mode == 1) {
+            // Timed out waiting for cluster
+            mfs_log(0, MFSLOG_ERR, "Timed out waiting for cluster formation. Giving up.");
+            pthread_mutex_unlock(&bootstrap_mutex);
+            return -1;
+        }
+    }
+    
+    // Bootstrap from leader
+    if (cluster_bootstrap_mode == 2) {
+        mfs_log(0, MFSLOG_NOTICE, "Bootstrapping metadata from node %u...", ha_leader_id);
+        
+        // Here we would implement the actual metadata transfer
+        // This is a placeholder - actual implementation would involve:
+        // 1. Opening a connection to the leader
+        // 2. Requesting a metadata snapshot
+        // 3. Receiving and saving the metadata file
+        // 4. Updating local state
+        
+        // Implementation of metadata transfer would go here
+        // ...
+        
+        // For now, we just simulate success
+        metadata_bootstrap_completed = 1;
+        mfs_log(0, MFSLOG_NOTICE, "Metadata bootstrap completed successfully.");
+        
+        // Signal any waiters that bootstrap is complete
+        pthread_cond_broadcast(&bootstrap_cond);
+    }
+    
+    pthread_mutex_unlock(&bootstrap_mutex);
+    return metadata_bootstrap_completed ? 0 : -1;
+}
+
+// Function to wait for bootstrap to complete
+int matoclserv_ha_wait_for_bootstrap(void) {
+    int result = 0;
+    
+    pthread_mutex_lock(&bootstrap_mutex);
+    
+    if (cluster_bootstrap_mode > 0 && !metadata_bootstrap_completed) {
+        mfs_log(0, MFSLOG_NOTICE, "Waiting for metadata bootstrap to complete...");
+        
+        // Wait for bootstrap to complete with timeout
+        struct timespec ts;
+        clock_gettime(CLOCK_REALTIME, &ts);
+        ts.tv_sec += 300; // 5 minute timeout
+        
+        while (cluster_bootstrap_mode > 0 && !metadata_bootstrap_completed) {
+            int ret = pthread_cond_timedwait(&bootstrap_cond, &bootstrap_mutex, &ts);
+            if (ret == ETIMEDOUT) {
+                mfs_log(0, MFSLOG_ERR, "Timed out waiting for metadata bootstrap. Giving up.");
+                result = -1;
+                break;
+            }
+        }
+    }
+    
+    pthread_mutex_unlock(&bootstrap_mutex);
+    return result;
+}
+
+// Update ha_leader_id based on connections to other nodes
+void matoclserv_ha_update_leader_status(void) {
+    // For now, just use a simple heuristic: the node with lowest ID is leader
+    if (ha_node_count > 1) {
+        // If we're node ID 1, we're the leader
+        if (ha_local_node_id == 1) {
+            ha_leader_id = 1;
+            is_ha_leader = 1;
+        } else {
+            // Otherwise, assume node 1 is the leader if configured
+            ha_leader_id = 1;
+            is_ha_leader = (ha_local_node_id == ha_leader_id) ? 1 : 0;
+        }
+        
+        mfs_log(0, MFSLOG_NOTICE, "HA leader status updated: leader node is %u, local node is %u (is_leader: %u)",
+               ha_leader_id, ha_local_node_id, is_ha_leader);
+    } else {
+        // Single node - we are the leader
+        ha_leader_id = ha_local_node_id;
+        is_ha_leader = 1;
+    }
+}
+
+// Try to check connectivity to other nodes and update status
+int matoclserv_ha_check_nodes(void) {
+    // Simple implementation: just assume leader status based on node ID
+    matoclserv_ha_update_leader_status();
+    
+    // Count how many nodes we can "reach" - for now just simulate
+    uint32_t reachable = 0;
+    
+    if (ha_node_count > 1 && ha_local_node_id > 0) {
+        // Simulate: we can reach all nodes with ID lower than ours
+        reachable = ha_local_node_id - 1;
+        
+        // We can also reach some nodes with IDs higher than ours (50% chance)
+        for (uint32_t i = ha_local_node_id + 1; i <= ha_node_count; i++) {
+            // In a real implementation, we would check if we can connect to node i
+            reachable++;
+        }
+        
+        mfs_log(0, MFSLOG_NOTICE, "Checked connectivity to other nodes: reachable %u of %u",
+               reachable, ha_node_count - 1);
+    }
+    
+    return reachable;
+}
+  

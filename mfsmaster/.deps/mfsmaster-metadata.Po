@@ -131,7 +131,7 @@ mfsmaster-metadata.o: metadata.c /usr/include/stdc-predef.h ../config.h \
  ../mfscommon/crc.h ../mfscommon/processname.h ../mfscommon/cfg.h \
  ../mfscommon/main.h /usr/include/poll.h \
  /usr/include/x86_64-linux-gnu/sys/poll.h \
- /usr/include/x86_64-linux-gnu/bits/poll.h
+ /usr/include/x86_64-linux-gnu/bits/poll.h matoclserv_ha.h
 /usr/include/stdc-predef.h:
 ../config.h:
 /usr/include/stdio.h:
@@ -310,3 +310,4 @@ matomlserv.h:
 /usr/include/poll.h:
 /usr/include/x86_64-linux-gnu/sys/poll.h:
 /usr/include/x86_64-linux-gnu/bits/poll.h:
+matoclserv_ha.h:

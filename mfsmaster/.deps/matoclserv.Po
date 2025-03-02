@@ -1,4 +1,4 @@
-mfsmaster-matoclserv.o: matoclserv.c /usr/include/stdc-predef.h \
+matoclserv.o: matoclserv.c /usr/include/stdc-predef.h \
  /usr/include/x86_64-linux-gnu/sys/syslog.h /usr/include/features.h \
  /usr/include/features-time64.h \
  /usr/include/x86_64-linux-gnu/bits/wordsize.h \

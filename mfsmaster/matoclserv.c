@@ -74,6 +74,7 @@
 #include "iptosesid.h"
 #include "mfsalloc.h"
 #include "multilan.h"
+#include "matoclserv_ha.h"
 
 #define MaxPacketSize CLTOMA_MAXPACKETSIZE
 
@@ -1275,7 +1276,6 @@ void matoclserv_sclass_info(matoclserventry *eptr,const uint8_t *data,uint32_t l
 	ptr = matoclserv_create_packet(eptr,MATOCL_SCLASS_INFO,sclass_info(NULL,fver));
 	sclass_info(ptr,fver);
 }
-
 void matoclserv_missing_chunks(matoclserventry *eptr,const uint8_t *data,uint32_t length) {
 	uint8_t *ptr;
 	uint8_t mode;
@@ -6841,6 +6841,9 @@ void matoclserv_gotpacket(matoclserventry *eptr,uint32_t type,const uint8_t *dat
 			case CLTOMA_INSTANCE_NAME:
 				matoclserv_instance_name(eptr,data,length);
 				break;
+			case CLTOMA_HA_INFO:
+				matoclserv_ha_info(eptr, data, length);
+				break;
 			default:
 				mfs_log(MFSLOG_SYSLOG,MFSLOG_WARNING,"main master server module: got unknown message from mfsmount (type:%"PRIu32")",type);
 				eptr->mode=KILL;
@@ -7504,5 +7507,11 @@ int matoclserv_init(void) {
 	main_poll_register(matoclserv_desc,matoclserv_serve);
 	main_keepalive_register(matoclserv_keep_alive);
 	main_time_register(10,0,matoclserv_broadcast_timeout);
+
+	// Initialize HA subsystem
+	matoclserv_ha_init();
+	matoclserv_ha_register_shutdown();
+
 	return 0;
 }
+

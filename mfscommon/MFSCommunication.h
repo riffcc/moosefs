@@ -2478,5 +2478,18 @@
 #define CLTOMA_FUSE_WFLAGS (PROTO_BASE+711)
 // wflags:8
 
+// High Availability
+#define CLTOMA_HA_INFO (PROTO_BASE+705)
+#define MATOCL_HA_INFO (PROTO_BASE+705)
+
+/*
+ * CLTOMA_HA_INFO
+ * msgid:32
+ *
+ * MATOCL_HA_INFO
+ * msgid:32 is_leader:8 node_count:32 region_count:32 
+ * For each node:
+ *   node_id:32 is_local:8 address_len:16 address:address_len region_id:32 region_name_len:16 region_name:region_name_len
+ */
 
 #endif

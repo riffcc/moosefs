@@ -41,4 +41,7 @@ void matoclserv_ha_state_changed(uint8_t is_leader);
 void matoclserv_ha_redirect(uint32_t leader_id);
 uint8_t matoclserv_get_node_ip_port(uint32_t node_id, char **ip_ptr, uint16_t *port_ptr);
 
+/* Packet creation function */
+void matoclserv_createpacket(void *eptr, uint8_t *data, uint32_t length);
+
 #endif

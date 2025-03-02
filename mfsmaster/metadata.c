@@ -72,6 +72,7 @@
 
 #include "cfg.h"
 #include "main.h"
+#include "matoclserv_ha.h"
 
 #define META_SOCKET_MSECTO 10000
 #define META_SOCKET_BUFFER_SIZE 0x10000
@@ -2013,7 +2014,24 @@ int meta_init(void) {
 	if (emptystart==0) {
 		mfs_log(MFSLOG_SYSLOG_STDERR,MFSLOG_INFO,"loading metadata ...");
 		if (meta_loadall()<0) {
-			return -1;
+			// Check if we can bootstrap metadata from other nodes in the cluster
+			if (matoclserv_ha_need_metadata_bootstrap()) {
+				mfs_log(MFSLOG_SYSLOG_STDERR,MFSLOG_INFO,"metadata not found locally, trying to bootstrap from cluster...");
+				if (matoclserv_ha_bootstrap_metadata() == 0 && matoclserv_ha_wait_for_bootstrap() == 0) {
+					// Bootstrap succeeded, try loading metadata again
+					mfs_log(MFSLOG_SYSLOG_STDERR,MFSLOG_INFO,"metadata bootstrapped successfully, loading...");
+					if (meta_loadall()<0) {
+						mfs_log(MFSLOG_SYSLOG_STDERR,MFSLOG_ERR,"failed to load bootstrapped metadata");
+						return -1;
+					}
+					mfs_log(MFSLOG_SYSLOG_STDERR,MFSLOG_INFO,"bootstrapped metadata file has been loaded");
+				} else {
+					mfs_log(MFSLOG_SYSLOG_STDERR,MFSLOG_ERR,"failed to bootstrap metadata from cluster");
+					return -1;
+				}
+			} else {
+				return -1;
+			}
 		}
 		mfs_log(MFSLOG_SYSLOG_STDERR,MFSLOG_INFO,"metadata file has been loaded");
 	} else {
