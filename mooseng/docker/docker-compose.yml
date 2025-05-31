@@ -1,0 +1,303 @@
+version: '3.8'
+
+services:
+  master-1:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.master
+    image: mooseng/master:latest
+    container_name: mooseng-master-1
+    hostname: master-1
+    environment:
+      - MOOSENG_NODE_ID=master-1
+      - MOOSENG_CLUSTER_ID=mooseng-dev
+      - MOOSENG_RAFT_PEERS=master-1:9422,master-2:9422,master-3:9422
+      - MOOSENG_LISTEN_ADDR=0.0.0.0
+      - MOOSENG_LISTEN_PORT=9421
+      - MOOSENG_GRPC_PORT=9422
+      - MOOSENG_METRICS_PORT=9423
+      - MOOSENG_LOG_LEVEL=info
+      - RUST_LOG=info
+    ports:
+      - "9421:9421"   # Master server port
+      - "9422:9422"   # Raft gRPC port
+      - "9423:9423"   # Metrics port
+    volumes:
+      - master1_data:/var/lib/mooseng/master
+      - master1_logs:/var/log/mooseng
+    networks:
+      - mooseng
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/mooseng-master", "--health-check"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  master-2:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.master
+    image: mooseng/master:latest
+    container_name: mooseng-master-2
+    hostname: master-2
+    environment:
+      - MOOSENG_NODE_ID=master-2
+      - MOOSENG_CLUSTER_ID=mooseng-dev
+      - MOOSENG_RAFT_PEERS=master-1:9422,master-2:9422,master-3:9422
+      - MOOSENG_LISTEN_ADDR=0.0.0.0
+      - MOOSENG_LISTEN_PORT=9421
+      - MOOSENG_GRPC_PORT=9422
+      - MOOSENG_METRICS_PORT=9423
+      - MOOSENG_LOG_LEVEL=info
+      - MOOSENG_WAIT_FOR=master-1:9421
+      - RUST_LOG=info
+    ports:
+      - "9431:9421"   # Master server port
+      - "9432:9422"   # Raft gRPC port
+      - "9433:9423"   # Metrics port
+    volumes:
+      - master2_data:/var/lib/mooseng/master
+      - master2_logs:/var/log/mooseng
+    networks:
+      - mooseng
+    restart: unless-stopped
+    depends_on:
+      - master-1
+
+  master-3:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.master
+    image: mooseng/master:latest
+    container_name: mooseng-master-3
+    hostname: master-3
+    environment:
+      - MOOSENG_NODE_ID=master-3
+      - MOOSENG_CLUSTER_ID=mooseng-dev
+      - MOOSENG_RAFT_PEERS=master-1:9422,master-2:9422,master-3:9422
+      - MOOSENG_LISTEN_ADDR=0.0.0.0
+      - MOOSENG_LISTEN_PORT=9421
+      - MOOSENG_GRPC_PORT=9422
+      - MOOSENG_METRICS_PORT=9423
+      - MOOSENG_LOG_LEVEL=info
+      - MOOSENG_WAIT_FOR=master-1:9421,master-2:9421
+      - RUST_LOG=info
+    ports:
+      - "9441:9421"   # Master server port
+      - "9442:9422"   # Raft gRPC port
+      - "9443:9423"   # Metrics port
+    volumes:
+      - master3_data:/var/lib/mooseng/master
+      - master3_logs:/var/log/mooseng
+    networks:
+      - mooseng
+    restart: unless-stopped
+    depends_on:
+      - master-1
+      - master-2
+
+  chunkserver-1:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.chunkserver
+    image: mooseng/chunkserver:latest
+    container_name: mooseng-chunkserver-1
+    hostname: chunkserver-1
+    environment:
+      - MOOSENG_SERVER_ID=cs-001
+      - MOOSENG_MASTER_ADDRS=master-1:9421,master-2:9421,master-3:9421
+      - MOOSENG_LISTEN_ADDR=0.0.0.0
+      - MOOSENG_LISTEN_PORT=9420
+      - MOOSENG_DATA_DIRS=/data1,/data2,/data3
+      - MOOSENG_LOG_LEVEL=info
+      - RUST_LOG=info
+    ports:
+      - "9420:9420"
+    volumes:
+      - cs1_data1:/data1
+      - cs1_data2:/data2
+      - cs1_data3:/data3
+      - cs1_logs:/var/log/mooseng
+    networks:
+      - mooseng
+    restart: unless-stopped
+    depends_on:
+      - master-1
+      - master-2
+      - master-3
+
+  chunkserver-2:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.chunkserver
+    image: mooseng/chunkserver:latest
+    container_name: mooseng-chunkserver-2
+    hostname: chunkserver-2
+    environment:
+      - MOOSENG_SERVER_ID=cs-002
+      - MOOSENG_MASTER_ADDRS=master-1:9421,master-2:9421,master-3:9421
+      - MOOSENG_LISTEN_ADDR=0.0.0.0
+      - MOOSENG_LISTEN_PORT=9420
+      - MOOSENG_DATA_DIRS=/data1,/data2,/data3
+      - MOOSENG_LOG_LEVEL=info
+      - RUST_LOG=info
+    ports:
+      - "9520:9420"
+    volumes:
+      - cs2_data1:/data1
+      - cs2_data2:/data2
+      - cs2_data3:/data3
+      - cs2_logs:/var/log/mooseng
+    networks:
+      - mooseng
+    restart: unless-stopped
+    depends_on:
+      - master-1
+      - master-2
+      - master-3
+
+  client:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.client
+    image: mooseng/client:latest
+    container_name: mooseng-client
+    hostname: client
+    environment:
+      - MOOSENG_MASTER_ADDRS=master-1:9421,master-2:9421,master-3:9421
+      - MOOSENG_MOUNT_POINT=/mnt/mooseng
+      - MOOSENG_LOG_LEVEL=info
+      - RUST_LOG=info
+    volumes:
+      - client_logs:/var/log/mooseng
+      - /mnt/mooseng-docker:/mnt/mooseng:shared
+    networks:
+      - mooseng
+    privileged: true  # Required for FUSE mounting
+    devices:
+      - /dev/fuse:/dev/fuse
+    cap_add:
+      - SYS_ADMIN
+    restart: unless-stopped
+    depends_on:
+      - chunkserver-1
+      - chunkserver-2
+
+  cli:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.cli
+    image: mooseng/cli:latest
+    container_name: mooseng-cli
+    hostname: cli
+    environment:
+      - MOOSENG_MASTER_ADDRS=master-1:9421,master-2:9421,master-3:9421
+      - RUST_LOG=info
+    networks:
+      - mooseng
+    depends_on:
+      - master-1
+      - master-2
+      - master-3
+    profiles:
+      - tools
+
+  # Monitoring stack
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: mooseng-prometheus
+    hostname: prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    networks:
+      - mooseng
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: mooseng-grafana
+    hostname: grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
+    networks:
+      - mooseng
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    profiles:
+      - monitoring
+
+networks:
+  mooseng:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  # Master server data
+  master1_data:
+    driver: local
+  master2_data:
+    driver: local
+  master3_data:
+    driver: local
+  
+  # Master server logs
+  master1_logs:
+    driver: local
+  master2_logs:
+    driver: local
+  master3_logs:
+    driver: local
+  
+  # Chunk server data
+  cs1_data1:
+    driver: local
+  cs1_data2:
+    driver: local
+  cs1_data3:
+    driver: local
+  cs2_data1:
+    driver: local
+  cs2_data2:
+    driver: local
+  cs2_data3:
+    driver: local
+  
+  # Chunk server logs
+  cs1_logs:
+    driver: local
+  cs2_logs:
+    driver: local
+  
+  # Client logs
+  client_logs:
+    driver: local
+  
+  # Monitoring data
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local

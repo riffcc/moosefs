@@ -1,0 +1,403 @@
+syntax = "proto3";
+
+package mooseng.protocol;
+
+import "common.proto";
+import "google/protobuf/timestamp.proto";
+
+// Master Server Service
+service MasterService {
+  // File operations
+  rpc CreateFile(CreateFileRequest) returns (CreateFileResponse);
+  rpc OpenFile(OpenFileRequest) returns (OpenFileResponse);
+  rpc CloseFile(CloseFileRequest) returns (CloseFileResponse);
+  rpc DeleteFile(DeleteFileRequest) returns (DeleteFileResponse);
+  rpc RenameFile(RenameFileRequest) returns (RenameFileResponse);
+  
+  // Directory operations
+  rpc CreateDirectory(CreateDirectoryRequest) returns (CreateDirectoryResponse);
+  rpc DeleteDirectory(DeleteDirectoryRequest) returns (DeleteDirectoryResponse);
+  rpc ListDirectory(ListDirectoryRequest) returns (ListDirectoryResponse);
+  
+  // Metadata operations
+  rpc GetFileInfo(GetFileInfoRequest) returns (GetFileInfoResponse);
+  rpc SetFileAttributes(SetFileAttributesRequest) returns (SetFileAttributesResponse);
+  rpc GetExtendedAttributes(GetExtendedAttributesRequest) returns (GetExtendedAttributesResponse);
+  rpc SetExtendedAttributes(SetExtendedAttributesRequest) returns (SetExtendedAttributesResponse);
+  
+  // Chunk operations
+  rpc AllocateChunk(AllocateChunkRequest) returns (AllocateChunkResponse);
+  rpc GetChunkLocations(GetChunkLocationsRequest) returns (GetChunkLocationsResponse);
+  rpc ReportChunkStatus(ReportChunkStatusRequest) returns (ReportChunkStatusResponse);
+  
+  // Server management
+  rpc RegisterServer(RegisterServerRequest) returns (RegisterServerResponse);
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+  rpc GetClusterStatus(GetClusterStatusRequest) returns (GetClusterStatusResponse);
+  
+  // Storage class management
+  rpc CreateStorageClass(CreateStorageClassRequest) returns (CreateStorageClassResponse);
+  rpc ListStorageClasses(ListStorageClassesRequest) returns (ListStorageClassesResponse);
+  rpc SetFileStorageClass(SetFileStorageClassRequest) returns (SetFileStorageClassResponse);
+  
+  // Multiregion operations
+  rpc GetRegionInfo(GetRegionInfoRequest) returns (GetRegionInfoResponse);
+  rpc SetRegionPolicy(SetRegionPolicyRequest) returns (SetRegionPolicyResponse);
+  rpc InitiateRegionSync(InitiateRegionSyncRequest) returns (stream RegionSyncProgress);
+  
+  // Raft consensus
+  rpc ProcessRaftMessage(RaftMessage) returns (RaftMessage);
+  rpc RequestLeaderLease(LeaderLeaseRequest) returns (LeaderLeaseResponse);
+}
+
+// File operation messages
+message CreateFileRequest {
+  string path = 1;
+  uint32 mode = 2;
+  uint32 uid = 3;
+  uint32 gid = 4;
+  uint32 storage_class_id = 5;
+  map<string, bytes> xattrs = 6;
+}
+
+message CreateFileResponse {
+  FileMetadata metadata = 1;
+  uint64 session_id = 2;
+}
+
+message OpenFileRequest {
+  string path = 1;
+  uint32 flags = 2;
+  uint64 session_id = 3;
+}
+
+message OpenFileResponse {
+  FileMetadata metadata = 1;
+  uint64 file_handle = 2;
+  repeated ChunkInfo chunks = 3;
+}
+
+message CloseFileRequest {
+  uint64 file_handle = 1;
+  uint64 session_id = 2;
+}
+
+message CloseFileResponse {
+  bool success = 1;
+}
+
+message DeleteFileRequest {
+  string path = 1;
+  uint64 session_id = 2;
+}
+
+message DeleteFileResponse {
+  bool success = 1;
+  uint64 freed_space = 2;
+}
+
+message RenameFileRequest {
+  string old_path = 1;
+  string new_path = 2;
+  uint64 session_id = 3;
+}
+
+message RenameFileResponse {
+  bool success = 1;
+  FileMetadata metadata = 2;
+}
+
+// Directory operation messages
+message CreateDirectoryRequest {
+  string path = 1;
+  uint32 mode = 2;
+  uint32 uid = 3;
+  uint32 gid = 4;
+  map<string, bytes> xattrs = 5;
+}
+
+message CreateDirectoryResponse {
+  FileMetadata metadata = 1;
+}
+
+message DeleteDirectoryRequest {
+  string path = 1;
+  bool recursive = 2;
+  uint64 session_id = 3;
+}
+
+message DeleteDirectoryResponse {
+  bool success = 1;
+  uint64 freed_space = 2;
+  uint32 deleted_files = 3;
+}
+
+message ListDirectoryRequest {
+  string path = 1;
+  uint64 offset = 2;
+  uint32 limit = 3;
+  bool include_stats = 4;
+}
+
+message ListDirectoryResponse {
+  repeated FileMetadata entries = 1;
+  bool has_more = 2;
+  uint64 next_offset = 3;
+}
+
+// Metadata operation messages
+message GetFileInfoRequest {
+  string path = 1;
+  bool follow_symlinks = 2;
+}
+
+message GetFileInfoResponse {
+  FileMetadata metadata = 1;
+  repeated ChunkInfo chunks = 2;
+}
+
+message SetFileAttributesRequest {
+  string path = 1;
+  optional uint32 mode = 2;
+  optional uint32 uid = 3;
+  optional uint32 gid = 4;
+  optional google.protobuf.Timestamp atime = 5;
+  optional google.protobuf.Timestamp mtime = 6;
+}
+
+message SetFileAttributesResponse {
+  bool success = 1;
+  FileMetadata metadata = 2;
+}
+
+message GetExtendedAttributesRequest {
+  string path = 1;
+  repeated string names = 2;  // Empty means get all
+}
+
+message GetExtendedAttributesResponse {
+  map<string, bytes> xattrs = 1;
+}
+
+message SetExtendedAttributesRequest {
+  string path = 1;
+  map<string, bytes> xattrs = 2;
+  bool replace = 3;  // Replace existing or merge
+}
+
+message SetExtendedAttributesResponse {
+  bool success = 1;
+}
+
+// Chunk operation messages
+message AllocateChunkRequest {
+  uint64 inode = 1;
+  uint64 chunk_index = 2;
+  uint32 storage_class_id = 3;
+  repeated string preferred_servers = 4;
+  string preferred_region = 5;
+}
+
+message AllocateChunkResponse {
+  ChunkInfo chunk = 1;
+  repeated ChunkLocation write_locations = 2;
+}
+
+message GetChunkLocationsRequest {
+  uint64 chunk_id = 1;
+  bool for_write = 2;
+  string preferred_region = 3;
+}
+
+message GetChunkLocationsResponse {
+  ChunkInfo chunk = 1;
+  repeated ChunkLocation locations = 2;
+}
+
+message ReportChunkStatusRequest {
+  uint64 server_id = 1;
+  repeated ChunkStatusReport reports = 2;
+}
+
+message ChunkStatusReport {
+  uint64 chunk_id = 1;
+  uint32 version = 2;
+  uint64 size = 3;
+  ChunkStatus status = 4;
+  bytes checksum = 5;
+}
+
+message ReportChunkStatusResponse {
+  repeated ChunkAction actions = 1;
+}
+
+message ChunkAction {
+  uint64 chunk_id = 1;
+  ChunkActionType type = 2;
+  repeated string target_servers = 3;
+  uint32 target_version = 4;
+}
+
+enum ChunkActionType {
+  CHUNK_ACTION_TYPE_UNKNOWN = 0;
+  CHUNK_ACTION_TYPE_REPLICATE = 1;
+  CHUNK_ACTION_TYPE_DELETE = 2;
+  CHUNK_ACTION_TYPE_VERIFY = 3;
+  CHUNK_ACTION_TYPE_REPAIR = 4;
+}
+
+// Server management messages
+message RegisterServerRequest {
+  ServerInfo info = 1;
+  string auth_token = 2;
+}
+
+message RegisterServerResponse {
+  uint64 server_id = 1;
+  bool accepted = 2;
+  string reject_reason = 3;
+  repeated ServerInfo peers = 4;  // For chunk servers, list of other chunk servers
+}
+
+message HeartbeatRequest {
+  uint64 server_id = 1;
+  ServerCapabilities capabilities = 2;
+  repeated ChunkStatusReport chunk_reports = 3;
+  map<string, double> metrics = 4;
+}
+
+message HeartbeatResponse {
+  bool acknowledged = 1;
+  repeated ChunkAction chunk_actions = 2;
+  map<string, string> config_updates = 3;
+}
+
+message GetClusterStatusRequest {
+  bool include_chunk_distribution = 1;
+  bool include_metrics = 2;
+}
+
+message GetClusterStatusResponse {
+  repeated ServerInfo servers = 1;
+  repeated RegionInfo regions = 2;
+  ClusterStatistics stats = 3;
+  repeated HealthIssue issues = 4;
+}
+
+message ClusterStatistics {
+  uint64 total_files = 1;
+  uint64 total_directories = 2;
+  uint64 total_chunks = 3;
+  uint64 total_space = 4;
+  uint64 used_space = 5;
+  uint64 replicated_chunks = 6;
+  uint64 ec_chunks = 7;
+  map<string, uint64> region_stats = 8;
+}
+
+message HealthIssue {
+  string id = 1;
+  HealthSeverity severity = 2;
+  string description = 3;
+  google.protobuf.Timestamp detected_at = 4;
+  repeated string affected_servers = 5;
+}
+
+enum HealthSeverity {
+  HEALTH_SEVERITY_UNKNOWN = 0;
+  HEALTH_SEVERITY_INFO = 1;
+  HEALTH_SEVERITY_WARNING = 2;
+  HEALTH_SEVERITY_ERROR = 3;
+  HEALTH_SEVERITY_CRITICAL = 4;
+}
+
+// Storage class messages
+message CreateStorageClassRequest {
+  StorageClass storage_class = 1;
+}
+
+message CreateStorageClassResponse {
+  uint32 storage_class_id = 1;
+  bool success = 2;
+}
+
+message ListStorageClassesRequest {
+  // Empty
+}
+
+message ListStorageClassesResponse {
+  repeated StorageClass storage_classes = 1;
+}
+
+message SetFileStorageClassRequest {
+  string path = 1;
+  uint32 storage_class_id = 2;
+  bool recursive = 3;
+  bool migrate_existing = 4;
+}
+
+message SetFileStorageClassResponse {
+  bool success = 1;
+  uint64 affected_files = 2;
+  uint64 chunks_to_migrate = 3;
+}
+
+// Multiregion messages
+message GetRegionInfoRequest {
+  repeated string region_ids = 1;  // Empty means all regions
+}
+
+message GetRegionInfoResponse {
+  repeated RegionInfo regions = 1;
+  map<string, RegionConnectivity> connectivity = 2;
+}
+
+message RegionConnectivity {
+  map<string, uint32> latency_ms = 1;
+  map<string, uint32> bandwidth_mbps = 2;
+}
+
+message SetRegionPolicyRequest {
+  string region_id = 1;
+  RegionPolicy policy = 2;
+}
+
+message RegionPolicy {
+  uint32 priority = 1;
+  bool accept_writes = 2;
+  bool accept_reads = 3;
+  repeated string preferred_peers = 4;
+  uint32 max_lag_seconds = 5;
+}
+
+message SetRegionPolicyResponse {
+  bool success = 1;
+}
+
+message InitiateRegionSyncRequest {
+  string source_region = 1;
+  string target_region = 2;
+  bool full_sync = 3;
+  google.protobuf.Timestamp since = 4;
+}
+
+message RegionSyncProgress {
+  uint64 total_items = 1;
+  uint64 synced_items = 2;
+  uint64 bytes_transferred = 3;
+  string current_item = 4;
+  google.protobuf.Timestamp estimated_completion = 5;
+}
+
+// Leader lease messages
+message LeaderLeaseRequest {
+  string region = 1;
+  repeated string paths = 2;
+  uint32 duration_seconds = 3;
+}
+
+message LeaderLeaseResponse {
+  bool granted = 1;
+  LeaderLease lease = 2;
+  string rejection_reason = 3;
+}

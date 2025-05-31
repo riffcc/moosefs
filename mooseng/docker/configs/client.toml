@@ -1,0 +1,45 @@
+# MooseNG Client Configuration
+
+[client]
+mount_point = "${MOOSENG_MOUNT_POINT:-/mnt/mooseng}"
+master_addrs = "${MOOSENG_MASTER_ADDRS:-master:9421}"
+timeout_seconds = ${MOOSENG_TIMEOUT:-30}
+retry_count = ${MOOSENG_RETRY_COUNT:-3}
+
+[fuse]
+allow_other = ${MOOSENG_FUSE_ALLOW_OTHER:-false}
+allow_root = ${MOOSENG_FUSE_ALLOW_ROOT:-false}
+default_permissions = ${MOOSENG_FUSE_DEFAULT_PERMISSIONS:-true}
+auto_unmount = ${MOOSENG_FUSE_AUTO_UNMOUNT:-true}
+debug = ${MOOSENG_FUSE_DEBUG:-false}
+
+[cache]
+enable = ${MOOSENG_CACHE_ENABLE:-true}
+size_mb = ${MOOSENG_CACHE_SIZE_MB:-256}
+read_cache_enable = ${MOOSENG_READ_CACHE_ENABLE:-true}
+write_cache_enable = ${MOOSENG_WRITE_CACHE_ENABLE:-true}
+cache_timeout = ${MOOSENG_CACHE_TIMEOUT:-60}
+attr_cache_timeout = ${MOOSENG_ATTR_CACHE_TIMEOUT:-10}
+
+[performance]
+read_ahead_kb = ${MOOSENG_READ_AHEAD_KB:-1024}
+write_buffer_kb = ${MOOSENG_WRITE_BUFFER_KB:-1024}
+max_read_ahead_pages = ${MOOSENG_MAX_READ_AHEAD_PAGES:-32}
+io_threads = ${MOOSENG_IO_THREADS:-4}
+
+[logging]
+level = "${MOOSENG_LOG_LEVEL:-info}"
+log_dir = "${MOOSENG_LOG_DIR:-/var/log/mooseng}"
+file_rotation = ${MOOSENG_LOG_ROTATION:-true}
+max_file_size_mb = ${MOOSENG_LOG_MAX_SIZE:-100}
+max_files = ${MOOSENG_LOG_MAX_FILES:-10}
+
+[security]
+tls_enabled = ${MOOSENG_TLS_ENABLED:-false}
+cert_file = "${MOOSENG_TLS_CERT:-/etc/mooseng/certs/client.crt}"
+key_file = "${MOOSENG_TLS_KEY:-/etc/mooseng/certs/client.key}"
+ca_file = "${MOOSENG_TLS_CA:-/etc/mooseng/certs/ca.crt}"
+
+[monitoring]
+metrics_enabled = ${MOOSENG_METRICS_ENABLED:-true}
+stats_interval = ${MOOSENG_STATS_INTERVAL:-60}

@@ -1,0 +1,72 @@
+[package]
+name = "mooseng-chunkserver"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+mooseng-common = { path = "../mooseng-common" }
+mooseng-protocol = { path = "../mooseng-protocol" }
+
+# Async runtime
+tokio = { workspace = true, features = ["full"] }
+async-trait = { workspace = true }
+
+# gRPC
+tonic = { workspace = true }
+prost = { workspace = true }
+
+# Storage
+bincode = { workspace = true }
+
+# Logging and monitoring
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+prometheus = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Error handling
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+# Configuration
+config = { workspace = true }
+clap = { workspace = true }
+
+# Utilities
+bytes = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+futures = { workspace = true }
+dashmap = { workspace = true }
+crossbeam = { workspace = true }
+lru = { workspace = true }
+blake3 = { workspace = true }
+crc32fast = { workspace = true }
+hex = { workspace = true }
+num_cpus = { workspace = true }
+
+# Networking
+hyper = { workspace = true }
+tower = { workspace = true }
+
+# File system operations
+nix = { workspace = true }
+libc = { workspace = true }
+memmap2 = { workspace = true }
+
+# Erasure coding
+reed-solomon-erasure = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+criterion = { workspace = true }
+proptest = { workspace = true }
+
+[[bin]]
+name = "mooseng-chunkserver"

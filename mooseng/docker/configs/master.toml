@@ -1,0 +1,66 @@
+# MooseNG Master Server Configuration
+
+[server]
+listen_addr = "${MOOSENG_LISTEN_ADDR:-0.0.0.0}"
+listen_port = ${MOOSENG_LISTEN_PORT:-9421}
+grpc_port = ${MOOSENG_GRPC_PORT:-9422}
+metrics_port = ${MOOSENG_METRICS_PORT:-9423}
+workers = ${MOOSENG_WORKERS:-8}
+
+[data]
+data_dir = "${MOOSENG_DATA_DIR:-/var/lib/mooseng/master}"
+metadata_backup_interval = ${MOOSENG_BACKUP_INTERVAL:-300}
+metadata_checksum = ${MOOSENG_METADATA_CHECKSUM:-true}
+
+[raft]
+node_id = "${MOOSENG_NODE_ID:-master-1}"
+cluster_id = "${MOOSENG_CLUSTER_ID:-mooseng-cluster}"
+peers = "${MOOSENG_RAFT_PEERS:-}"
+election_timeout_ms = ${MOOSENG_ELECTION_TIMEOUT:-5000}
+heartbeat_interval_ms = ${MOOSENG_HEARTBEAT_INTERVAL:-1000}
+log_compaction_threshold = ${MOOSENG_LOG_COMPACTION_THRESHOLD:-10000}
+
+[cache]
+enable = ${MOOSENG_CACHE_ENABLE:-true}
+size_mb = ${MOOSENG_CACHE_SIZE_MB:-1024}
+ttl_seconds = ${MOOSENG_CACHE_TTL:-300}
+hot_threshold = ${MOOSENG_CACHE_HOT_THRESHOLD:-5}
+
+[logging]
+level = "${MOOSENG_LOG_LEVEL:-info}"
+log_dir = "${MOOSENG_LOG_DIR:-/var/log/mooseng}"
+file_rotation = ${MOOSENG_LOG_ROTATION:-true}
+max_file_size_mb = ${MOOSENG_LOG_MAX_SIZE:-100}
+max_files = ${MOOSENG_LOG_MAX_FILES:-10}
+
+[security]
+tls_enabled = ${MOOSENG_TLS_ENABLED:-false}
+cert_file = "${MOOSENG_TLS_CERT:-/etc/mooseng/certs/server.crt}"
+key_file = "${MOOSENG_TLS_KEY:-/etc/mooseng/certs/server.key}"
+ca_file = "${MOOSENG_TLS_CA:-/etc/mooseng/certs/ca.crt}"
+
+[monitoring]
+metrics_enabled = ${MOOSENG_METRICS_ENABLED:-true}
+health_check_interval = ${MOOSENG_HEALTH_CHECK_INTERVAL:-30}
+prometheus_metrics = ${MOOSENG_PROMETHEUS_METRICS:-true}
+
+[storage_classes]
+# Default storage classes configuration
+[[storage_classes.class]]
+id = 1
+name = "default"
+copies = 2
+tier = "standard"
+
+[[storage_classes.class]]
+id = 2
+name = "archive"
+copies = 1
+erasure_scheme = "8+4"
+tier = "cold"
+
+[[storage_classes.class]]
+id = 3
+name = "fast"
+copies = 3
+tier = "hot"

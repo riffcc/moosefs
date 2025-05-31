@@ -1,0 +1,51 @@
+# MooseNG Metalogger Configuration
+
+[metalogger]
+# Server configuration
+bind_address = "${MOOSENG_BIND_ADDRESS:-0.0.0.0}"
+port = "${MOOSENG_PORT:-9419}"
+
+# Master server endpoints
+master_endpoints = "${MOOSENG_MASTER_ENDPOINTS:-master-1:9422,master-2:9422,master-3:9422}"
+
+# Data directory for metadata backups
+data_dir = "${MOOSENG_DATA_DIR:-/var/lib/mooseng/metalogger}"
+
+# How often to download metadata from masters (in seconds)
+download_freq_seconds = "${MOOSENG_DOWNLOAD_FREQ_SECONDS:-3600}"
+
+# Maximum number of backup files to keep
+max_backup_files = "${MOOSENG_MAX_BACKUP_FILES:-7}"
+
+# Enable compression for backup files
+enable_compression = "${MOOSENG_ENABLE_COMPRESSION:-true}"
+
+[networking]
+# Connection timeout in seconds
+connect_timeout = 10
+
+# Request timeout in seconds
+request_timeout = 30
+
+# Keep-alive interval in seconds
+keepalive_interval = 30
+
+# TLS configuration (optional)
+[tls]
+enabled = "${MOOSENG_TLS_ENABLED:-false}"
+cert_file = "${MOOSENG_TLS_CERT_FILE:-}"
+key_file = "${MOOSENG_TLS_KEY_FILE:-}"
+ca_file = "${MOOSENG_TLS_CA_FILE:-}"
+
+[logging]
+# Log level: trace, debug, info, warn, error
+level = "${RUST_LOG:-info}"
+log_dir = "${MOOSENG_LOG_DIR:-/var/log/mooseng}"
+
+# Health check configuration
+[health]
+# Health check interval in seconds
+check_interval = 60
+
+# Health check timeout in seconds
+check_timeout = 10

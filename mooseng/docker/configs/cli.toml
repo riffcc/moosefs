@@ -1,0 +1,49 @@
+# MooseNG CLI Configuration
+
+[cli]
+# Default master server endpoints for CLI operations
+master_endpoints = "${MOOSENG_MASTER_ENDPOINTS:-master-1:9421,master-2:9421,master-3:9421}"
+
+# Default output format: json, yaml, table
+default_output_format = "${MOOSENG_OUTPUT_FORMAT:-table}"
+
+# Color output for terminal
+color_output = "${MOOSENG_COLOR_OUTPUT:-true}"
+
+# Timeout for CLI operations (in seconds)
+operation_timeout = "${MOOSENG_OPERATION_TIMEOUT:-30}"
+
+[networking]
+# Connection timeout in seconds
+connect_timeout = 10
+
+# Request timeout in seconds
+request_timeout = 30
+
+# Number of retries for failed requests
+max_retries = 3
+
+# TLS configuration (optional)
+[tls]
+enabled = "${MOOSENG_TLS_ENABLED:-false}"
+cert_file = "${MOOSENG_TLS_CERT_FILE:-}"
+key_file = "${MOOSENG_TLS_KEY_FILE:-}"
+ca_file = "${MOOSENG_TLS_CA_FILE:-}"
+skip_verify = "${MOOSENG_TLS_SKIP_VERIFY:-false}"
+
+[logging]
+# Log level: trace, debug, info, warn, error
+level = "${RUST_LOG:-info}"
+
+# Enable verbose logging for debugging
+verbose = "${MOOSENG_VERBOSE:-false}"
+
+[monitoring]
+# Refresh interval for monitoring displays (in seconds)
+refresh_interval = "${MOOSENG_REFRESH_INTERVAL:-5}"
+
+# Default time range for metrics: 1h, 24h, 7d, 30d
+default_time_range = "${MOOSENG_DEFAULT_TIME_RANGE:-1h}"
+
+# Number of metrics data points to show
+metrics_history_points = "${MOOSENG_METRICS_HISTORY_POINTS:-100}"

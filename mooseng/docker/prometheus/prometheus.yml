@@ -1,0 +1,76 @@
+# Prometheus configuration for MooseNG monitoring
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          # - alertmanager:9093
+
+# Load rules once and periodically evaluate them according to the global 'evaluation_interval'.
+rule_files:
+  # - "first_rules.yml"
+  # - "second_rules.yml"
+
+# A scrape configuration containing exactly one endpoint to scrape
+scrape_configs:
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # MooseNG Master servers
+  - job_name: 'mooseng-master'
+    static_configs:
+      - targets: 
+        - 'master-1:9424'  # Metrics port
+        - 'master-2:9424'
+        - 'master-3:9424'
+    metrics_path: /metrics
+    scrape_interval: 10s
+    scrape_timeout: 5s
+
+  # MooseNG Chunk servers
+  - job_name: 'mooseng-chunkserver'
+    static_configs:
+      - targets:
+        - 'chunkserver-1:9425'  # Metrics port
+        - 'chunkserver-2:9425'
+        - 'chunkserver-3:9425'
+    metrics_path: /metrics
+    scrape_interval: 10s
+    scrape_timeout: 5s
+
+  # MooseNG Metalogger
+  - job_name: 'mooseng-metalogger'
+    static_configs:
+      - targets:
+        - 'metalogger-1:9426'  # Metrics port
+    metrics_path: /metrics
+    scrape_interval: 30s
+    scrape_timeout: 10s
+
+  # System metrics (if node_exporter is deployed)
+  - job_name: 'node'
+    static_configs:
+      - targets:
+        - 'master-1:9100'
+        - 'master-2:9100'
+        - 'master-3:9100'
+        - 'chunkserver-1:9100'
+        - 'chunkserver-2:9100'
+        - 'chunkserver-3:9100'
+        - 'metalogger-1:9100'
+    scrape_interval: 15s
+    scrape_timeout: 10s
+
+  # Docker metrics (if docker metrics are enabled)
+  - job_name: 'docker'
+    static_configs:
+      - targets:
+        - 'host.docker.internal:9323'  # Docker daemon metrics
+    scrape_interval: 30s
+    scrape_timeout: 10s

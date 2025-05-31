@@ -1,0 +1,71 @@
+# Multi-stage Docker build for MooseNG CLI tools
+FROM rust:1.79-alpine AS builder
+
+# Install required packages
+RUN apk add --no-cache \
+    musl-dev \
+    pkgconfig \
+    openssl-dev \
+    protobuf-dev \
+    protoc \
+    build-base
+
+# Create a new directory for our application
+WORKDIR /app
+
+# Copy Cargo files first to leverage Docker layer caching
+COPY Cargo.toml Cargo.lock ./
+COPY mooseng-cli/Cargo.toml ./mooseng-cli/
+COPY mooseng-common/Cargo.toml ./mooseng-common/
+COPY mooseng-protocol/Cargo.toml ./mooseng-protocol/
+
+# Copy source code
+COPY mooseng-cli/src ./mooseng-cli/src
+COPY mooseng-common/src ./mooseng-common/src
+COPY mooseng-protocol/src ./mooseng-protocol/src
+COPY mooseng-protocol/proto ./mooseng-protocol/proto
+COPY mooseng-protocol/build.rs ./mooseng-protocol/
+
+# Build the application
+RUN cargo build --release --bin mooseng && \
+    cargo build --release --bin mooseng-admin
+
+# Runtime stage
+FROM alpine:3.19
+
+# Install runtime dependencies
+RUN apk add --no-cache \
+    openssl \
+    ca-certificates \
+    curl \
+    jq
+
+# Create non-root user
+RUN addgroup -g 1000 mooseng && \
+    adduser -u 1000 -G mooseng -s /bin/sh -D mooseng
+
+# Create necessary directories
+RUN mkdir -p /etc/mooseng && \
+    chown -R mooseng:mooseng /etc/mooseng
+
+# Copy the built binaries
+COPY --from=builder /app/target/release/mooseng /usr/local/bin/
+COPY --from=builder /app/target/release/mooseng-admin /usr/local/bin/
+
+# Copy configuration templates
+COPY docker/configs/cli.toml /etc/mooseng/cli.toml.template
+
+# Copy entrypoint script
+COPY docker/scripts/cli-entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+# Switch to non-root user
+USER mooseng
+
+# Set environment variables
+ENV RUST_LOG=info
+ENV MOOSENG_CONFIG_PATH=/etc/mooseng/cli.toml
+
+# Default command
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+CMD ["/usr/local/bin/mooseng", "--help"]

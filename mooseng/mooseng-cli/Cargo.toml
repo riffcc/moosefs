@@ -1,0 +1,69 @@
+[package]
+name = "mooseng-cli"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+mooseng-common = { path = "../mooseng-common" }
+mooseng-protocol = { path = "../mooseng-protocol" }
+
+# CLI framework
+clap = { workspace = true, features = ["derive", "env", "wrap_help"] }
+clap_complete = "4.5"
+
+# Async runtime
+tokio = { workspace = true, features = ["full"] }
+
+# gRPC
+tonic = { workspace = true }
+prost = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = "0.9"
+toml = "0.8"
+
+# Error handling
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+# Terminal UI
+console = "0.15"
+dialoguer = "0.11"
+indicatif = "0.17"
+tabled = "0.16"
+colored = "2.1"
+
+# Configuration
+config = { workspace = true }
+dirs = "5.0"
+
+# Utilities
+bytes = { workspace = true }
+chrono = { workspace = true }
+humansize = "2.1"
+futures = { workspace = true }
+
+# HTTP client (for REST API)
+reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+assert_cmd = "2.0"
+predicates = "3.1"
+
+[[bin]]
+name = "mooseng"
+path = "src/main.rs"
+
+[[bin]]
+name = "mooseng-admin"
+path = "src/admin.rs"

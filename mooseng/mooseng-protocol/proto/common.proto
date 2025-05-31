@@ -1,0 +1,284 @@
+syntax = "proto3";
+
+package mooseng.protocol;
+
+import "google/protobuf/timestamp.proto";
+
+// File system metadata
+message FileMetadata {
+  uint64 inode = 1;
+  string name = 2;
+  FileType type = 3;
+  uint32 mode = 4;
+  uint32 uid = 5;
+  uint32 gid = 6;
+  uint64 size = 7;
+  google.protobuf.Timestamp atime = 8;
+  google.protobuf.Timestamp mtime = 9;
+  google.protobuf.Timestamp ctime = 10;
+  uint32 nlink = 11;
+  uint32 storage_class_id = 12;
+  repeated uint64 chunk_ids = 13;
+  map<string, bytes> xattrs = 14;
+  uint64 parent_inode = 15;
+}
+
+enum FileType {
+  FILE_TYPE_UNKNOWN = 0;
+  FILE_TYPE_FILE = 1;
+  FILE_TYPE_DIRECTORY = 2;
+  FILE_TYPE_SYMLINK = 3;
+  FILE_TYPE_FIFO = 4;
+  FILE_TYPE_CHAR_DEVICE = 5;
+  FILE_TYPE_BLOCK_DEVICE = 6;
+  FILE_TYPE_SOCKET = 7;
+}
+
+// Chunk information
+message ChunkInfo {
+  uint64 chunk_id = 1;
+  uint32 version = 2;
+  uint64 size = 3;
+  bytes checksum = 4;
+  repeated ChunkLocation locations = 5;
+  ErasureCodingInfo ec_info = 6;
+  google.protobuf.Timestamp last_modified = 7;
+}
+
+message ChunkLocation {
+  uint64 server_id = 1;
+  string server_address = 2;
+  uint32 server_port = 3;
+  string region = 4;  // For multiregion support
+  uint32 rack_id = 5;
+  ChunkStatus status = 6;
+}
+
+enum ChunkStatus {
+  CHUNK_STATUS_UNKNOWN = 0;
+  CHUNK_STATUS_VALID = 1;
+  CHUNK_STATUS_CORRUPTED = 2;
+  CHUNK_STATUS_LOST = 3;
+  CHUNK_STATUS_REPLICATING = 4;
+  CHUNK_STATUS_DELETING = 5;
+}
+
+// Erasure coding information
+message ErasureCodingInfo {
+  ErasureCodingScheme scheme = 1;
+  uint32 data_shards = 2;
+  uint32 parity_shards = 3;
+  repeated uint64 shard_chunk_ids = 4;
+  uint32 shard_size = 5;
+}
+
+enum ErasureCodingScheme {
+  EC_SCHEME_NONE = 0;
+  EC_SCHEME_RS_4_2 = 1;   // 4+2 Reed-Solomon
+  EC_SCHEME_RS_4_3 = 2;   // 4+3 Reed-Solomon
+  EC_SCHEME_RS_8_2 = 3;   // 8+2 Reed-Solomon
+  EC_SCHEME_RS_8_3 = 4;   // 8+3 Reed-Solomon
+  EC_SCHEME_RS_8_4 = 5;   // 8+4 Reed-Solomon
+}
+
+// Storage class definition
+message StorageClass {
+  uint32 id = 1;
+  string name = 2;
+  uint32 replication_factor = 3;
+  ErasureCodingScheme ec_scheme = 4;
+  StoragePolicy policy = 5;
+  repeated string allowed_regions = 6;
+  uint32 min_regions = 7;
+}
+
+message StoragePolicy {
+  bool prefer_local_region = 1;
+  bool cross_region_replication = 2;
+  uint32 local_replicas = 3;
+  uint32 remote_replicas = 4;
+  TieringPolicy tiering = 5;
+}
+
+message TieringPolicy {
+  uint32 hot_tier_days = 1;
+  uint32 warm_tier_days = 2;
+  bool auto_tier = 3;
+  bool compress_cold_data = 4;
+}
+
+// Server information
+message ServerInfo {
+  uint64 server_id = 1;
+  ServerType type = 2;
+  string hostname = 3;
+  string ip_address = 4;
+  uint32 port = 5;
+  string region = 6;
+  uint32 rack_id = 7;
+  ServerStatus status = 8;
+  ServerCapabilities capabilities = 9;
+  google.protobuf.Timestamp last_heartbeat = 10;
+}
+
+enum ServerType {
+  SERVER_TYPE_UNKNOWN = 0;
+  SERVER_TYPE_MASTER = 1;
+  SERVER_TYPE_CHUNK = 2;
+  SERVER_TYPE_METALOGGER = 3;
+}
+
+enum ServerStatus {
+  SERVER_STATUS_UNKNOWN = 0;
+  SERVER_STATUS_ONLINE = 1;
+  SERVER_STATUS_OFFLINE = 2;
+  SERVER_STATUS_MAINTENANCE = 3;
+  SERVER_STATUS_FAILED = 4;
+}
+
+message ServerCapabilities {
+  uint64 total_space = 1;
+  uint64 used_space = 2;
+  uint32 max_chunks = 3;
+  uint32 current_chunks = 4;
+  bool supports_erasure_coding = 5;
+  repeated ErasureCodingScheme supported_ec_schemes = 6;
+  uint32 network_bandwidth_mbps = 7;
+  uint32 disk_iops = 8;
+}
+
+// Multiregion replication
+message RegionInfo {
+  string region_id = 1;
+  string region_name = 2;
+  repeated string endpoints = 3;
+  uint32 priority = 4;
+  RegionStatus status = 5;
+  google.protobuf.Timestamp last_sync = 6;
+}
+
+enum RegionStatus {
+  REGION_STATUS_UNKNOWN = 0;
+  REGION_STATUS_ACTIVE = 1;
+  REGION_STATUS_DEGRADED = 2;
+  REGION_STATUS_OFFLINE = 3;
+  REGION_STATUS_SYNCING = 4;
+}
+
+// Raft consensus messages
+message RaftMessage {
+  uint64 term = 1;
+  uint64 leader_id = 2;
+  oneof message {
+    RequestVote request_vote = 3;
+    RequestVoteResponse request_vote_response = 4;
+    AppendEntries append_entries = 5;
+    AppendEntriesResponse append_entries_response = 6;
+    InstallSnapshot install_snapshot = 7;
+    InstallSnapshotResponse install_snapshot_response = 8;
+    LeaderLease leader_lease = 9;
+  }
+}
+
+message RequestVote {
+  uint64 candidate_id = 1;
+  uint64 last_log_index = 2;
+  uint64 last_log_term = 3;
+}
+
+message RequestVoteResponse {
+  bool vote_granted = 1;
+}
+
+message AppendEntries {
+  uint64 prev_log_index = 1;
+  uint64 prev_log_term = 2;
+  repeated LogEntry entries = 3;
+  uint64 leader_commit = 4;
+}
+
+message AppendEntriesResponse {
+  bool success = 1;
+  uint64 match_index = 2;
+}
+
+message InstallSnapshot {
+  uint64 last_included_index = 1;
+  uint64 last_included_term = 2;
+  bytes data = 3;
+  bool done = 4;
+}
+
+message InstallSnapshotResponse {
+  uint64 term = 1;
+}
+
+// Leader lease for fast local reads/writes
+message LeaderLease {
+  uint64 leader_id = 1;
+  string region = 2;
+  google.protobuf.Timestamp lease_start = 3;
+  google.protobuf.Timestamp lease_end = 4;
+  repeated string scope = 5;  // Paths or operations covered by lease
+}
+
+message LogEntry {
+  uint64 index = 1;
+  uint64 term = 2;
+  bytes data = 3;
+  LogEntryType type = 4;
+}
+
+enum LogEntryType {
+  LOG_ENTRY_TYPE_UNKNOWN = 0;
+  LOG_ENTRY_TYPE_METADATA = 1;
+  LOG_ENTRY_TYPE_CONFIGURATION = 2;
+  LOG_ENTRY_TYPE_NOOP = 3;
+}
+
+// Cross-region replication (xCluster style)
+message XClusterMessage {
+  string source_region = 1;
+  string target_region = 2;
+  uint64 sequence_number = 3;
+  google.protobuf.Timestamp timestamp = 4;
+  oneof payload {
+    MetadataUpdate metadata_update = 5;
+    ChunkReplication chunk_replication = 6;
+    ConflictResolution conflict_resolution = 7;
+  }
+}
+
+message MetadataUpdate {
+  repeated FileMetadata files = 1;
+  repeated ChunkInfo chunks = 2;
+  uint64 transaction_id = 3;
+}
+
+message ChunkReplication {
+  uint64 chunk_id = 1;
+  bytes data = 2;
+  uint32 offset = 3;
+  bool is_last = 4;
+}
+
+message ConflictResolution {
+  uint64 inode = 1;
+  ConflictType type = 2;
+  ResolutionStrategy strategy = 3;
+  FileMetadata winning_version = 4;
+}
+
+enum ConflictType {
+  CONFLICT_TYPE_UNKNOWN = 0;
+  CONFLICT_TYPE_CONCURRENT_WRITE = 1;
+  CONFLICT_TYPE_DELETE_UPDATE = 2;
+  CONFLICT_TYPE_RENAME = 3;
+}
+
+enum ResolutionStrategy {
+  RESOLUTION_STRATEGY_UNKNOWN = 0;
+  RESOLUTION_STRATEGY_LAST_WRITE_WINS = 1;
+  RESOLUTION_STRATEGY_VECTOR_CLOCK = 2;
+  RESOLUTION_STRATEGY_CUSTOM = 3;
+}

@@ -1,0 +1,329 @@
+# Default values for mooseng
+# This is a YAML-formatted file.
+
+# Global configuration
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+  storageClass: ""
+
+# Common configuration
+nameOverride: ""
+fullnameOverride: ""
+
+# Cluster configuration
+cluster:
+  name: "mooseng"
+  replicationFactor: 3
+  chunkSizeMB: 64
+
+# Master server configuration
+master:
+  enabled: true
+  replicaCount: 3
+  
+  image:
+    registry: ""
+    repository: mooseng/master
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  
+  service:
+    type: ClusterIP
+    clientPort: 9421
+    chunkserverPort: 9422
+    raftPort: 9423
+    annotations: {}
+  
+  persistence:
+    enabled: true
+    storageClass: "fast-ssd"
+    dataSize: 10Gi
+    logsSize: 5Gi
+    accessMode: ReadWriteOnce
+  
+  resources:
+    requests:
+      memory: "1Gi"
+      cpu: "500m"
+    limits:
+      memory: "2Gi"
+      cpu: "1000m"
+  
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  
+  podSecurityContext:
+    fsGroup: 1000
+  
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+      - ALL
+  
+  config:
+    logLevel: "info"
+    metadataChecksumPeriod: 3600
+    changelogPreserveSeconds: 86400
+    raft:
+      electionTimeoutMs: 5000
+      heartbeatIntervalMs: 1000
+      logCompactionThreshold: 10000
+      snapshotThreshold: 100000
+
+# Chunk server configuration
+chunkserver:
+  enabled: true
+  deploymentType: "daemonset"  # or "deployment"
+  
+  image:
+    registry: ""
+    repository: mooseng/chunkserver
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  
+  service:
+    type: ClusterIP
+    port: 9420
+    annotations: {}
+  
+  # For DaemonSet deployment
+  nodeSelector:
+    mooseng.io/chunkserver: "true"
+  
+  tolerations:
+    - key: "mooseng.io/chunkserver"
+      operator: "Equal"
+      value: "true"
+      effect: "NoSchedule"
+  
+  # For Deployment-based chunkservers
+  replicaCount: 3
+  
+  persistence:
+    enabled: true
+    hostPath:
+      enabled: true
+      data1: "/var/lib/mooseng/chunks/data1"
+      data2: "/var/lib/mooseng/chunks/data2"
+      logs: "/var/log/mooseng/chunkserver"
+    pvc:
+      enabled: false
+      storageClass: "fast-ssd"
+      dataSize: 100Gi
+      logsSize: 10Gi
+  
+  resources:
+    requests:
+      memory: "2Gi"
+      cpu: "1000m"
+    limits:
+      memory: "4Gi"
+      cpu: "2000m"
+  
+  affinity: {}
+  
+  podSecurityContext:
+    fsGroup: 1000
+  
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+      - ALL
+  
+  config:
+    logLevel: "info"
+    maxChunksPerFile: 65536
+    syncOnWrite: false
+    performance:
+      workerThreads: 8
+      ioQueueDepth: 32
+      readAheadKB: 128
+      writeCacheMB: 256
+
+# Metalogger configuration
+metalogger:
+  enabled: true
+  replicaCount: 1
+  
+  image:
+    registry: ""
+    repository: mooseng/metalogger
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  
+  service:
+    type: ClusterIP
+    port: 9419
+    annotations: {}
+  
+  persistence:
+    enabled: true
+    storageClass: "standard"
+    dataSize: 20Gi
+    logsSize: 5Gi
+    accessMode: ReadWriteOnce
+  
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "250m"
+    limits:
+      memory: "1Gi"
+      cpu: "500m"
+  
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  
+  podSecurityContext:
+    fsGroup: 1000
+  
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+      - ALL
+  
+  config:
+    logLevel: "info"
+    downloadFreqSeconds: 3600
+    backupLogs: 50
+
+# Client configuration
+client:
+  enabled: false
+  replicaCount: 1
+  
+  image:
+    registry: ""
+    repository: mooseng/client
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  
+  mountPoint: "/mnt/mooseng"
+  
+  persistence:
+    enabled: true
+    storageClass: "standard"
+    logsSize: 5Gi
+  
+  resources:
+    requests:
+      memory: "1Gi"
+      cpu: "500m"
+    limits:
+      memory: "2Gi"
+      cpu: "1000m"
+  
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  
+  # FUSE requires privileged mode
+  securityContext:
+    privileged: true
+  
+  config:
+    logLevel: "info"
+    cache:
+      metadataCacheMB: 256
+      dataCacheMB: 1024
+      cacheTimeoutSeconds: 300
+      prefetchEnabled: true
+    io:
+      readAheadKB: 1024
+      writeCacheMB: 256
+      maxConcurrentReads: 16
+      maxConcurrentWrites: 8
+      timeoutSeconds: 30
+
+# CLI tools
+cli:
+  enabled: true
+  
+  image:
+    registry: ""
+    repository: mooseng/cli
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "200m"
+
+# Monitoring configuration
+monitoring:
+  enabled: false
+  
+  prometheus:
+    enabled: false
+    port: 9090
+    retention: "30d"
+    storageSize: "10Gi"
+  
+  grafana:
+    enabled: false
+    port: 3000
+    adminPassword: "admin"
+    persistence:
+      enabled: true
+      size: "1Gi"
+
+# Network policies
+networkPolicy:
+  enabled: false
+  ingress: []
+  egress: []
+
+# Pod disruption budgets
+podDisruptionBudget:
+  master:
+    enabled: true
+    minAvailable: 2
+  chunkserver:
+    enabled: true
+    maxUnavailable: 1
+  metalogger:
+    enabled: false
+
+# Service mesh integration
+serviceMesh:
+  enabled: false
+  istio:
+    enabled: false
+
+# Backup configuration
+backup:
+  enabled: false
+  schedule: "0 2 * * *"
+  retention: "30d"
+  storage:
+    type: "s3"
+    config: {}
+
+# Upgrade strategy
+upgradeStrategy:
+  type: "RollingUpdate"
+  rollingUpdate:
+    maxUnavailable: 1
+    maxSurge: 1

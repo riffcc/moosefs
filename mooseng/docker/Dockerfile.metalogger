@@ -1,0 +1,77 @@
+# Multi-stage Docker build for MooseNG Metalogger
+FROM rust:1.79-alpine AS builder
+
+# Install required packages
+RUN apk add --no-cache \
+    musl-dev \
+    pkgconfig \
+    openssl-dev \
+    protobuf-dev \
+    protoc \
+    build-base
+
+# Create a new directory for our application
+WORKDIR /app
+
+# Copy Cargo files first to leverage Docker layer caching
+COPY Cargo.toml Cargo.lock ./
+COPY mooseng-metalogger/Cargo.toml ./mooseng-metalogger/
+COPY mooseng-common/Cargo.toml ./mooseng-common/
+COPY mooseng-protocol/Cargo.toml ./mooseng-protocol/
+
+# Copy source code
+COPY mooseng-metalogger/src ./mooseng-metalogger/src
+COPY mooseng-common/src ./mooseng-common/src
+COPY mooseng-protocol/src ./mooseng-protocol/src
+COPY mooseng-protocol/proto ./mooseng-protocol/proto
+COPY mooseng-protocol/build.rs ./mooseng-protocol/
+
+# Build the application
+RUN cargo build --release --bin mooseng-metalogger
+
+# Runtime stage
+FROM alpine:3.19
+
+# Install runtime dependencies
+RUN apk add --no-cache \
+    openssl \
+    ca-certificates \
+    tini
+
+# Create non-root user
+RUN addgroup -g 1000 mooseng && \
+    adduser -u 1000 -G mooseng -s /bin/sh -D mooseng
+
+# Create necessary directories
+RUN mkdir -p /var/lib/mooseng/metalogger /var/log/mooseng /etc/mooseng && \
+    chown -R mooseng:mooseng /var/lib/mooseng /var/log/mooseng /etc/mooseng
+
+# Copy the built binary
+COPY --from=builder /app/target/release/mooseng-metalogger /usr/local/bin/
+
+# Copy configuration templates
+COPY docker/configs/metalogger.toml /etc/mooseng/metalogger.toml.template
+
+# Copy entrypoint script
+COPY docker/scripts/metalogger-entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+# Health check
+HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --retries=3 \
+    CMD /usr/local/bin/mooseng-metalogger --health-check || exit 1
+
+# Switch to non-root user
+USER mooseng
+
+# Expose ports
+EXPOSE 9419
+
+# Set environment variables
+ENV RUST_LOG=info
+ENV MOOSENG_CONFIG_PATH=/etc/mooseng/metalogger.toml
+ENV MOOSENG_DATA_DIR=/var/lib/mooseng/metalogger
+ENV MOOSENG_LOG_DIR=/var/log/mooseng
+
+# Use tini as init system
+ENTRYPOINT ["/sbin/tini", "--"]
+CMD ["/usr/local/bin/entrypoint.sh"]

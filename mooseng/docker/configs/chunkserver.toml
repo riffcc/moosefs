@@ -1,0 +1,55 @@
+# MooseNG Chunk Server Configuration
+
+[server]
+listen_addr = "${MOOSENG_LISTEN_ADDR:-0.0.0.0}"
+listen_port = ${MOOSENG_LISTEN_PORT:-9420}
+server_id = "${MOOSENG_SERVER_ID:-}"
+max_connections = ${MOOSENG_MAX_CONNECTIONS:-1000}
+workers = ${MOOSENG_WORKERS:-4}
+
+[master]
+master_addrs = "${MOOSENG_MASTER_ADDRS:-master:9421}"
+reconnect_interval = ${MOOSENG_RECONNECT_INTERVAL:-5}
+heartbeat_interval = ${MOOSENG_HEARTBEAT_INTERVAL:-10}
+
+[storage]
+data_dirs = "${MOOSENG_DATA_DIRS:-/data1,/data2,/data3}"
+chunk_size_kb = ${MOOSENG_CHUNK_SIZE_KB:-64}
+max_chunks_per_dir = ${MOOSENG_MAX_CHUNKS_PER_DIR:-1000000}
+sync_on_write = ${MOOSENG_SYNC_ON_WRITE:-false}
+
+[performance]
+io_threads = ${MOOSENG_IO_THREADS:-4}
+read_ahead_mb = ${MOOSENG_READ_AHEAD_MB:-4}
+write_buffer_mb = ${MOOSENG_WRITE_BUFFER_MB:-16}
+bandwidth_limit_mbps = ${MOOSENG_BANDWIDTH_LIMIT:-0}
+
+[erasure_coding]
+enable = ${MOOSENG_ERASURE_ENABLE:-true}
+schemes = ["4+2", "8+4"]
+placement_policy = "${MOOSENG_PLACEMENT_POLICY:-balanced}"
+
+[cache]
+enable = ${MOOSENG_CACHE_ENABLE:-true}
+size_mb = ${MOOSENG_CACHE_SIZE_MB:-512}
+read_cache_enable = ${MOOSENG_READ_CACHE_ENABLE:-true}
+write_cache_enable = ${MOOSENG_WRITE_CACHE_ENABLE:-true}
+
+[logging]
+level = "${MOOSENG_LOG_LEVEL:-info}"
+log_dir = "${MOOSENG_LOG_DIR:-/var/log/mooseng}"
+file_rotation = ${MOOSENG_LOG_ROTATION:-true}
+max_file_size_mb = ${MOOSENG_LOG_MAX_SIZE:-100}
+max_files = ${MOOSENG_LOG_MAX_FILES:-10}
+
+[security]
+tls_enabled = ${MOOSENG_TLS_ENABLED:-false}
+cert_file = "${MOOSENG_TLS_CERT:-/etc/mooseng/certs/server.crt}"
+key_file = "${MOOSENG_TLS_KEY:-/etc/mooseng/certs/server.key}"
+ca_file = "${MOOSENG_TLS_CA:-/etc/mooseng/certs/ca.crt}"
+
+[monitoring]
+metrics_enabled = ${MOOSENG_METRICS_ENABLED:-true}
+health_check_interval = ${MOOSENG_HEALTH_CHECK_INTERVAL:-30}
+disk_space_warning_threshold = ${MOOSENG_DISK_WARNING_THRESHOLD:-80}
+disk_space_critical_threshold = ${MOOSENG_DISK_CRITICAL_THRESHOLD:-90}

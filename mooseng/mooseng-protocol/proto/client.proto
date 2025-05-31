@@ -1,0 +1,240 @@
+syntax = "proto3";
+
+package mooseng.protocol;
+
+import "common.proto";
+import "master.proto";
+import "chunkserver.proto";
+import "google/protobuf/timestamp.proto";
+
+// Client-specific messages and operations
+service ClientService {
+  // Session management
+  rpc CreateSession(CreateSessionRequest) returns (CreateSessionResponse);
+  rpc RenewSession(RenewSessionRequest) returns (RenewSessionResponse);
+  rpc CloseSession(CloseSessionRequest) returns (CloseSessionResponse);
+  
+  // Mount operations
+  rpc Mount(MountRequest) returns (stream MountEvent);
+  rpc Unmount(UnmountRequest) returns (UnmountResponse);
+  
+  // Cache management
+  rpc InvalidateCache(InvalidateCacheRequest) returns (InvalidateCacheResponse);
+  rpc GetCacheStats(GetCacheStatsRequest) returns (GetCacheStatsResponse);
+}
+
+// Session management
+message CreateSessionRequest {
+  string client_id = 1;
+  string mount_point = 2;
+  MountOptions options = 3;
+  string client_region = 4;
+}
+
+message MountOptions {
+  bool read_only = 1;
+  uint32 cache_size_mb = 2;
+  uint32 write_cache_size_mb = 3;
+  bool direct_io = 4;
+  uint32 readahead_mb = 5;
+  uint32 max_readahead_mb = 6;
+  bool prefer_local_region = 7;
+  repeated string allowed_regions = 8;
+  map<string, string> custom_options = 9;
+}
+
+message CreateSessionResponse {
+  uint64 session_id = 1;
+  SessionInfo session_info = 2;
+  repeated ServerInfo masters = 3;
+  repeated RegionInfo regions = 4;
+}
+
+message SessionInfo {
+  uint64 session_id = 1;
+  string client_id = 2;
+  google.protobuf.Timestamp created = 3;
+  google.protobuf.Timestamp expires = 4;
+  MountOptions options = 5;
+  string assigned_master = 6;
+  string client_region = 7;
+}
+
+message RenewSessionRequest {
+  uint64 session_id = 1;
+  uint32 extend_seconds = 2;
+}
+
+message RenewSessionResponse {
+  bool success = 1;
+  google.protobuf.Timestamp new_expiry = 2;
+}
+
+message CloseSessionRequest {
+  uint64 session_id = 1;
+  bool force = 2;
+}
+
+message CloseSessionResponse {
+  bool success = 1;
+  uint64 pending_operations = 2;
+}
+
+// Mount operations
+message MountRequest {
+  uint64 session_id = 1;
+  string mount_path = 2;
+  string subdir = 3;  // Mount specific subdirectory
+}
+
+message MountEvent {
+  MountEventType type = 1;
+  string message = 2;
+  oneof event {
+    MountProgress progress = 3;
+    CacheEvent cache_event = 4;
+    RegionChange region_change = 5;
+  }
+}
+
+enum MountEventType {
+  MOUNT_EVENT_TYPE_UNKNOWN = 0;
+  MOUNT_EVENT_TYPE_PROGRESS = 1;
+  MOUNT_EVENT_TYPE_READY = 2;
+  MOUNT_EVENT_TYPE_ERROR = 3;
+  MOUNT_EVENT_TYPE_CACHE = 4;
+  MOUNT_EVENT_TYPE_REGION_CHANGE = 5;
+}
+
+message MountProgress {
+  string stage = 1;
+  uint32 percent = 2;
+}
+
+message CacheEvent {
+  CacheEventType type = 1;
+  uint64 size_bytes = 2;
+  uint64 entries = 3;
+  double hit_rate = 4;
+}
+
+enum CacheEventType {
+  CACHE_EVENT_TYPE_UNKNOWN = 0;
+  CACHE_EVENT_TYPE_WARMED = 1;
+  CACHE_EVENT_TYPE_EVICTION = 2;
+  CACHE_EVENT_TYPE_FLUSH = 3;
+}
+
+message RegionChange {
+  string old_region = 1;
+  string new_region = 2;
+  string reason = 3;
+}
+
+message UnmountRequest {
+  uint64 session_id = 1;
+  bool force = 2;
+  bool flush_cache = 3;
+}
+
+message UnmountResponse {
+  bool success = 1;
+  uint64 pending_writes = 2;
+}
+
+// Cache management
+message InvalidateCacheRequest {
+  uint64 session_id = 1;
+  CacheType cache_type = 2;
+  repeated string paths = 3;  // Empty means entire cache
+  repeated uint64 inodes = 4;
+}
+
+enum CacheType {
+  CACHE_TYPE_UNKNOWN = 0;
+  CACHE_TYPE_METADATA = 1;
+  CACHE_TYPE_DATA = 2;
+  CACHE_TYPE_ALL = 3;
+}
+
+message InvalidateCacheResponse {
+  bool success = 1;
+  uint64 entries_invalidated = 2;
+  uint64 bytes_freed = 3;
+}
+
+message GetCacheStatsRequest {
+  uint64 session_id = 1;
+  bool detailed = 2;
+}
+
+message GetCacheStatsResponse {
+  CacheStatistics metadata_cache = 1;
+  CacheStatistics data_cache = 2;
+  CacheStatistics negative_cache = 3;
+  repeated PathCacheStats hot_paths = 4;
+}
+
+message CacheStatistics {
+  uint64 size_bytes = 1;
+  uint64 entries = 2;
+  uint64 hits = 3;
+  uint64 misses = 4;
+  double hit_rate = 5;
+  uint64 evictions = 6;
+  google.protobuf.Timestamp last_reset = 7;
+}
+
+message PathCacheStats {
+  string path = 1;
+  uint64 accesses = 2;
+  uint64 cached_bytes = 3;
+  google.protobuf.Timestamp last_access = 4;
+}
+
+// File operation tracking for client
+message ClientOperation {
+  uint64 operation_id = 1;
+  OperationType type = 2;
+  string path = 3;
+  uint64 session_id = 4;
+  google.protobuf.Timestamp started = 5;
+  OperationStatus status = 6;
+  map<string, string> attributes = 7;
+}
+
+enum OperationType {
+  OPERATION_TYPE_UNKNOWN = 0;
+  OPERATION_TYPE_READ = 1;
+  OPERATION_TYPE_WRITE = 2;
+  OPERATION_TYPE_CREATE = 3;
+  OPERATION_TYPE_DELETE = 4;
+  OPERATION_TYPE_RENAME = 5;
+  OPERATION_TYPE_TRUNCATE = 6;
+}
+
+enum OperationStatus {
+  OPERATION_STATUS_UNKNOWN = 0;
+  OPERATION_STATUS_PENDING = 1;
+  OPERATION_STATUS_IN_PROGRESS = 2;
+  OPERATION_STATUS_COMPLETED = 3;
+  OPERATION_STATUS_FAILED = 4;
+  OPERATION_STATUS_CANCELLED = 5;
+}
+
+// Client-side multiregion optimization
+message RegionAffinityRequest {
+  uint64 session_id = 1;
+  repeated RegionPreference preferences = 2;
+}
+
+message RegionPreference {
+  string region_id = 1;
+  uint32 weight = 2;  // Higher weight = higher preference
+  bool read_only = 3;
+}
+
+message RegionAffinityResponse {
+  bool success = 1;
+  map<string, uint32> effective_weights = 2;
+}

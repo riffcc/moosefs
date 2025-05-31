@@ -1,0 +1,377 @@
+syntax = "proto3";
+
+package mooseng.protocol;
+
+import "common.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+
+// Chunk Server Service
+service ChunkServerService {
+  // Client operations
+  rpc ReadChunk(ReadChunkRequest) returns (stream ReadChunkResponse);
+  rpc WriteChunk(stream WriteChunkRequest) returns (WriteChunkResponse);
+  rpc DeleteChunk(DeleteChunkRequest) returns (DeleteChunkResponse);
+  
+  // Inter-chunk server operations
+  rpc ReplicateChunk(stream ReplicateChunkRequest) returns (ReplicateChunkResponse);
+  rpc VerifyChunk(VerifyChunkRequest) returns (VerifyChunkResponse);
+  rpc GetChunkInfo(GetChunkInfoRequest) returns (GetChunkInfoResponse);
+  
+  // Erasure coding operations
+  rpc EncodeChunk(EncodeChunkRequest) returns (EncodeChunkResponse);
+  rpc DecodeChunk(DecodeChunkRequest) returns (stream DecodeChunkResponse);
+  rpc StoreECShards(stream StoreECShardsRequest) returns (StoreECShardsResponse);
+  rpc GetECShards(GetECShardsRequest) returns (stream GetECShardsResponse);
+  
+  // Management operations
+  rpc GetServerStatus(google.protobuf.Empty) returns (ServerStatusResponse);
+  rpc ListChunks(ListChunksRequest) returns (ListChunksResponse);
+  rpc InitiateScrub(InitiateScrubRequest) returns (stream ScrubProgress);
+  
+  // Cross-region operations
+  rpc InitiateXRegionReplication(XRegionReplicationRequest) returns (stream XRegionReplicationProgress);
+  rpc ReceiveXRegionData(stream XRegionDataTransfer) returns (XRegionDataResponse);
+}
+
+// Read operations
+message ReadChunkRequest {
+  uint64 chunk_id = 1;
+  uint32 version = 2;
+  uint64 offset = 3;
+  uint64 length = 4;
+  bool verify_checksum = 5;
+  string client_region = 6;  // For multiregion optimization
+}
+
+message ReadChunkResponse {
+  bytes data = 1;
+  uint64 offset = 2;
+  bool is_last = 3;
+  bytes chunk_checksum = 4;  // Sent with last packet if verify_checksum was true
+}
+
+// Write operations
+message WriteChunkRequest {
+  oneof request {
+    WriteChunkHeader header = 1;
+    WriteChunkData data = 2;
+  }
+}
+
+message WriteChunkHeader {
+  uint64 chunk_id = 1;
+  uint32 version = 2;
+  uint64 total_size = 3;
+  repeated string chain_servers = 4;  // For chain replication
+  uint32 storage_class_id = 5;
+  string source_region = 6;
+}
+
+message WriteChunkData {
+  bytes data = 1;
+  uint64 offset = 2;
+  bool is_last = 3;
+  bytes checksum = 4;  // For this data segment
+}
+
+message WriteChunkResponse {
+  bool success = 1;
+  uint32 version = 2;
+  bytes final_checksum = 3;
+  repeated ChainReplicationStatus chain_status = 4;
+}
+
+message ChainReplicationStatus {
+  string server = 1;
+  bool success = 2;
+  string error = 3;
+}
+
+// Delete operations
+message DeleteChunkRequest {
+  uint64 chunk_id = 1;
+  uint32 version = 2;
+  bool immediate = 3;  // Skip trash/grace period
+}
+
+message DeleteChunkResponse {
+  bool success = 1;
+  uint64 freed_bytes = 2;
+}
+
+// Replication operations
+message ReplicateChunkRequest {
+  oneof request {
+    ReplicateChunkHeader header = 1;
+    ReplicateChunkData data = 2;
+  }
+}
+
+message ReplicateChunkHeader {
+  uint64 chunk_id = 1;
+  uint32 version = 2;
+  uint64 size = 3;
+  bytes checksum = 4;
+  string source_server = 5;
+  string source_region = 6;
+  uint32 priority = 7;
+}
+
+message ReplicateChunkData {
+  bytes data = 1;
+  uint64 offset = 2;
+  bool is_last = 3;
+}
+
+message ReplicateChunkResponse {
+  bool success = 1;
+  uint32 version = 2;
+  bytes checksum = 3;
+  uint64 bytes_received = 4;
+}
+
+// Verification operations
+message VerifyChunkRequest {
+  uint64 chunk_id = 1;
+  uint32 version = 2;
+  bool deep_verify = 3;  // Full data checksum vs metadata only
+}
+
+message VerifyChunkResponse {
+  bool valid = 1;
+  uint32 version = 2;
+  uint64 size = 3;
+  bytes checksum = 4;
+  repeated CorruptionDetail corruptions = 5;
+}
+
+message CorruptionDetail {
+  uint64 offset = 1;
+  uint64 length = 2;
+  string description = 3;
+}
+
+message GetChunkInfoRequest {
+  repeated uint64 chunk_ids = 1;
+}
+
+message GetChunkInfoResponse {
+  repeated ChunkDetail chunks = 1;
+}
+
+message ChunkDetail {
+  uint64 chunk_id = 1;
+  uint32 version = 2;
+  uint64 size = 3;
+  bytes checksum = 4;
+  google.protobuf.Timestamp created = 5;
+  google.protobuf.Timestamp modified = 6;
+  google.protobuf.Timestamp accessed = 7;
+  uint32 access_count = 8;
+  ChunkStatus status = 9;
+}
+
+// Erasure coding operations
+message EncodeChunkRequest {
+  uint64 chunk_id = 1;
+  ErasureCodingScheme scheme = 2;
+  repeated string target_servers = 3;  // Where to store shards
+  bool delete_original = 4;
+}
+
+message EncodeChunkResponse {
+  bool success = 1;
+  ErasureCodingInfo ec_info = 2;
+  repeated ShardLocation shard_locations = 3;
+}
+
+message ShardLocation {
+  uint32 shard_index = 1;
+  uint64 shard_chunk_id = 2;
+  string server = 3;
+  uint64 size = 4;
+  bytes checksum = 5;
+}
+
+message DecodeChunkRequest {
+  uint64 original_chunk_id = 1;
+  ErasureCodingInfo ec_info = 2;
+  repeated uint32 available_shards = 3;
+  uint64 offset = 4;
+  uint64 length = 5;
+}
+
+message DecodeChunkResponse {
+  bytes data = 1;
+  uint64 offset = 2;
+  bool is_last = 3;
+}
+
+message StoreECShardsRequest {
+  oneof request {
+    StoreECShardsHeader header = 1;
+    StoreECShardsData data = 2;
+  }
+}
+
+message StoreECShardsHeader {
+  uint64 original_chunk_id = 1;
+  uint32 shard_index = 2;
+  uint64 shard_chunk_id = 3;
+  uint64 total_size = 4;
+  ErasureCodingInfo ec_info = 5;
+}
+
+message StoreECShardsData {
+  bytes data = 1;
+  uint64 offset = 2;
+  bool is_last = 3;
+}
+
+message StoreECShardsResponse {
+  bool success = 1;
+  uint64 shard_chunk_id = 2;
+  bytes checksum = 3;
+}
+
+message GetECShardsRequest {
+  uint64 original_chunk_id = 1;
+  repeated uint32 shard_indices = 2;
+  uint64 offset = 3;
+  uint64 length = 4;
+}
+
+message GetECShardsResponse {
+  uint32 shard_index = 1;
+  bytes data = 2;
+  uint64 offset = 3;
+  bool is_last = 4;
+}
+
+// Management operations
+message ServerStatusResponse {
+  ServerInfo info = 1;
+  ServerCapabilities capabilities = 2;
+  repeated DiskInfo disks = 3;
+  map<string, double> metrics = 4;
+}
+
+message DiskInfo {
+  string path = 1;
+  uint64 total_space = 2;
+  uint64 used_space = 3;
+  uint64 chunk_count = 4;
+  DiskStatus status = 5;
+  map<string, double> io_stats = 6;
+}
+
+enum DiskStatus {
+  DISK_STATUS_UNKNOWN = 0;
+  DISK_STATUS_HEALTHY = 1;
+  DISK_STATUS_DEGRADED = 2;
+  DISK_STATUS_FAILED = 3;
+  DISK_STATUS_READONLY = 4;
+}
+
+message ListChunksRequest {
+  uint64 offset = 1;
+  uint32 limit = 2;
+  ChunkFilter filter = 3;
+}
+
+message ChunkFilter {
+  repeated uint64 chunk_ids = 1;
+  ChunkStatus status = 2;
+  google.protobuf.Timestamp modified_after = 3;
+  google.protobuf.Timestamp modified_before = 4;
+  uint64 min_size = 5;
+  uint64 max_size = 6;
+}
+
+message ListChunksResponse {
+  repeated ChunkDetail chunks = 1;
+  bool has_more = 2;
+  uint64 next_offset = 3;
+  uint64 total_count = 4;
+}
+
+message InitiateScrubRequest {
+  ScrubType type = 1;
+  repeated uint64 chunk_ids = 2;  // Empty means all chunks
+  uint32 rate_limit_mbps = 3;
+  bool repair_corrupted = 4;
+}
+
+enum ScrubType {
+  SCRUB_TYPE_UNKNOWN = 0;
+  SCRUB_TYPE_QUICK = 1;    // Metadata only
+  SCRUB_TYPE_NORMAL = 2;   // Sample verification
+  SCRUB_TYPE_DEEP = 3;     // Full verification
+}
+
+message ScrubProgress {
+  uint64 total_chunks = 1;
+  uint64 scanned_chunks = 2;
+  uint64 corrupted_chunks = 3;
+  uint64 repaired_chunks = 4;
+  string current_chunk = 5;
+  google.protobuf.Timestamp estimated_completion = 6;
+}
+
+// Cross-region operations
+message XRegionReplicationRequest {
+  string target_region = 1;
+  repeated uint64 chunk_ids = 2;
+  uint32 priority = 3;
+  uint32 bandwidth_limit_mbps = 4;
+}
+
+message XRegionReplicationProgress {
+  uint64 total_chunks = 1;
+  uint64 replicated_chunks = 2;
+  uint64 bytes_transferred = 3;
+  uint64 current_chunk_id = 4;
+  double transfer_rate_mbps = 5;
+  google.protobuf.Timestamp estimated_completion = 6;
+}
+
+message XRegionDataTransfer {
+  oneof transfer {
+    XRegionDataHeader header = 1;
+    XRegionDataPayload payload = 2;
+  }
+}
+
+message XRegionDataHeader {
+  string source_region = 1;
+  uint64 transfer_id = 2;
+  repeated ChunkTransferInfo chunks = 3;
+  uint64 total_bytes = 4;
+}
+
+message ChunkTransferInfo {
+  uint64 chunk_id = 1;
+  uint32 version = 2;
+  uint64 size = 3;
+  bytes checksum = 4;
+}
+
+message XRegionDataPayload {
+  uint64 chunk_id = 1;
+  bytes data = 2;
+  uint64 offset = 3;
+  bool is_last = 4;
+}
+
+message XRegionDataResponse {
+  bool success = 1;
+  uint64 transfer_id = 2;
+  repeated ChunkTransferResult results = 3;
+}
+
+message ChunkTransferResult {
+  uint64 chunk_id = 1;
+  bool success = 2;
+  string error = 3;
+}

@@ -1,0 +1,189 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: mooseng-chunkserver
+  namespace: mooseng
+  labels:
+    app.kubernetes.io/name: mooseng
+    app.kubernetes.io/component: chunkserver
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mooseng
+      app.kubernetes.io/component: chunkserver
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mooseng
+        app.kubernetes.io/component: chunkserver
+    spec:
+      serviceAccountName: mooseng-chunkserver
+      nodeSelector:
+        mooseng.io/chunkserver: "true"
+      tolerations:
+      - key: "mooseng.io/chunkserver"
+        operator: "Equal"
+        value: "true"
+        effect: "NoSchedule"
+      containers:
+      - name: chunkserver
+        image: mooseng/chunkserver:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: chunkserver
+          containerPort: 9420
+          protocol: TCP
+        env:
+        - name: RUST_LOG
+          valueFrom:
+            configMapKeyRef:
+              name: mooseng-config
+              key: log_level
+        - name: MOOSENG_MASTER_ENDPOINTS
+          value: "mooseng-master.mooseng.svc.cluster.local:9422"
+        - name: MOOSENG_BIND_ADDRESS
+          value: "0.0.0.0"
+        - name: MOOSENG_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: mooseng-config
+              key: chunkserver_port
+        - name: MOOSENG_DATA_DIRS
+          value: "/data1,/data2"
+        - name: MOOSENG_CHUNK_SIZE_MB
+          valueFrom:
+            configMapKeyRef:
+              name: mooseng-config
+              key: chunk_size_mb
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        volumeMounts:
+        - name: data1
+          mountPath: /data1
+        - name: data2
+          mountPath: /data2
+        - name: chunkserver-logs
+          mountPath: /var/log/mooseng
+        - name: host-info
+          mountPath: /host
+          readOnly: true
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1000m"
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"
+        readinessProbe:
+          exec:
+            command:
+            - /usr/local/bin/mooseng-chunkserver
+            - --health-check
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        livenessProbe:
+          exec:
+            command:
+            - /usr/local/bin/mooseng-chunkserver
+            - --health-check
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          runAsGroup: 1000
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+      volumes:
+      - name: data1
+        hostPath:
+          path: /var/lib/mooseng/chunks/data1
+          type: DirectoryOrCreate
+      - name: data2
+        hostPath:
+          path: /var/lib/mooseng/chunks/data2
+          type: DirectoryOrCreate
+      - name: chunkserver-logs
+        hostPath:
+          path: /var/log/mooseng/chunkserver
+          type: DirectoryOrCreate
+      - name: host-info
+        hostPath:
+          path: /
+          type: Directory
+      securityContext:
+        fsGroup: 1000
+      terminationGracePeriodSeconds: 60
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mooseng-chunkserver
+  namespace: mooseng
+  labels:
+    app.kubernetes.io/name: mooseng
+    app.kubernetes.io/component: chunkserver
+spec:
+  type: ClusterIP
+  clusterIP: None  # Headless service for direct pod access
+  selector:
+    app.kubernetes.io/name: mooseng
+    app.kubernetes.io/component: chunkserver
+  ports:
+  - name: chunkserver
+    port: 9420
+    targetPort: chunkserver
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: mooseng-chunkserver
+  namespace: mooseng
+  labels:
+    app.kubernetes.io/name: mooseng
+    app.kubernetes.io/component: chunkserver
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: mooseng-chunkserver
+  namespace: mooseng
+  labels:
+    app.kubernetes.io/name: mooseng
+    app.kubernetes.io/component: chunkserver
+rules:
+- apiGroups: [""]
+  resources: ["pods", "nodes"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: mooseng-chunkserver
+  namespace: mooseng
+  labels:
+    app.kubernetes.io/name: mooseng
+    app.kubernetes.io/component: chunkserver
+subjects:
+- kind: ServiceAccount
+  name: mooseng-chunkserver
+  namespace: mooseng
+roleRef:
+  kind: Role
+  name: mooseng-chunkserver
+  apiGroup: rbac.authorization.k8s.io

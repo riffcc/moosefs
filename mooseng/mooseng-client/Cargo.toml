@@ -1,0 +1,62 @@
+[package]
+name = "mooseng-client"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+mooseng-common = { path = "../mooseng-common" }
+mooseng-protocol = { path = "../mooseng-protocol" }
+
+# Async runtime
+tokio = { workspace = true, features = ["full"] }
+
+# gRPC
+tonic = { workspace = true }
+prost = { workspace = true }
+
+# FUSE
+fuser = { workspace = true }
+
+# Logging and monitoring
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Error handling
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+# Configuration
+config = { workspace = true }
+clap = { workspace = true }
+
+# Utilities
+bytes = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+futures = { workspace = true }
+dashmap = { workspace = true }
+crossbeam = { workspace = true }
+
+# Caching
+lru = { workspace = true }
+moka = { version = "0.12", features = ["future"] }
+
+# File system operations
+nix = { workspace = true }
+libc = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+criterion = { workspace = true }
+proptest = { workspace = true }
+
+[[bin]]
+name = "mooseng-mount"
+path = "src/mooseng-mount.rs"

@@ -1,0 +1,79 @@
+# Multi-stage Docker build for MooseNG Client
+FROM rust:1.79-alpine AS builder
+
+# Install required packages
+RUN apk add --no-cache \
+    musl-dev \
+    pkgconfig \
+    openssl-dev \
+    protobuf-dev \
+    protoc \
+    build-base \
+    fuse3-dev
+
+# Create a new directory for our application
+WORKDIR /app
+
+# Copy Cargo files first to leverage Docker layer caching
+COPY Cargo.toml Cargo.lock ./
+COPY mooseng-client/Cargo.toml ./mooseng-client/
+COPY mooseng-common/Cargo.toml ./mooseng-common/
+COPY mooseng-protocol/Cargo.toml ./mooseng-protocol/
+
+# Copy source code
+COPY mooseng-client/src ./mooseng-client/src
+COPY mooseng-common/src ./mooseng-common/src
+COPY mooseng-protocol/src ./mooseng-protocol/src
+COPY mooseng-protocol/proto ./mooseng-protocol/proto
+COPY mooseng-protocol/build.rs ./mooseng-protocol/
+
+# Build the application
+RUN cargo build --release --bin mooseng-mount
+
+# Runtime stage
+FROM alpine:3.19
+
+# Install runtime dependencies
+RUN apk add --no-cache \
+    openssl \
+    ca-certificates \
+    tini \
+    fuse3
+
+# Create non-root user
+RUN addgroup -g 1000 mooseng && \
+    adduser -u 1000 -G mooseng -s /bin/sh -D mooseng
+
+# Create necessary directories
+RUN mkdir -p /mnt/mooseng /var/log/mooseng /etc/mooseng && \
+    chown -R mooseng:mooseng /mnt/mooseng /var/log/mooseng /etc/mooseng
+
+# Copy the built binary
+COPY --from=builder /app/target/release/mooseng-mount /usr/local/bin/
+
+# Copy configuration templates
+COPY docker/configs/client.toml /etc/mooseng/client.toml.template
+
+# Copy entrypoint script
+COPY docker/scripts/client-entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD mountpoint -q /mnt/mooseng || exit 1
+
+# Expose mount point
+VOLUME ["/mnt/mooseng"]
+
+# Set environment variables
+ENV RUST_LOG=info
+ENV MOOSENG_CONFIG_PATH=/etc/mooseng/client.toml
+ENV MOOSENG_MOUNT_POINT=/mnt/mooseng
+ENV MOOSENG_LOG_DIR=/var/log/mooseng
+
+# Use tini as init system
+ENTRYPOINT ["/sbin/tini", "--"]
+CMD ["/usr/local/bin/entrypoint.sh"]
+
+# Note: This container needs to be run with --privileged or appropriate capabilities
+# for FUSE mounting to work

@@ -1,0 +1,68 @@
+[package]
+name = "mooseng-common"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+bincode = { workspace = true }
+
+# Error handling
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+# Utilities
+bytes = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+
+# Hashing and checksums
+blake3 = { workspace = true }
+crc32fast = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+
+# Async
+tokio = { workspace = true, features = ["sync", "time", "rt", "rt-multi-thread", "macros"] }
+tokio-util = { workspace = true }
+tokio-stream = { version = "0.1", features = ["time", "sync"] }
+futures = { workspace = true }
+async-trait = { workspace = true }
+crossbeam = { workspace = true }
+rand = { workspace = true }
+
+# Networking
+tonic = { workspace = true }
+flate2 = "1.0"
+
+# TLS and security
+rustls = { workspace = true }
+rustls-pemfile = "2.1"
+tokio-rustls = "0.26"
+webpki-roots = "0.26"
+
+# WAN optimization
+quinn = { workspace = true }
+lz4_flex = "0.11"
+zstd = "0.13"
+
+# Collections
+dashmap = { workspace = true }
+indexmap = { workspace = true }
+
+# Bit manipulation
+bitvec = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
+proptest = { workspace = true }
+quickcheck = { workspace = true }
+
+[lib]
+name = "mooseng_common"

@@ -1,0 +1,173 @@
+{
+  "meta": {
+    "generatedAt": "2025-05-31T04:59:39.419Z",
+    "tasksAnalyzed": 20,
+    "totalTasks": 20,
+    "analysisCount": 20,
+    "thresholdScore": 5,
+    "projectName": "Taskmaster",
+    "usedResearch": true
+  },
+  "complexityAnalysis": [
+    {
+      "taskId": 1,
+      "taskTitle": "Set up Rust project structure and dependencies",
+      "complexityScore": 3,
+      "recommendedSubtasks": 4,
+      "expansionPrompt": "Break down the Rust project setup into initialization, workspace structure, dependency configuration, and basic file creation steps.",
+      "reasoning": "This task is relatively straightforward for experienced developers but requires attention to detail in setting up the project structure and dependencies."
+    },
+    {
+      "taskId": 2,
+      "taskTitle": "Implement Master Server core functionality",
+      "complexityScore": 8,
+      "recommendedSubtasks": 6,
+      "expansionPrompt": "Divide the Master Server implementation into metadata storage, gRPC server setup, file system operations, async I/O integration, error handling, and logging components.",
+      "reasoning": "This task involves complex distributed systems concepts, requiring careful implementation of metadata management, RPC communication, and core file system operations."
+    },
+    {
+      "taskId": 3,
+      "taskTitle": "Develop Chunk Server core functionality",
+      "complexityScore": 7,
+      "recommendedSubtasks": 5,
+      "expansionPrompt": "Break down the Chunk Server implementation into chunk storage, gRPC server setup, direct I/O operations, block allocation strategy, and background maintenance tasks.",
+      "reasoning": "Implementing efficient chunk storage and management requires low-level I/O optimizations and careful design of data structures and algorithms."
+    },
+    {
+      "taskId": 4,
+      "taskTitle": "Create FUSE-based Client implementation",
+      "complexityScore": 7,
+      "recommendedSubtasks": 5,
+      "expansionPrompt": "Separate the FUSE client implementation into core FUSE operations, client-side caching, async I/O integration, connection pooling, and performance optimization tasks.",
+      "reasoning": "Implementing a FUSE client requires deep understanding of file system operations and careful performance tuning for a smooth user experience."
+    },
+    {
+      "taskId": 5,
+      "taskTitle": "Implement Metalogger functionality",
+      "complexityScore": 6,
+      "recommendedSubtasks": 4,
+      "expansionPrompt": "Divide the Metalogger implementation into real-time replication, WAL implementation, periodic snapshots, and recovery mechanism components.",
+      "reasoning": "The Metalogger requires careful implementation of replication and logging mechanisms, but is less complex than the core Master and Chunk servers."
+    },
+    {
+      "taskId": 6,
+      "taskTitle": "Implement Raft consensus for Master Server HA",
+      "complexityScore": 9,
+      "recommendedSubtasks": 6,
+      "expansionPrompt": "Break down the Raft implementation into core consensus algorithm, leader election, multi-master read scaling, zero-downtime upgrades, split-brain prevention, and integration with existing Master Server functionality.",
+      "reasoning": "Implementing a distributed consensus algorithm is highly complex, requiring deep understanding of distributed systems theory and careful implementation to ensure correctness."
+    },
+    {
+      "taskId": 7,
+      "taskTitle": "Implement erasure coding support",
+      "complexityScore": 8,
+      "recommendedSubtasks": 5,
+      "expansionPrompt": "Separate erasure coding implementation into encoding/decoding functions, chunk storage modifications, automatic migration, region-aware placement, and configuration management.",
+      "reasoning": "Erasure coding involves complex mathematical algorithms and requires careful integration with existing storage systems to maintain performance and data integrity."
+    },
+    {
+      "taskId": 8,
+      "taskTitle": "Develop multiregion support",
+      "complexityScore": 10,
+      "recommendedSubtasks": 6,
+      "expansionPrompt": "Break down multiregion support into custom Raft extensions, leader lease implementation, region-aware data placement, cross-region replication, CRDT integration, and hybrid logical clock implementation.",
+      "reasoning": "Implementing multi-region support is extremely complex, involving advanced distributed systems concepts and requiring careful coordination across geographically distributed nodes."
+    },
+    {
+      "taskId": 9,
+      "taskTitle": "Implement container-native deployment options",
+      "complexityScore": 6,
+      "recommendedSubtasks": 5,
+      "expansionPrompt": "Divide container deployment into Dockerfile creation, Kubernetes operator development, Helm chart creation, StatefulSet implementation, and CSI driver development.",
+      "reasoning": "While containerization concepts are well-established, implementing them for a distributed file system requires careful consideration of stateful services and networking."
+    },
+    {
+      "taskId": 10,
+      "taskTitle": "Implement advanced caching and performance optimizations",
+      "complexityScore": 8,
+      "recommendedSubtasks": 6,
+      "expansionPrompt": "Break down performance optimizations into metadata caching, small file optimizations, zero-copy implementations, compression support, tiered storage, and network protocol optimizations.",
+      "reasoning": "Advanced performance optimizations require deep system knowledge and careful benchmarking to ensure improvements without introducing new issues."
+    },
+    {
+      "taskId": 11,
+      "taskTitle": "Develop comprehensive monitoring and logging system",
+      "complexityScore": 7,
+      "recommendedSubtasks": 5,
+      "expansionPrompt": "Separate monitoring and logging implementation into Prometheus integration, Grafana dashboard creation, structured logging enhancements, health checks and self-healing, and centralized log aggregation.",
+      "reasoning": "Creating a comprehensive monitoring system requires integration of multiple tools and careful design of metrics and logs to provide actionable insights."
+    },
+    {
+      "taskId": 12,
+      "taskTitle": "Implement CLI management tools",
+      "complexityScore": 5,
+      "recommendedSubtasks": 6,
+      "expansionPrompt": "Break down CLI tool development into command implementation, interactive shell mode, output formatting, documentation creation, completion script generation, and integration testing.",
+      "reasoning": "While CLI tool development is straightforward, ensuring comprehensive coverage of system management functions and user-friendly design increases complexity."
+    },
+    {
+      "taskId": 13,
+      "taskTitle": "Develop REST API for automation",
+      "complexityScore": 6,
+      "recommendedSubtasks": 6,
+      "expansionPrompt": "Divide REST API development into OpenAPI specification, endpoint implementation, authentication and authorization, rate limiting, SDK creation, and comprehensive testing.",
+      "reasoning": "Developing a robust REST API requires careful design of endpoints, security considerations, and comprehensive documentation for ease of use."
+    },
+    {
+      "taskId": 14,
+      "taskTitle": "Implement data tiering and lifecycle management",
+      "complexityScore": 7,
+      "recommendedSubtasks": 6,
+      "expansionPrompt": "Break down data tiering into storage class implementation, policy development, data migration mechanisms, manual management APIs, cold storage support, and monitoring/reporting features.",
+      "reasoning": "Data tiering involves complex policy decisions and efficient data movement mechanisms, requiring careful design to minimize performance impact."
+    },
+    {
+      "taskId": 15,
+      "taskTitle": "Implement security features",
+      "complexityScore": 8,
+      "recommendedSubtasks": 6,
+      "expansionPrompt": "Separate security implementation into TLS integration, data-at-rest encryption, access control enhancements, audit logging, secure erasure, and network segmentation support.",
+      "reasoning": "Implementing comprehensive security features requires deep knowledge of cryptography and security best practices, as well as careful integration with existing system components."
+    },
+    {
+      "taskId": 16,
+      "taskTitle": "Develop compatibility layer for MooseFS",
+      "complexityScore": 7,
+      "recommendedSubtasks": 4,
+      "expansionPrompt": "Break down MooseFS compatibility into protocol implementation, data format conversion, migration tools development, and client tool compatibility testing.",
+      "reasoning": "Implementing compatibility with an existing system requires deep understanding of both systems and careful handling of edge cases and potential conflicts."
+    },
+    {
+      "taskId": 17,
+      "taskTitle": "Implement advanced replication features",
+      "complexityScore": 8,
+      "recommendedSubtasks": 5,
+      "expansionPrompt": "Divide advanced replication into selective policy implementation, cross-region conflict resolution, throttling and scheduling, monitoring and alerting, and cascading replication setup.",
+      "reasoning": "Advanced replication features involve complex distributed systems concepts and require careful coordination across multiple system components."
+    },
+    {
+      "taskId": 18,
+      "taskTitle": "Develop snapshot and backup functionalities",
+      "complexityScore": 7,
+      "recommendedSubtasks": 6,
+      "expansionPrompt": "Break down snapshot and backup implementation into copy-on-write mechanisms, scheduling system, catalog and search functionality, verification processes, encryption/compression, and management tools.",
+      "reasoning": "Implementing efficient snapshots and backups in a distributed system requires careful handling of consistency and performance considerations."
+    },
+    {
+      "taskId": 19,
+      "taskTitle": "Implement advanced networking features",
+      "complexityScore": 9,
+      "recommendedSubtasks": 6,
+      "expansionPrompt": "Separate advanced networking into RDMA support, multi-path I/O, QoS implementation, SDN integration, adaptive load balancing, and topology-aware data placement.",
+      "reasoning": "Advanced networking features require deep knowledge of low-level network protocols and careful optimization for various network conditions and topologies."
+    },
+    {
+      "taskId": 20,
+      "taskTitle": "Develop comprehensive documentation and training materials",
+      "complexityScore": 6,
+      "recommendedSubtasks": 6,
+      "expansionPrompt": "Divide documentation tasks into user manual creation, administrator guide development, API documentation, video tutorial production, workshop material creation, and knowledge base setup.",
+      "reasoning": "While not technically complex, creating comprehensive and user-friendly documentation requires significant effort and attention to detail across a wide range of system aspects."
+    }
+  ]
+}

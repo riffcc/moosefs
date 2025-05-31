@@ -1,0 +1,123 @@
+MooseNG - Next Generation Distributed File System
+
+PROJECT OVERVIEW:
+MooseNG is a clean-room reimplementation of MooseFS in Rust, providing a high-performance, reliable, and modern distributed file system with enhanced features including built-in high availability, container-native deployment options, advanced erasure coding capabilities, and multiregion support for global deployments.
+
+CORE OBJECTIVES:
+1. Port MooseFS functionality to Rust for improved memory safety and performance
+2. Implement free high availability out of the box (no commercial version needed)
+3. Provide native Docker and Kubernetes deployment options
+4. Add erasure coding support with 8+n and 4+n configurations
+5. Implement multiregion support with active/active/active 3-region deployments
+6. Maintain compatibility with existing MooseFS protocols where feasible
+7. Improve operational experience with better monitoring and management tools
+
+KEY FEATURES:
+
+1. CORE COMPONENTS (Rust Implementation):
+   - Master Server: Metadata management with built-in HA and automatic failover
+   - Chunk Server: Data storage with erasure coding support
+   - Client: FUSE-based mount with improved caching and performance
+   - Metalogger: Enhanced metadata backup with real-time replication
+
+2. HIGH AVAILABILITY:
+   - Raft consensus for master server clustering
+   - Automatic leader election and failover
+   - Multiple active masters for read scaling
+   - Zero-downtime upgrades
+   - Split-brain prevention
+
+3. MULTIREGION SUPPORT:
+   - YugabyteDB-style xCluster replication
+   - Raft leader leases for fast reads/writes
+   - Active/active/active 3-region configuration
+   - Geo-distributed consensus with locality awareness
+   - Region-aware data placement policies
+   - Cross-region async replication with bounded lag
+   - Conflict-free replicated data types (CRDTs) for metadata
+   - Regional failover with RPO/RTO guarantees
+   - Hybrid logical clocks for distributed ordering
+   - Configurable consistency levels per operation
+
+4. ERASURE CODING:
+   - Reed-Solomon erasure coding implementation
+   - 8+n configurations for high storage efficiency
+   - 4+n configurations for balanced efficiency/performance
+   - Automatic migration between replication and erasure coding
+   - Background EC conversion for cold data
+   - Region-aware erasure coding stripe placement
+
+5. CONTAINER NATIVE:
+   - Official Docker images for all components
+   - Kubernetes operators and Helm charts
+   - StatefulSets for chunk servers
+   - Service mesh integration
+   - Cloud-native storage integration (CSI driver)
+
+6. IMPROVED FEATURES:
+   - Async I/O throughout with Tokio
+   - Zero-copy data paths where possible
+   - Enhanced metadata caching
+   - Improved small file performance
+   - Native compression support
+   - Tiered storage with automatic data movement
+
+7. OPERATIONAL EXCELLENCE:
+   - Prometheus metrics export
+   - Grafana dashboards
+   - CLI management tools
+   - REST API for automation
+   - Comprehensive logging with structured output
+   - Health checks and self-healing capabilities
+
+TECHNICAL ARCHITECTURE:
+
+1. RUST STACK:
+   - Tokio for async runtime
+   - Tonic for gRPC communication
+   - Sled or RocksDB for metadata storage
+   - Reed-Solomon crate for erasure coding
+   - FUSE bindings for client mounting
+
+2. NETWORKING:
+   - gRPC for inter-component communication
+   - Protocol buffers for message serialization
+   - TLS encryption for all connections
+   - Connection pooling and multiplexing
+   - WAN-optimized protocols for cross-region traffic
+
+3. STORAGE:
+   - Direct I/O for chunk operations
+   - Memory-mapped files for hot data
+   - Efficient block allocation
+   - Background scrubbing and repair
+
+4. MULTIREGION ARCHITECTURE:
+   - Regional master clusters with cross-region consensus
+   - Leader leases with configurable timeout
+   - Read replicas in each region for low latency
+   - Write forwarding to regional leaders
+   - Automatic region discovery and topology management
+
+COMPATIBILITY:
+- Migration tools from MooseFS to MooseNG
+- Optional MooseFS protocol compatibility mode
+- Data format conversion utilities
+
+SUCCESS CRITERIA:
+1. Feature parity with MooseFS core functionality
+2. 2x performance improvement for small files
+3. 50% storage efficiency improvement with erasure coding
+4. 99.99% availability with HA configuration
+5. Sub-second failover times
+6. Production-ready Kubernetes deployment
+7. <100ms read latency within regions
+8. <500ms write latency for cross-region consistency
+
+DEVELOPMENT APPROACH:
+- Clean room implementation (no code copying)
+- Test-driven development
+- Extensive documentation
+- Performance benchmarking at each milestone
+- Security-first design principles
+EOF
