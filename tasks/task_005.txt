@@ -1,0 +1,11 @@
+# Task ID: 5
+# Title: Implement Metalogger functionality
+# Status: done
+# Dependencies: 2
+# Priority: medium
+# Description: Develop the Metalogger component for enhanced metadata backup with real-time replication.
+# Details:
+Create a new crate 'metalogger'. Implement real-time metadata replication from the Master Server. Use tokio streams for efficient data transfer. Implement a local storage mechanism for metadata backups using sled. Create a recovery process to restore metadata to the Master Server.
+
+# Test Strategy:
+Develop unit tests for metadata replication and storage. Create integration tests simulating Master Server failure and metadata recovery. Measure replication latency and ensure it meets performance criteria.

@@ -1,0 +1,55 @@
+# Task ID: 21
+# Title: Implement health checks and self-healing
+# Status: in-progress
+# Dependencies: 2, 3, 4, 5
+# Priority: high
+# Description: Develop health check mechanisms and self-healing capabilities for MooseNG components.
+# Details:
+Implement health check endpoints for each component using the comprehensive health check framework in mooseng-common/src/health.rs. The framework includes HealthMonitor for managing health checks across components, HealthChecker trait for component-specific implementations, self-healing actions, alert system with severity levels, and health history tracking. Continue development of component-specific health checkers for client and metalogger components, building on the existing implementations for master and chunk servers. Integrate the health monitoring system with monitoring CLI tools.
+
+# Test Strategy:
+Develop unit tests for individual health checks and self-healing actions. Create integration tests simulating various failure scenarios. Verify system can recover from failures without manual intervention. Test system behavior under cascading failure scenarios. Validate the alert system with different severity levels and rate limiting functionality.
+
+# Subtasks:
+## 21.1. Implement health check framework in mooseng-common [done]
+### Dependencies: None
+### Description: Create a comprehensive health check framework in mooseng-common/src/health.rs with HealthMonitor, HealthChecker trait, self-healing actions, alert system, and health history tracking.
+### Details:
+
+
+## 21.2. Implement master server health checker [done]
+### Dependencies: None
+### Description: Develop health checker for master server in mooseng-master/src/health_checker.rs with CPU/memory/disk monitoring, cache performance metrics, Raft consensus health, metadata store checks, and self-healing actions.
+### Details:
+
+
+## 21.3. Implement chunk server health checker [done]
+### Dependencies: None
+### Description: Create health checker for chunk server in mooseng-chunkserver/src/health_checker.rs with storage health monitoring, cache tracking, chunk verification, network checks, and self-healing actions.
+### Details:
+
+
+## 21.4. Implement client component health checker [todo]
+### Dependencies: None
+### Description: Develop health checker for client component with appropriate monitoring metrics and self-healing actions.
+### Details:
+
+
+## 21.5. Implement metalogger component health checker [todo]
+### Dependencies: None
+### Description: Create health checker for metalogger component with appropriate monitoring metrics and self-healing actions.
+### Details:
+
+
+## 21.6. Integrate health monitoring with CLI tools [todo]
+### Dependencies: None
+### Description: Connect the health monitoring system with monitoring CLI tools to provide visibility and control over system health.
+### Details:
+
+
+## 21.7. End-to-end testing of health monitoring and self-healing [todo]
+### Dependencies: None
+### Description: Perform comprehensive testing of the entire health monitoring and self-healing system across all components.
+### Details:
+
+

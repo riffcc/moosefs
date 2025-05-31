@@ -1,0 +1,11 @@
+# Task ID: 3
+# Title: Develop Chunk Server core functionality
+# Status: done
+# Dependencies: 1
+# Priority: high
+# Description: Implement the basic structure and functionality of the Chunk Server, including data storage and retrieval operations.
+# Details:
+Create a new crate 'chunk-server'. Implement chunk allocation, read, and write operations using tokio for async I/O. Use the memmap2 = '0.5.10' crate for efficient memory-mapped file operations. Implement a basic chunk format with metadata and data sections. Use direct I/O for chunk operations where supported by the OS.
+
+# Test Strategy:
+Develop unit tests for chunk operations. Create integration tests to verify data integrity across write and read operations. Benchmark performance against direct file system operations.

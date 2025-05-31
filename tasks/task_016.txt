@@ -1,0 +1,11 @@
+# Task ID: 16
+# Title: Implement Prometheus metrics export
+# Status: pending
+# Dependencies: 2, 3, 4, 5
+# Priority: medium
+# Description: Add Prometheus metrics export for all MooseNG components.
+# Details:
+Use the prometheus = '0.13.3' crate to implement metrics collection and export. Define and implement relevant metrics for each component (e.g., operation latencies, error rates, resource usage). Expose a /metrics endpoint in each component for Prometheus scraping. Implement custom collectors for complex metrics.
+
+# Test Strategy:
+Verify all defined metrics are correctly exposed and scraped by Prometheus. Test metric accuracy under various load conditions. Ensure metric collection does not significantly impact system performance.

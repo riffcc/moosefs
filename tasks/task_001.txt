@@ -1,0 +1,11 @@
+# Task ID: 1
+# Title: Set up Rust project structure
+# Status: done
+# Dependencies: None
+# Priority: high
+# Description: Initialize the Rust project structure for MooseNG, including directory layout, Cargo.toml configuration, and initial crate organization.
+# Details:
+Use Cargo to create a new Rust project named 'mooseng'. Set up a workspace with separate crates for master-server, chunk-server, client, and metalogger. Configure Cargo.toml with initial dependencies including tokio = '1.28.1', tonic = '0.9.2', and prost = '0.11.9'. Create mod.rs files for each major component. Initialize a Git repository and set up .gitignore file.
+
+# Test Strategy:
+Verify project structure using 'cargo check'. Ensure all crates can be built without errors using 'cargo build --all'.

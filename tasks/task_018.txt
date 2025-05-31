@@ -1,0 +1,55 @@
+# Task ID: 18
+# Title: Develop CLI management tools
+# Status: in-progress
+# Dependencies: 2, 3, 4, 5
+# Priority: medium
+# Description: Create command-line tools for managing and monitoring MooseNG clusters.
+# Details:
+Use the clap = '4.3.0' crate for parsing command-line arguments. Implement a comprehensive CLI structure with modules for cluster, admin, monitor, and config operations. The CLI includes admin capabilities (chunk server management, quotas, storage classes, repair operations), cluster management (status, initialization, scaling, upgrades), monitoring features (real-time metrics, health checks, event logging), and configuration tools (show/set/get operations, storage class management). Built with async operations using tokio and includes placeholder implementations ready to connect to gRPC services. All commands have proper help text, validation, and error handling.
+
+# Test Strategy:
+Develop unit tests for individual CLI commands. Create integration tests that use the CLI to manage a test cluster. Verify correct handling of various input formats and error conditions. Test each module (admin, cluster, monitor, config) with appropriate test cases. Ensure error handling and validation logic works correctly across all command types.
+
+# Subtasks:
+## 19.2. Define work division between instances [done]
+### Dependencies: None
+### Description: Document that Instance 2 handles Raft/multiregion (Tasks 6,8), Instance 3 handles erasure coding/zero-copy (Tasks 7,12), Instance 4 handles metadata caching/CLI (Tasks 13,18)
+### Details:
+
+
+## 20.2. Define work division between instances [done]
+### Dependencies: None
+### Description: Document that Instance 2 handles Raft/multiregion (Tasks 6,8), Instance 3 handles erasure coding/zero-copy (Tasks 7,12), Instance 4 handles metadata caching/CLI (Tasks 13,18)
+### Details:
+
+
+## 18.3. Document CLI architecture [todo]
+### Dependencies: None
+### Description: Create comprehensive documentation for the CLI architecture, including the module structure and command hierarchy.
+### Details:
+
+
+## 18.4. Connect CLI to gRPC services [todo]
+### Dependencies: None
+### Description: Integrate the placeholder implementations with the actual gRPC services to enable real cluster management operations.
+### Details:
+
+
+## 18.5. Create user guide for CLI tools [todo]
+### Dependencies: None
+### Description: Develop a user-friendly guide documenting all available commands, options, and example usage patterns for the CLI tools.
+### Details:
+
+
+## 18.6. Implement CLI configuration persistence [todo]
+### Dependencies: None
+### Description: Add functionality to save and load CLI configuration settings between sessions.
+### Details:
+
+
+## 18.7. Add scripting capabilities [todo]
+### Dependencies: None
+### Description: Enhance the CLI with the ability to run scripts or command sequences for automation of common tasks.
+### Details:
+
+

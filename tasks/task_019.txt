@@ -1,0 +1,11 @@
+# Task ID: 19
+# Title: Implement REST API for automation
+# Status: pending
+# Dependencies: 2, 3, 4, 5
+# Priority: medium
+# Description: Develop a comprehensive REST API for automating MooseNG management and monitoring.
+# Details:
+Use the axum = '0.6.18' framework to implement the REST API. Define OpenAPI specifications for the API using the utoipa = '3.3.0' crate. Implement endpoints for all management and monitoring operations. Use JSON for request/response payloads. Implement proper authentication and authorization using JWT tokens.
+
+# Test Strategy:
+Develop unit tests for individual API endpoints. Create integration tests that use the API to manage a test cluster. Verify correct handling of authentication and authorization. Test API performance under high load.

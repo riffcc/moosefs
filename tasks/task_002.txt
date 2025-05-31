@@ -1,0 +1,11 @@
+# Task ID: 2
+# Title: Implement basic Master Server structure
+# Status: done
+# Dependencies: 1
+# Priority: high
+# Description: Create the foundational structure for the Master Server component, including main loop and basic metadata management.
+# Details:
+Create a new crate 'master-server'. Implement the main function using tokio runtime. Set up a basic gRPC server using tonic. Create initial structs for metadata representation. Use sled = '0.34.7' for local metadata storage. Implement basic CRUD operations for metadata.
+
+# Test Strategy:
+Write unit tests for metadata CRUD operations. Implement integration tests to ensure the gRPC server can start and respond to basic health check requests.

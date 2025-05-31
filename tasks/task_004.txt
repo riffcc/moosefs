@@ -1,0 +1,11 @@
+# Task ID: 4
+# Title: Create FUSE-based client mount
+# Status: done
+# Dependencies: 1
+# Priority: high
+# Description: Develop the client component that allows mounting MooseNG as a FUSE filesystem.
+# Details:
+Create a new crate 'mooseng-client'. Use the fuse-rs = '0.7.0' crate for FUSE bindings. Implement basic filesystem operations (read, write, getattr, etc.). Create a gRPC client to communicate with the Master Server. Implement local caching for improved small file performance using lru = '0.10.0' crate.
+
+# Test Strategy:
+Develop unit tests for individual filesystem operations. Create integration tests that mount a test filesystem and perform various operations. Benchmark small file performance against local filesystem operations.
