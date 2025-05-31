@@ -130,9 +130,11 @@ enum FuseRequest {
 /// MooseNG FUSE filesystem implementation
 pub struct MooseFuse {
     /// Master client for communication
+    #[allow(dead_code)]
     master_client: Arc<RwLock<MasterClient>>,
     
     /// Client-side cache
+    #[allow(dead_code)]
     cache: Arc<ClientCache>,
     
     /// Configuration
@@ -167,7 +169,7 @@ impl MooseFuse {
         let master_client = Arc::new(RwLock::new(master_client));
         let worker_master = master_client.clone();
         let worker_cache = cache.clone();
-        let worker_config = Arc::new(config.clone());
+        let _worker_config = Arc::new(config.clone());
         
         tokio::spawn(async move {
             while let Some(request) = request_rx.recv().await {
@@ -663,7 +665,7 @@ impl Filesystem for MooseFuse {
         }
         
         match rx.blocking_recv() {
-            Ok(Ok((inode, attr, fh))) => {
+            Ok(Ok((_inode, attr, fh))) => {
                 let fuse_attr = convert_file_attr(&attr);
                 let ttl = Duration::from_secs(1);
                 reply.created(&ttl, &fuse_attr, 0, fh, 0);

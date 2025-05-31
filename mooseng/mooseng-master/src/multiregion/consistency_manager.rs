@@ -11,6 +11,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::time::{Duration, Instant, SystemTime};
 use std::sync::Arc;
+use std::pin::Pin;
+use std::future::Future;
 use tokio::sync::{RwLock, Mutex};
 use tokio::time::timeout;
 
@@ -371,6 +373,10 @@ impl ConsistencyManager {
         
         request.consistency_level = effective_consistency;
         
+        // Extract fields needed after the request is moved
+        let session_id = request.session_id.clone();
+        let path = request.path.clone();
+        
         // Process based on consistency level
         let response = match request.consistency_level {
             ConsistencyLevel::Strong => {
@@ -388,8 +394,8 @@ impl ConsistencyManager {
         };
         
         // Update session state if needed
-        if let Some(session_id) = &request.session_id {
-            self.update_session_state(session_id, &request.path, &response).await?;
+        if let Some(session_id) = &session_id {
+            self.update_session_state(session_id, &path, &response).await?;
         }
         
         // Update metrics and monitoring
@@ -428,14 +434,14 @@ impl ConsistencyManager {
         }
         
         // Send read requests to all regions
-        let mut tasks = Vec::new();
+        let mut tasks: Vec<Pin<Box<dyn Future<Output = Result<OperationResponse>> + Send>>> = Vec::new();
         
         // Add local region
-        tasks.push(self.perform_local_read(&request));
+        tasks.push(Box::pin(self.perform_local_read(&request)));
         
         // Add peer regions
         for peer in &self.multiregion_config.peer_regions {
-            tasks.push(self.perform_remote_read(&request, peer.region_id));
+            tasks.push(Box::pin(self.perform_remote_read(&request, peer.region_id)));
         }
         
         // Wait for quorum or timeout

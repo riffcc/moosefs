@@ -4,7 +4,7 @@ use mooseng_common::{retry_with_backoff, RetryConfig};
 use std::sync::Arc;
 use tokio::sync::{broadcast, RwLock};
 use tokio::time::{interval, Duration};
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 use tonic::transport::Channel;
 
 use crate::config::ReplicationConfig;
@@ -87,7 +87,7 @@ impl ReplicationClient {
 
     /// Start replication from master
     pub async fn start_replication(&mut self) -> Result<()> {
-        let channel = self.master_channel
+        let _channel = self.master_channel
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("Not connected to master"))?;
 
@@ -97,7 +97,7 @@ impl ReplicationClient {
 
         // TODO: Create gRPC client and start streaming changes
         // For now, we'll simulate receiving changes
-        let change_sender = self.change_sender.clone();
+        let _change_sender = self.change_sender.clone();
         let mut flush_interval = interval(Duration::from_millis(self.config.flush_interval_ms));
 
         loop {

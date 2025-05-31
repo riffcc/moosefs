@@ -30,7 +30,7 @@ pub struct MetaloggerServer {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-enum ServerState {
+pub enum ServerState {
     Initializing,
     Recovering,
     Syncing,
@@ -84,7 +84,7 @@ impl MetaloggerServer {
         
         // Step 1: Initialize and recover
         self.set_state(ServerState::Recovering).await;
-        let last_sequence = self.initialize_and_recover().await?;
+        let _last_sequence = self.initialize_and_recover().await?;
         
         // Step 2: Connect to master and start syncing
         self.set_state(ServerState::Syncing).await;
@@ -322,7 +322,7 @@ impl MetaloggerServer {
                   server.config.network.listen_address,
                   server.config.network.listen_port);
             
-            let addr: std::net::SocketAddr = format!("{}:{}",
+            let _addr: std::net::SocketAddr = format!("{}:{}",
                              server.config.network.listen_address,
                              server.config.network.listen_port)
                 .parse()

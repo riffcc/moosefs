@@ -599,6 +599,8 @@ impl RegionPlacementManager {
             }
         }
         
+        let policy_str = policy_to_string(&policy);
+        
         let decision = PlacementDecision {
             chunk_id,
             primary_region,
@@ -609,7 +611,7 @@ impl RegionPlacementManager {
             placement_score,
             decision_time: HLCTimestamp::now(),
             rationale: format!("Selected based on {} policy with score {:.2}", 
-                             policy_to_string(&policy), placement_score),
+                             policy_str, placement_score),
         };
         
         Ok(decision)
@@ -736,17 +738,3 @@ fn policy_to_string(policy: &PlacementPolicy) -> &'static str {
     }
 }
 
-/// Implement HLCTimestamp::now() for convenience
-impl HLCTimestamp {
-    pub fn now() -> Self {
-        let now = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap();
-        
-        HLCTimestamp {
-            physical: now.as_millis() as u64,
-            logical: 0,
-            node_id: Some(0), // This should be set properly in real implementation
-        }
-    }
-}

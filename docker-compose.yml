@@ -1,0 +1,405 @@
+version: '3.8'
+
+services:
+  # Master server (single instance for simplicity, HA can be achieved with multiple instances)
+  master:
+    build:
+      context: .
+      dockerfile: mfsmaster/Dockerfile
+      args:
+        BUILDNO: "$(cat buildno.txt)"
+    container_name: moosefs-master
+    hostname: master
+    environment:
+      - MFSMASTER_CONFIG_FILE=/etc/mfs/mfsmaster.cfg
+      - MFSMASTER_EXPORTS_FILE=/etc/mfs/mfsexports.cfg
+      - MFSMASTER_TOPOLOGY_FILE=/etc/mfs/mfstopology.cfg
+      - MFSMASTER_PERSONALITY=master
+      - MFSMASTER_DATA_PATH=/var/lib/mfs
+      - MFSMASTER_WORKING_USER=mfs
+      - MFSMASTER_WORKING_GROUP=mfs
+    ports:
+      - "9419:9419"  # Client communication port
+      - "9420:9420"  # Chunkserver communication port  
+      - "9421:9421"  # Admin/CGI port
+    volumes:
+      - master-data:/var/lib/mfs
+      - master-logs:/var/log/mfs
+      - ./mfsdata:/etc/mfs:ro
+    networks:
+      - moosefs-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mfsmaster", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Chunkserver 1 with 4 storage folders
+  chunkserver-1:
+    build:
+      context: .
+      dockerfile: mfschunkserver/Dockerfile
+      args:
+        BUILDNO: "$(cat buildno.txt)"
+    container_name: moosefs-chunkserver-1
+    hostname: chunkserver-1
+    environment:
+      - MFSCHUNKSERVER_CONFIG_FILE=/etc/mfs/mfschunkserver.cfg
+      - MFSCHUNKSERVER_HDD_CONFIG_FILE=/etc/mfs/mfshdd.cfg
+      - MFSCHUNKSERVER_MASTER_HOST=master
+      - MFSCHUNKSERVER_MASTER_PORT=9420
+      - MFSCHUNKSERVER_BIND_HOST=0.0.0.0
+      - MFSCHUNKSERVER_PORT=9422
+      - MFSCHUNKSERVER_DATA_PATH=/var/lib/mfs
+      - MFSCHUNKSERVER_WORKING_USER=mfs
+      - MFSCHUNKSERVER_WORKING_GROUP=mfs
+    ports:
+      - "9422:9422"
+    volumes:
+      - chunkserver-1-data1:/mnt/mfschunks1
+      - chunkserver-1-data2:/mnt/mfschunks2
+      - chunkserver-1-data3:/mnt/mfschunks3
+      - chunkserver-1-data4:/mnt/mfschunks4
+      - chunkserver-1-meta:/var/lib/mfs
+      - chunkserver-1-logs:/var/log/mfs
+      - ./mfsdata:/etc/mfs:ro
+    networks:
+      - moosefs-net
+    restart: unless-stopped
+    depends_on:
+      - master
+    healthcheck:
+      test: ["CMD", "mfschunkserver", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # Chunkserver 2 with 4 storage folders
+  chunkserver-2:
+    build:
+      context: .
+      dockerfile: mfschunkserver/Dockerfile
+      args:
+        BUILDNO: "$(cat buildno.txt)"
+    container_name: moosefs-chunkserver-2
+    hostname: chunkserver-2
+    environment:
+      - MFSCHUNKSERVER_CONFIG_FILE=/etc/mfs/mfschunkserver.cfg
+      - MFSCHUNKSERVER_HDD_CONFIG_FILE=/etc/mfs/mfshdd.cfg
+      - MFSCHUNKSERVER_MASTER_HOST=master
+      - MFSCHUNKSERVER_MASTER_PORT=9420
+      - MFSCHUNKSERVER_BIND_HOST=0.0.0.0
+      - MFSCHUNKSERVER_PORT=9422
+      - MFSCHUNKSERVER_DATA_PATH=/var/lib/mfs
+      - MFSCHUNKSERVER_WORKING_USER=mfs
+      - MFSCHUNKSERVER_WORKING_GROUP=mfs
+    ports:
+      - "9432:9422"
+    volumes:
+      - chunkserver-2-data1:/mnt/mfschunks1
+      - chunkserver-2-data2:/mnt/mfschunks2
+      - chunkserver-2-data3:/mnt/mfschunks3
+      - chunkserver-2-data4:/mnt/mfschunks4
+      - chunkserver-2-meta:/var/lib/mfs
+      - chunkserver-2-logs:/var/log/mfs
+      - ./mfsdata:/etc/mfs:ro
+    networks:
+      - moosefs-net
+    restart: unless-stopped
+    depends_on:
+      - master
+    healthcheck:
+      test: ["CMD", "mfschunkserver", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # Chunkserver 3 with 4 storage folders
+  chunkserver-3:
+    build:
+      context: .
+      dockerfile: mfschunkserver/Dockerfile
+      args:
+        BUILDNO: "$(cat buildno.txt)"
+    container_name: moosefs-chunkserver-3
+    hostname: chunkserver-3
+    environment:
+      - MFSCHUNKSERVER_CONFIG_FILE=/etc/mfs/mfschunkserver.cfg
+      - MFSCHUNKSERVER_HDD_CONFIG_FILE=/etc/mfs/mfshdd.cfg
+      - MFSCHUNKSERVER_MASTER_HOST=master
+      - MFSCHUNKSERVER_MASTER_PORT=9420
+      - MFSCHUNKSERVER_BIND_HOST=0.0.0.0
+      - MFSCHUNKSERVER_PORT=9422
+      - MFSCHUNKSERVER_DATA_PATH=/var/lib/mfs
+      - MFSCHUNKSERVER_WORKING_USER=mfs
+      - MFSCHUNKSERVER_WORKING_GROUP=mfs
+    ports:
+      - "9442:9422"
+    volumes:
+      - chunkserver-3-data1:/mnt/mfschunks1
+      - chunkserver-3-data2:/mnt/mfschunks2
+      - chunkserver-3-data3:/mnt/mfschunks3
+      - chunkserver-3-data4:/mnt/mfschunks4
+      - chunkserver-3-meta:/var/lib/mfs
+      - chunkserver-3-logs:/var/log/mfs
+      - ./mfsdata:/etc/mfs:ro
+    networks:
+      - moosefs-net
+    restart: unless-stopped
+    depends_on:
+      - master
+    healthcheck:
+      test: ["CMD", "mfschunkserver", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # Metalogger for metadata backup
+  metalogger:
+    build:
+      context: .
+      dockerfile: mfsmetalogger/Dockerfile
+      args:
+        BUILDNO: "$(cat buildno.txt)"
+    container_name: moosefs-metalogger
+    hostname: metalogger
+    environment:
+      - MFSMETALOGGER_CONFIG_FILE=/etc/mfs/mfsmetalogger.cfg
+      - MFSMETALOGGER_MASTER_HOST=master
+      - MFSMETALOGGER_MASTER_PORT=9419
+      - MFSMETALOGGER_DATA_PATH=/var/lib/mfs
+      - MFSMETALOGGER_WORKING_USER=mfs
+      - MFSMETALOGGER_WORKING_GROUP=mfs
+    volumes:
+      - metalogger-data:/var/lib/mfs
+      - metalogger-logs:/var/log/mfs
+      - ./mfsdata:/etc/mfs:ro
+    networks:
+      - moosefs-net
+    restart: unless-stopped
+    depends_on:
+      - master
+    healthcheck:
+      test: ["CMD", "mfsmetalogger", "-t"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # CGI Server for web interface
+  cgiserver:
+    build:
+      context: .
+      dockerfile: mfsscripts/Dockerfile.cgiserver
+      args:
+        BUILDNO: "$(cat buildno.txt)"
+    container_name: moosefs-cgiserver
+    hostname: cgiserver
+    environment:
+      - MFSCGISERV_CONFIG_FILE=/etc/mfs/mfscgiserv.cfg
+      - MFSCGISERV_MASTER_HOST=master
+      - MFSCGISERV_MASTER_PORT=9421
+      - MFSCGISERV_LISTEN_HOST=0.0.0.0
+      - MFSCGISERV_LISTEN_PORT=9425
+    ports:
+      - "9425:9425"
+    volumes:
+      - ./mfsdata:/etc/mfs:ro
+      - ./mfsscripts:/usr/share/mfscgi:ro
+    networks:
+      - moosefs-net
+    restart: unless-stopped
+    depends_on:
+      - master
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9425/mfs.cgi"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # Client example for mounting filesystem
+  client:
+    build:
+      context: .
+      dockerfile: mfsclient/Dockerfile
+      args:
+        BUILDNO: "$(cat buildno.txt)"
+    container_name: moosefs-client
+    hostname: client
+    environment:
+      - MFSMOUNT_CONFIG_FILE=/etc/mfs/mfsmount.cfg
+      - MFSMOUNT_MASTER_HOST=master
+      - MFSMOUNT_MASTER_PORT=9419
+      - MFSMOUNT_MOUNT_OPTIONS=mfssubfolder=/,mfspassword=
+    volumes:
+      - ./mnt:/mnt/mfs:shared
+      - ./mfsdata:/etc/mfs:ro
+    networks:
+      - moosefs-net
+    restart: unless-stopped
+    depends_on:
+      - master
+      - chunkserver-1
+      - chunkserver-2
+      - chunkserver-3
+    privileged: true
+    devices:
+      - /dev/fuse:/dev/fuse
+    cap_add:
+      - SYS_ADMIN
+    command: >
+      sh -c "mkdir -p /mnt/mfs && 
+             mfsmount /mnt/mfs -H master -P 9419 -o allow_other,default_permissions &&
+             tail -f /dev/null"
+
+networks:
+  moosefs-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.19.0.0/16
+
+volumes:
+  # Master server volumes
+  master-data:
+    driver: local
+    labels:
+      com.moosefs.component: master
+      com.moosefs.type: data
+  master-logs:
+    driver: local
+    labels:
+      com.moosefs.component: master
+      com.moosefs.type: logs
+
+  # Chunkserver 1 volumes (4 data folders)
+  chunkserver-1-data1:
+    driver: local
+    labels:
+      com.moosefs.component: chunkserver
+      com.moosefs.node: chunkserver-1
+      com.moosefs.storage: data1
+  chunkserver-1-data2:
+    driver: local
+    labels:
+      com.moosefs.component: chunkserver
+      com.moosefs.node: chunkserver-1
+      com.moosefs.storage: data2
+  chunkserver-1-data3:
+    driver: local
+    labels:
+      com.moosefs.component: chunkserver
+      com.moosefs.node: chunkserver-1
+      com.moosefs.storage: data3
+  chunkserver-1-data4:
+    driver: local
+    labels:
+      com.moosefs.component: chunkserver
+      com.moosefs.node: chunkserver-1
+      com.moosefs.storage: data4
+  chunkserver-1-meta:
+    driver: local
+    labels:
+      com.moosefs.component: chunkserver
+      com.moosefs.node: chunkserver-1
+      com.moosefs.type: metadata
+  chunkserver-1-logs:
+    driver: local
+    labels:
+      com.moosefs.component: chunkserver
+      com.moosefs.node: chunkserver-1
+      com.moosefs.type: logs
+
+  # Chunkserver 2 volumes (4 data folders)
+  chunkserver-2-data1:
+    driver: local
+    labels:
+      com.moosefs.component: chunkserver
+      com.moosefs.node: chunkserver-2
+      com.moosefs.storage: data1
+  chunkserver-2-data2:
+    driver: local
+    labels:
+      com.moosefs.component: chunkserver
+      com.moosefs.node: chunkserver-2
+      com.moosefs.storage: data2
+  chunkserver-2-data3:
+    driver: local
+    labels:
+      com.moosefs.component: chunkserver
+      com.moosefs.node: chunkserver-2
+      com.moosefs.storage: data3
+  chunkserver-2-data4:
+    driver: local
+    labels:
+      com.moosefs.component: chunkserver
+      com.moosefs.node: chunkserver-2
+      com.moosefs.storage: data4
+  chunkserver-2-meta:
+    driver: local
+    labels:
+      com.moosefs.component: chunkserver
+      com.moosefs.node: chunkserver-2
+      com.moosefs.type: metadata
+  chunkserver-2-logs:
+    driver: local
+    labels:
+      com.moosefs.component: chunkserver
+      com.moosefs.node: chunkserver-2
+      com.moosefs.type: logs
+
+  # Chunkserver 3 volumes (4 data folders)
+  chunkserver-3-data1:
+    driver: local
+    labels:
+      com.moosefs.component: chunkserver
+      com.moosefs.node: chunkserver-3
+      com.moosefs.storage: data1
+  chunkserver-3-data2:
+    driver: local
+    labels:
+      com.moosefs.component: chunkserver
+      com.moosefs.node: chunkserver-3
+      com.moosefs.storage: data2
+  chunkserver-3-data3:
+    driver: local
+    labels:
+      com.moosefs.component: chunkserver
+      com.moosefs.node: chunkserver-3
+      com.moosefs.storage: data3
+  chunkserver-3-data4:
+    driver: local
+    labels:
+      com.moosefs.component: chunkserver
+      com.moosefs.node: chunkserver-3
+      com.moosefs.storage: data4
+  chunkserver-3-meta:
+    driver: local
+    labels:
+      com.moosefs.component: chunkserver
+      com.moosefs.node: chunkserver-3
+      com.moosefs.type: metadata
+  chunkserver-3-logs:
+    driver: local
+    labels:
+      com.moosefs.component: chunkserver
+      com.moosefs.node: chunkserver-3
+      com.moosefs.type: logs
+
+  # Metalogger volumes
+  metalogger-data:
+    driver: local
+    labels:
+      com.moosefs.component: metalogger
+      com.moosefs.type: data
+  metalogger-logs:
+    driver: local
+    labels:
+      com.moosefs.component: metalogger
+      com.moosefs.type: logs

@@ -2,7 +2,7 @@ use anyhow::{Result, Context};
 use bytes::Bytes;
 use std::path::PathBuf;
 use std::collections::HashMap;
-use tracing::{debug, info, warn, error};
+use tracing::{debug, info, warn};
 use tokio::sync::RwLock;
 use std::sync::Arc;
 
@@ -81,7 +81,7 @@ impl RecoveryManager {
         info!("Found {} WAL entries to apply", wal_entries.len());
         
         // Apply WAL entries
-        let entries_count = wal_entries.len() as u64;
+        let _entries_count = wal_entries.len() as u64;
         for (sequence_id, data) in wal_entries {
             // Parse and apply the change
             if let Ok(change) = self.parse_wal_entry(&data) {

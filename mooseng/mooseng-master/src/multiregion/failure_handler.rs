@@ -380,7 +380,7 @@ impl FailureHandler {
                         let failure = FailureType::RegionOutage {
                             region_id: peer.region_id,
                             outage_start: Instant::now(),
-                            estimated_recovery: Some(Instant::now() + Duration::from_mins(30)),
+                            estimated_recovery: Some(Instant::now() + Duration::from_secs(30 * 60)),
                             severity: OutageSeverity::Minor,
                         };
                         

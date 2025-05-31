@@ -1,20 +1,16 @@
-use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use bytes::Bytes;
-use dashmap::DashMap;
 use mooseng_common::types::{ChunkId, ChunkVersion};
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::fs;
-use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
 
 use crate::{
-    chunk::{Chunk, ChunkMetadata, ChecksumType},
+    chunk::{Chunk, ChunkMetadata},
     config::ChunkServerConfig,
     error::{ChunkServerError, Result as ChunkResult},
-    erasure::{ErasureCodedChunk, ErasureConfig, ErasureCoder, ErasureShard, ShardPlacement},
+    erasure::{ErasureCodedChunk, ErasureConfig, ErasureShard},
     storage::{ChunkStorage, StorageStats},
 };
 
@@ -23,9 +19,6 @@ pub struct ErasureCodedStorage {
     config: Arc<ChunkServerConfig>,
     erasure_config: ErasureConfig,
     base_storage: Arc<dyn ChunkStorage>,
-    shard_placement: Arc<RwLock<ShardPlacement>>,
-    /// Cache of shard locations: chunk_id -> shard_index -> server_ids
-    shard_locations: Arc<DashMap<ChunkId, HashMap<usize, Vec<String>>>>,
 }
 
 impl ErasureCodedStorage {
@@ -34,14 +27,10 @@ impl ErasureCodedStorage {
         erasure_config: ErasureConfig,
         base_storage: Arc<dyn ChunkStorage>,
     ) -> Self {
-        let shard_placement = ShardPlacement::new(erasure_config.clone());
-        
         Self {
             config,
-            erasure_config: erasure_config.clone(),
+            erasure_config,
             base_storage,
-            shard_placement: Arc::new(RwLock::new(shard_placement)),
-            shard_locations: Arc::new(DashMap::new()),
         }
     }
     
@@ -124,6 +113,7 @@ impl ErasureCodedStorage {
     }
     
     /// Extract shard index from shard chunk ID
+    #[allow(dead_code)]
     fn shard_index(&self, shard_chunk_id: ChunkId) -> usize {
         ((shard_chunk_id >> 56) & 0xFF) as usize
     }
@@ -135,7 +125,7 @@ impl ErasureCodedStorage {
         
         // Store each shard
         let mut store_futures = Vec::new();
-        for (index, shard_opt) in ec_chunk.shards.iter().enumerate() {
+        for (_index, shard_opt) in ec_chunk.shards.iter().enumerate() {
             if let Some(shard) = shard_opt {
                 store_futures.push(self.store_shard(chunk_id, version, shard));
             }

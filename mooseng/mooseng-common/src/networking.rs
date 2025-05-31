@@ -125,6 +125,7 @@ impl TlsConfig {
 /// Certificate manager for TLS operations
 pub struct CertificateManager {
     config: TlsConfig,
+    #[allow(dead_code)]
     root_store: RootCertStore,
     client_identity: Option<Identity>,
     server_config: Option<StdArc<ServerConfig>>,
@@ -340,6 +341,7 @@ impl Default for ConnectionPoolConfig {
 #[derive(Debug)]
 struct PoolEntry {
     channel: Channel,
+    #[allow(dead_code)]
     created_at: Instant,
     last_used: Instant,
     request_count: u64,
@@ -603,6 +605,7 @@ pub struct PoolStats {
 pub struct ManagedConnection {
     pub channel: Channel,
     pool: Arc<Mutex<Vec<PoolEntry>>>,
+    #[allow(dead_code)]
     endpoint: String,
     _permit: tokio::sync::OwnedSemaphorePermit,
     entry: Option<PoolEntry>,

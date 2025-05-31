@@ -15,7 +15,7 @@ use mooseng_common::compression::{
     CompressionEngine, CompressionConfig, CompressionAlgorithm, 
     CompressionLevel, CompressedData, CompressionStats
 };
-use crate::chunk::{Chunk, ChunkMetadata, ChecksumType};
+use crate::chunk::{Chunk, ChecksumType};
 use crate::config::ChunkServerConfig;
 use mooseng_common::types::{ChunkId, ChunkVersion};
 

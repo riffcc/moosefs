@@ -1,8 +1,8 @@
 // Prometheus metrics collection for MooseNG ChunkServer
 use lazy_static::lazy_static;
 use prometheus::{
-    register_counter_vec, register_gauge_vec, register_histogram_vec, register_int_counter_vec,
-    register_int_gauge_vec, CounterVec, GaugeVec, HistogramVec, IntCounterVec, IntGaugeVec,
+    register_gauge_vec, register_histogram_vec, register_int_counter_vec,
+    register_int_gauge_vec, GaugeVec, HistogramVec, IntCounterVec, IntGaugeVec,
     Encoder, TextEncoder,
 };
 use std::time::Duration;

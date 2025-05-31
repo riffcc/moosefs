@@ -1,7 +1,6 @@
 use clap::{Arg, Command};
 use mooseng_client::{ClientConfig, filesystem::MooseFuse};
 use std::path::PathBuf;
-use std::sync::Arc;
 use tracing::{error, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 

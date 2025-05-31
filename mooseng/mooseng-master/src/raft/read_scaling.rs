@@ -17,6 +17,8 @@ pub enum ReadConsistency {
     Lease,
     /// Followers can serve reads without lease validation (eventual consistency)
     Eventual,
+    /// Sequential consistency - reads see writes in order
+    Sequential,
 }
 
 /// Lease information for read scaling
@@ -138,6 +140,21 @@ impl ReadScalingManager {
                     Ok(node.state.commit_index >= min_index)
                 } else {
                     Ok(true)
+                }
+            }
+            ReadConsistency::Sequential => {
+                // Sequential consistency requires reads to see writes in order
+                // Similar to lease-based but with stricter ordering guarantees
+                if let Some(lease) = &self.current_lease {
+                    if lease.is_valid() {
+                        // Must have at least the commit index when lease was granted
+                        Ok(node.state.commit_index >= lease.commit_index_at_grant)
+                    } else {
+                        Ok(false)
+                    }
+                } else {
+                    // Without lease, only leader can guarantee sequential consistency
+                    Ok(node.is_leader())
                 }
             }
         }

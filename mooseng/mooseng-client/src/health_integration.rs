@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use anyhow::Result;
 use mooseng_common::health::{HealthMonitor, HealthCheckConfig};
-use tracing::{info, warn, error};
+use tracing::info;
 
 use crate::{
     health_checker::ClientHealthChecker,
@@ -44,7 +44,7 @@ impl ClientHealthService {
         };
 
         // Create health monitor
-        let mut health_monitor = HealthMonitor::new(health_config);
+        let health_monitor = HealthMonitor::new(health_config);
 
         // Create health checker
         let health_checker = Arc::new(ClientHealthChecker::new(

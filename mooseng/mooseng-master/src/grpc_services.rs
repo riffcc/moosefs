@@ -34,6 +34,7 @@ use std::sync::Arc;
 use tonic::{transport::Server, Request, Response, Status, Streaming};
 use tracing::{error, info, warn, instrument};
 use futures_util::Stream;
+use prost_types::Timestamp;
 
 use crate::{
     chunk_manager::ChunkManager,
@@ -44,6 +45,26 @@ use crate::{
     raft::RaftConsensus,
     multiregion::{MultiRegionRaft, ConsistencyLevel},
 };
+
+/// Convert microsecond timestamp to protobuf Timestamp
+fn micros_to_timestamp(micros: u64) -> Option<Timestamp> {
+    let seconds = (micros / 1_000_000) as i64;
+    let nanos = ((micros % 1_000_000) * 1_000) as i32;
+    Some(Timestamp { seconds, nanos })
+}
+
+/// Calculate nlink field for a file node (simplified implementation)
+fn calculate_nlink(node_type: &mooseng_common::types::FsNodeType) -> u32 {
+    match node_type {
+        mooseng_common::types::FsNodeType::File { .. } => 1,
+        mooseng_common::types::FsNodeType::Directory { .. } => 2, // . and ..
+        mooseng_common::types::FsNodeType::Symlink { .. } => 1,
+        mooseng_common::types::FsNodeType::Socket { .. } => 1,
+        mooseng_common::types::FsNodeType::CharDev { .. } => 1,
+        mooseng_common::types::FsNodeType::BlockDev { .. } => 1,
+        mooseng_common::types::FsNodeType::Fifo { .. } => 1,
+    }
+}
 
 /// gRPC server wrapper that manages multiple tonic servers
 pub struct GrpcServer {
@@ -146,27 +167,16 @@ impl MasterService for MasterServiceImpl {
         request: Request<CreateFileRequest>,
     ) -> Result<Response<CreateFileResponse>, Status> {
         let req = request.into_inner();
-        info!("Creating file: {}", req.path);
+        info!("Creating file: {} in parent {}", req.name, req.parent);
         
-        // Parse parent directory and filename
-        let path = std::path::Path::new(&req.path);
-        let parent_path = path.parent()
-            .ok_or_else(|| Status::invalid_argument("Invalid file path"))?
-            .to_str()
-            .ok_or_else(|| Status::invalid_argument("Invalid path encoding"))?;
-        let filename = path.file_name()
-            .ok_or_else(|| Status::invalid_argument("Missing filename"))?
-            .to_str()
-            .ok_or_else(|| Status::invalid_argument("Invalid filename encoding"))?;
-        
-        // Create file in filesystem
-        match self.filesystem.create_file(
-            parent_path,
-            filename,
-            req.mode.unwrap_or(0o644) as u16,
-            req.uid,
-            req.gid,
-            req.storage_class_id.unwrap_or(1),
+        // Create file in filesystem using parent inode and name
+        match self.filesystem.create_file_by_inode(
+            req.parent,
+            &req.name,
+            req.mode as u16,
+            1000, // Default uid
+            1000, // Default gid  
+            req.storage_class_id,
         ).await {
             Ok(inode_id) => {
                 // Get the created file's metadata
@@ -192,9 +202,8 @@ impl MasterService for MasterServiceImpl {
                 // Convert to protobuf metadata
                 let metadata = Some(mooseng_protocol::FileMetadata {
                     inode: inode_id,
-                    parent_inode: file_node.parent.unwrap_or(0),
-                    name: filename.to_string(),
-                    file_type: mooseng_protocol::FileType::RegularFile as i32,
+                    parent: file_node.parent.unwrap_or(0),
+                    file_type: mooseng_protocol::FileType::File as i32,
                     mode: file_node.mode as u32,
                     uid: file_node.uid,
                     gid: file_node.gid,
@@ -202,13 +211,15 @@ impl MasterService for MasterServiceImpl {
                     atime: file_node.atime,
                     mtime: file_node.mtime,
                     ctime: file_node.ctime,
+                    nlink: file_node.nlink,
                     storage_class_id: file_node.storage_class_id as u32,
-                    chunk_count: 0,
+                    chunk_ids: vec![], // Empty for new files
+                    xattrs: req.xattrs,
                 });
                 
                 let response = CreateFileResponse {
                     metadata,
-                    session_id,
+                    session_id: req.session_id,
                 };
                 
                 Ok(Response::new(response))
@@ -253,9 +264,9 @@ impl MasterService for MasterServiceImpl {
             .ok_or_else(|| Status::not_found("File not found"))?;
         
         // Verify it's a file
-        let (file_size, chunk_count) = match &file_node.node_type {
-            mooseng_common::types::FsNodeType::File { length, chunks, .. } => {
-                (*length, chunks.len() as u32)
+        let file_size = match &file_node.node_type {
+            mooseng_common::types::FsNodeType::File { length, .. } => {
+                length
             }
             _ => return Err(Status::invalid_argument("Path is not a file")),
         };
@@ -264,64 +275,37 @@ impl MasterService for MasterServiceImpl {
         let file_handle = self.session_manager.open_file(
             inode_id,
             req.flags,
-            req.session_info.as_ref().map(|s| s.client_id.clone()).unwrap_or_default(),
+            req.session_id,
         ).await.map_err(|e| {
             error!("Failed to create file handle: {}", e);
             Status::internal("Failed to create file handle")
         })?;
         
-        // Get chunk information if requested
-        let chunks = if req.include_chunks {
-            match &file_node.node_type {
-                mooseng_common::types::FsNodeType::File { chunks, .. } => {
-                    let mut chunk_infos = Vec::new();
-                    for chunk_id in chunks {
-                        if let Ok(locations) = self.chunk_manager.get_chunk_locations(*chunk_id).await {
-                            chunk_infos.push(mooseng_protocol::ChunkInfo {
-                                chunk_id: *chunk_id,
-                                chunk_index: chunk_infos.len() as u32,
-                                version: 1, // TODO: Get actual version
-                                size: mooseng_common::CHUNK_SIZE as u64,
-                                locations: locations.into_iter().map(|loc| {
-                                    mooseng_protocol::ChunkLocation {
-                                        server_id: loc.server_id,
-                                        ip: loc.ip,
-                                        port: loc.port as u32,
-                                        label: loc.label.unwrap_or_default(),
-                                    }
-                                }).collect(),
-                            });
-                        }
-                    }
-                    chunk_infos
-                }
-                _ => vec![],
+        // Get chunk information (always include for OpenFileResponse)
+        let chunks = match &file_node.node_type {
+            mooseng_common::types::FsNodeType::File { length: _, .. } => {
+                // TODO: Get actual chunks from the file node when the structure is fixed
+                vec![] // Return empty chunks for now
             }
-        } else {
-            vec![]
+            _ => vec![],
         };
-        
-        // Extract filename from path
-        let filename = std::path::Path::new(&req.path)
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("");
         
         // Convert to protobuf metadata
         let metadata = Some(mooseng_protocol::FileMetadata {
             inode: inode_id,
-            parent_inode: file_node.parent.unwrap_or(0),
-            name: filename.to_string(),
-            file_type: mooseng_protocol::FileType::RegularFile as i32,
+            parent: file_node.parent.unwrap_or(0),
+            file_type: mooseng_protocol::FileType::File as i32,
             mode: file_node.mode as u32,
             uid: file_node.uid,
             gid: file_node.gid,
-            size: file_size,
-            atime: file_node.atime,
-            mtime: file_node.mtime,
-            ctime: file_node.ctime,
+            size: *file_size,
+            atime: micros_to_timestamp(file_node.atime),
+            mtime: micros_to_timestamp(file_node.mtime),
+            ctime: micros_to_timestamp(file_node.ctime),
+            nlink: calculate_nlink(&file_node.node_type),
             storage_class_id: file_node.storage_class_id as u32,
-            chunk_count,
+            chunk_ids: vec![], // TODO: Get actual chunk IDs
+            xattrs: std::collections::HashMap::new(),
         });
         
         let response = OpenFileResponse {
@@ -363,9 +347,9 @@ impl MasterService for MasterServiceImpl {
         request: Request<DeleteFileRequest>,
     ) -> Result<Response<DeleteFileResponse>, Status> {
         let req = request.into_inner();
-        info!("Deleting file: {}", req.path);
+        info!("Deleting file inode: {}", req.inode);
         
-        // TODO: Implement actual file deletion logic
+        // TODO: Implement actual file deletion logic using inode
         let response = DeleteFileResponse {
             success: true,
             freed_space: 0, // TODO: Calculate actual freed space
@@ -380,9 +364,9 @@ impl MasterService for MasterServiceImpl {
         request: Request<RenameFileRequest>,
     ) -> Result<Response<RenameFileResponse>, Status> {
         let req = request.into_inner();
-        info!("Renaming file: {} -> {}", req.old_path, req.new_path);
+        info!("Renaming file inode {} to {} in parent {}", req.inode, req.new_name, req.new_parent);
         
-        // TODO: Implement actual file renaming logic
+        // TODO: Implement actual file renaming logic using inode, new_parent, new_name
         let response = RenameFileResponse {
             success: true,
             metadata: None, // TODO: Return updated metadata
@@ -397,7 +381,7 @@ impl MasterService for MasterServiceImpl {
         request: Request<CreateDirectoryRequest>,
     ) -> Result<Response<CreateDirectoryResponse>, Status> {
         let req = request.into_inner();
-        info!("Creating directory: {}", req.path);
+        info!("Creating directory: {} in parent {}", req.name, req.parent);
         
         // TODO: Implement actual directory creation logic
         let response = CreateDirectoryResponse {
@@ -413,7 +397,7 @@ impl MasterService for MasterServiceImpl {
         request: Request<DeleteDirectoryRequest>,
     ) -> Result<Response<DeleteDirectoryResponse>, Status> {
         let req = request.into_inner();
-        info!("Deleting directory: {} (recursive: {})", req.path, req.recursive);
+        info!("Deleting directory inode: {} (recursive: {})", req.inode, req.recursive);
         
         // TODO: Implement actual directory deletion logic
         let response = DeleteDirectoryResponse {
@@ -431,7 +415,7 @@ impl MasterService for MasterServiceImpl {
         request: Request<ListDirectoryRequest>,
     ) -> Result<Response<ListDirectoryResponse>, Status> {
         let req = request.into_inner();
-        info!("Listing directory: {} (offset: {}, limit: {})", req.path, req.offset, req.limit);
+        info!("Listing directory parent: {} (offset: {}, limit: {})", req.parent, req.offset, req.limit);
         
         // TODO: Implement actual directory listing logic
         let response = ListDirectoryResponse {
@@ -449,7 +433,7 @@ impl MasterService for MasterServiceImpl {
         request: Request<GetFileInfoRequest>,
     ) -> Result<Response<GetFileInfoResponse>, Status> {
         let req = request.into_inner();
-        info!("Getting file info: {} (follow_symlinks: {})", req.path, req.follow_symlinks);
+        info!("Getting file info for inode: {}", req.inode);
         
         // TODO: Implement actual file info retrieval
         let response = GetFileInfoResponse {

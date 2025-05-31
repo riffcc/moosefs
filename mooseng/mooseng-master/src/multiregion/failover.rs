@@ -134,7 +134,7 @@ pub struct CircuitBreakerConfig {
 }
 
 /// Types of failures we can detect and handle
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum FailureType {
     /// Single node failure
     NodeFailure {
@@ -179,7 +179,7 @@ pub enum FailureType {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum PartitionType {
     Complete,      // No communication
     Intermittent,  // Sporadic communication
@@ -187,7 +187,7 @@ pub enum PartitionType {
 }
 
 /// Failure events
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FailureEvent {
     pub event_id: String,
     pub timestamp: HLCTimestamp,
@@ -197,7 +197,18 @@ pub struct FailureEvent {
     pub context: HashMap<String, String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+impl std::hash::Hash for FailureEvent {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.event_id.hash(state);
+        self.timestamp.hash(state);
+        self.failure_type.hash(state);
+        self.severity.hash(state);
+        self.detected_by.hash(state);
+        // Note: context HashMap is not hashed for consistency
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum FailureSeverity {
     Low,       // Minor degradation
     Medium,    // Significant impact
@@ -735,18 +746,6 @@ pub struct RecoveryWorkflow;
 pub struct ConsistencyChecker;
 pub struct RecoveryState;
 
-impl HLCTimestamp {
-    pub fn now() -> Self {
-        // Placeholder implementation
-        Self {
-            logical: 0,
-            physical: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_millis() as u64,
-            node_id: None,
-        }
-    }
-}
+// HLCTimestamp implementation is in hybrid_clock.rs
 
 // Use HLCTimestamp from hybrid_clock module instead of redefining it

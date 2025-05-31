@@ -148,7 +148,7 @@ impl ElectionManager {
             let mut node_guard = node.write().await;
             
             // Start election
-            node_guard.start_election()?;
+            node_guard.start_election().await?;
             
             let (last_log_index, last_log_term) = node_guard.log.last_entry_info();
             let term = node_guard.current_term();
@@ -212,7 +212,7 @@ impl ElectionManager {
                 &peer_id,
                 vote_response.term,
                 vote_response.vote_granted,
-            )?;
+            ).await?;
             
             if won_election {
                 // Additional safety check before becoming leader
@@ -314,7 +314,7 @@ impl ElectionManager {
                     resp.term,
                     resp.success,
                     resp.match_index,
-                )?;
+                ).await?;
             }
             Ok(Err(e)) => {
                 debug!("Heartbeat to {} failed: {}", peer, e);

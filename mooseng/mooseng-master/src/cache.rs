@@ -5,6 +5,17 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tracing::{debug, trace};
 
+/// Health statistics for cache monitoring
+#[derive(Debug, Clone)]
+pub struct CacheHealthStats {
+    pub hit_rate: f64,
+    pub hits: u64,
+    pub misses: u64,
+    pub inserts: u64,
+    pub updates: u64,
+    pub evictions: u64,
+}
+
 /// Cache entry with timestamp for TTL support
 #[derive(Clone)]
 struct CacheEntry<T> {
@@ -373,6 +384,18 @@ impl MetadataCache {
     /// Get cache statistics
     pub fn stats(&self) -> &CacheStats {
         &self.stats
+    }
+    
+    /// Get cache statistics for health monitoring
+    pub async fn get_stats(&self) -> CacheHealthStats {
+        CacheHealthStats {
+            hit_rate: self.stats.hit_rate(),
+            hits: self.stats.hits.load(Ordering::Relaxed),
+            misses: self.stats.misses.load(Ordering::Relaxed),
+            inserts: self.stats.inserts.load(Ordering::Relaxed),
+            updates: self.stats.updates.load(Ordering::Relaxed),
+            evictions: self.stats.evictions.load(Ordering::Relaxed),
+        }
     }
     
     /// Get current cache sizes

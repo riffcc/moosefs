@@ -3,10 +3,10 @@ use mooseng_common::types::{ChunkId, StorageClassId, now_micros};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 use tokio::sync::RwLock;
-use tracing::{debug, info, warn, error, instrument};
-use crate::erasure::{ErasureConfig, ErasureCoder};
+use tracing::{debug, info, warn, instrument};
+use crate::erasure::ErasureConfig;
 
 /// Storage tier types with different performance characteristics
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -133,16 +133,8 @@ pub struct CacheConfig {
     pub cache_dir: PathBuf,
 }
 
-/// Erasure coding configuration for a tier
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ErasureConfig {
-    /// Data shards (k)
-    pub data_shards: usize,
-    /// Parity shards (n)
-    pub parity_shards: usize,
-    /// Minimum shards required for reconstruction
-    pub min_shards: usize,
-}
+// Note: ErasureConfig is imported from crate::erasure module
+// This avoids duplication and naming conflicts
 
 /// Performance monitoring thresholds
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -585,7 +577,7 @@ impl TierConfig {
             erasure_config: Some(ErasureConfig {
                 data_shards: 8,
                 parity_shards: 2,
-                min_shards: 8,
+                max_shard_size: 64 * 1024 * 1024, // 64MB
             }),
             performance_thresholds: PerformanceThresholds {
                 max_latency_ms: 5,
@@ -609,7 +601,7 @@ impl TierConfig {
             erasure_config: Some(ErasureConfig {
                 data_shards: 6,
                 parity_shards: 3,
-                min_shards: 6,
+                max_shard_size: 64 * 1024 * 1024, // 64MB
             }),
             performance_thresholds: PerformanceThresholds {
                 max_latency_ms: 50,
@@ -654,7 +646,7 @@ impl TierConfig {
             erasure_config: Some(ErasureConfig {
                 data_shards: 4,
                 parity_shards: 2,
-                min_shards: 4,
+                max_shard_size: 64 * 1024 * 1024, // 64MB
             }),
             performance_thresholds: PerformanceThresholds {
                 max_latency_ms: 5000,

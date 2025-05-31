@@ -161,7 +161,7 @@ impl RaftConsensus {
     pub async fn validate_vote_request(
         &self,
         candidate_term: crate::raft::state::Term,
-        candidate_id: &str,
+        candidate_id: &crate::raft::state::NodeId,
         last_log_index: crate::raft::state::LogIndex,
         last_log_term: crate::raft::state::Term,
     ) -> Result<bool> {
@@ -182,10 +182,11 @@ impl RaftConsensus {
         change: ConfigChangeType,
     ) -> Result<crate::raft::state::LogIndex> {
         let mut node = self.node.write().await;
+        let state_clone = node.state.clone();
         self.membership_manager.propose_config_change(
             change,
             &mut node.log,
-            &node.state,
+            &state_clone,
         ).await
     }
 
@@ -199,7 +200,7 @@ impl RaftConsensus {
     }
 
     /// Check if node can participate in voting
-    pub async fn can_vote(&self, node_id: &str) -> bool {
+    pub async fn can_vote(&self, node_id: &crate::raft::state::NodeId) -> bool {
         self.membership_manager.can_vote(node_id).await
     }
 
@@ -236,7 +237,7 @@ impl RaftConsensus {
     }
 
     /// Grant a read lease to a follower (leader only)
-    pub async fn grant_read_lease(&self, follower_id: &str) -> Result<ReadLease> {
+    pub async fn grant_read_lease(&self, follower_id: &crate::raft::state::NodeId) -> Result<ReadLease> {
         let node = self.node.read().await;
         if !node.is_leader() {
             return Err(anyhow::anyhow!("Only leader can grant read leases"));

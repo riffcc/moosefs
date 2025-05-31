@@ -5,9 +5,8 @@ use std::sync::Arc;
 use tokio::fs::{self, File, OpenOptions};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, AsyncSeekExt};
 use tokio::sync::{Mutex, RwLock};
-use tracing::{debug, info, warn, error};
+use tracing::{debug, info, warn};
 use crc32fast::Hasher;
-use std::collections::VecDeque;
 
 const WAL_MAGIC: &[u8] = b"MNGWAL01"; // MooseNG WAL version 1
 const WAL_HEADER_SIZE: usize = 32;
@@ -299,7 +298,7 @@ impl WalReader {
     /// Read all WAL entries starting from a sequence ID
     pub async fn read_from(&self, start_sequence: u64) -> Result<Vec<(u64, Bytes)>> {
         let mut entries = Vec::new();
-        let mut wal_files = self.list_wal_files().await?;
+        let wal_files = self.list_wal_files().await?;
         
         for path in wal_files {
             let file_entries = self.read_wal_file(&path, start_sequence).await?;
@@ -340,7 +339,7 @@ impl WalReader {
             match file.read_exact(&mut header_buf).await {
                 Ok(_) => {
                     let sequence_id = u64::from_le_bytes(header_buf[0..8].try_into()?);
-                    let timestamp = i64::from_le_bytes(header_buf[8..16].try_into()?);
+                    let _timestamp = i64::from_le_bytes(header_buf[8..16].try_into()?);
                     let data_size = u32::from_le_bytes(header_buf[16..20].try_into()?);
                     let crc32 = u32::from_le_bytes(header_buf[20..24].try_into()?);
                     

@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Result};
 use std::collections::{HashMap, HashSet};
-use tracing::{debug, info, warn};
+use tracing::warn;
 
 use crate::erasure::{ErasureConfig, ServerLocation};
 
@@ -503,7 +503,7 @@ impl ErasurePlacementStrategy {
         racks.len()
     }
     
-    /// Calculate capacity balance score
+    /// Calculate capacity balance score (returns higher score for better balance)
     fn calculate_capacity_balance(&self, assignments: &[ShardAssignment]) -> f64 {
         let mut server_loads = HashMap::new();
         
@@ -527,7 +527,7 @@ impl ErasurePlacementStrategy {
         1.0 / (1.0 + variance.sqrt())
     }
     
-    /// Calculate network efficiency score
+    /// Calculate network efficiency score (returns higher score for lower latency)
     fn calculate_network_efficiency(&self, assignments: &[ShardAssignment]) -> f64 {
         // Simple implementation: prefer assignments with lower total network distance
         let mut total_distance = 0u32;

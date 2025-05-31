@@ -145,7 +145,7 @@ impl MembershipManager {
         self.validate_config_change(&change, &current_config)?;
 
         // Create new configuration
-        let new_config = self.apply_config_change(&current_config, &change)?;
+        let new_config = Self::apply_config_change(self, &current_config, &change)?;
         
         // Create joint configuration
         let joint_config = JointConfiguration::new(current_config, new_config);

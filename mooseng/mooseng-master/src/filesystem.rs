@@ -437,7 +437,7 @@ impl FileSystem {
     }
     
     /// Get inode information
-    async fn get_inode(&self, inode: InodeId) -> Result<Option<FsNode>> {
+    pub async fn get_inode(&self, inode: InodeId) -> Result<Option<FsNode>> {
         // Check cache first
         if let Some(node) = self.cache.get_inode(inode) {
             return Ok(Some(node));

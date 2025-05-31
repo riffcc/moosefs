@@ -34,11 +34,23 @@ pub struct Session {
     pub created_at: u64,
 }
 
+/// File handle information
+#[derive(Debug, Clone)]
+pub struct FileHandle {
+    pub file_handle: u64,
+    pub inode: InodeId,
+    pub session_id: SessionId,
+    pub flags: u32,
+    pub created_at: u64,
+}
+
 /// Manages client sessions and authentication
 pub struct SessionManager {
     sessions: Arc<DashMap<SessionId, Session>>,
     tokens: Arc<DashMap<String, SessionId>>,
+    file_handles: Arc<DashMap<u64, FileHandle>>,
     next_session_id: AtomicU64,
+    next_file_handle: AtomicU64,
     session_timeout: Duration,
 }
 
@@ -47,7 +59,9 @@ impl SessionManager {
         Self {
             sessions: Arc::new(DashMap::new()),
             tokens: Arc::new(DashMap::new()),
+            file_handles: Arc::new(DashMap::new()),
             next_session_id: AtomicU64::new(1),
+            next_file_handle: AtomicU64::new(1),
             session_timeout: Duration::from_millis(session_timeout_ms),
         }
     }
@@ -373,6 +387,55 @@ impl SessionManager {
             .take(32)
             .map(char::from)
             .collect()
+    }
+    
+    /// Open a file and create a file handle
+    pub async fn open_file(&self, inode: InodeId, flags: u32, session_id: SessionId) -> Result<u64> {
+        // Verify session exists
+        if !self.sessions.contains_key(&session_id) {
+            return Err(anyhow!("Session not found"));
+        }
+        
+        // Generate new file handle
+        let file_handle_id = self.next_file_handle.fetch_add(1, Ordering::SeqCst);
+        
+        let file_handle = FileHandle {
+            file_handle: file_handle_id,
+            inode,
+            session_id,
+            flags,
+            created_at: now_micros(),
+        };
+        
+        // Store file handle
+        self.file_handles.insert(file_handle_id, file_handle);
+        
+        // Add to session's open files
+        self.add_open_file(session_id, inode).await?;
+        
+        debug!("Opened file handle {} for inode {} in session {}", file_handle_id, inode, session_id);
+        Ok(file_handle_id)
+    }
+    
+    /// Close a file handle
+    pub async fn close_file(&self, file_handle_id: u64) -> Result<()> {
+        if let Some((_, file_handle)) = self.file_handles.remove(&file_handle_id) {
+            // Remove from session's open files
+            self.remove_open_file(file_handle.session_id, file_handle.inode).await?;
+            
+            debug!("Closed file handle {} for inode {} in session {}", 
+                   file_handle_id, file_handle.inode, file_handle.session_id);
+            Ok(())
+        } else {
+            Err(anyhow!("File handle not found"))
+        }
+    }
+    
+    /// Get file handle information
+    pub async fn get_file_handle(&self, file_handle_id: u64) -> Result<FileHandle> {
+        self.file_handles.get(&file_handle_id)
+            .map(|entry| entry.value().clone())
+            .ok_or_else(|| anyhow!("File handle not found"))
     }
 }
 

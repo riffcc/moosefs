@@ -1,7 +1,6 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use std::path::Path;
-use config::{Config, ConfigError, File};
+use config::{Config, File};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MetaloggerConfig {

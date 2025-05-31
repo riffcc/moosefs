@@ -189,14 +189,14 @@ impl MasterClient {
     }
     
     /// Read data from a file
-    pub async fn read(&mut self, inode: InodeId, offset: u64, size: u32) -> ClientResult<Vec<u8>> {
+    pub async fn read(&mut self, _inode: InodeId, _offset: u64, size: u32) -> ClientResult<Vec<u8>> {
         // For now, just return empty data - actual reads should go through chunk servers
         // TODO: Implement proper chunk reading
         Ok(vec![0u8; size as usize])
     }
     
     /// Write data to a file
-    pub async fn write(&mut self, inode: InodeId, _offset: u64, data: &[u8]) -> ClientResult<u32> {
+    pub async fn write(&mut self, _inode: InodeId, _offset: u64, data: &[u8]) -> ClientResult<u32> {
         // For now, just return the size - actual writes should go through chunk servers
         // TODO: Implement proper chunk writing
         Ok(data.len() as u32)
@@ -283,7 +283,7 @@ impl MasterClient {
         mode: Option<u32>,
         uid: Option<u32>,
         gid: Option<u32>,
-        size: Option<u64>,
+        _size: Option<u64>,
         atime: Option<u64>,
         mtime: Option<u64>,
     ) -> ClientResult<FileAttr> {

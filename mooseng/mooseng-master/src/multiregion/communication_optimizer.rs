@@ -259,7 +259,7 @@ struct CompressionEngine {
 }
 
 /// Network statistics
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct NetworkStatistics {
     total_operations_sent: u64,
     total_bytes_sent: u64,
@@ -269,7 +269,7 @@ pub struct NetworkStatistics {
     operations_by_region: HashMap<u32, RegionStats>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 struct RegionStats {
     operations_sent: u64,
     bytes_sent: u64,

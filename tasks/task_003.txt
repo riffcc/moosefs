@@ -47,9 +47,9 @@ Develop unit tests for chunk operations. Create integration tests to verify data
 ### Details:
 
 
-## 3.7. Address scope conflicts and type mismatches [in-progress]
+## 3.7. Address scope conflicts and type mismatches [done]
 ### Dependencies: None
-### Description: Identify and resolve any scope conflicts, type mismatches, and private field access issues in the chunk server codebase. Instance 2 (Infrastructure Specialist) is actively working on this subtask.
+### Description: Successfully resolved scope conflicts and type mismatches in the chunk server codebase. Fixed critical compilation error by adding missing Context trait import in tiered_storage.rs. Cleaned up unused imports across multiple files (erasure_storage.rs, placement.rs, zero_copy.rs, metrics.rs, compression_service.rs, tiered_storage.rs, and tier_movement.rs), reducing warnings from 32 to 11. Verified component compatibility between mooseng-chunkserver and mooseng-client, confirming they share compatible workspace dependencies with no build script conflicts.
 ### Details:
 
 
@@ -74,6 +74,12 @@ Develop unit tests for chunk operations. Create integration tests to verify data
 ## 3.12. Coordinate integration testing with main instance [to-do]
 ### Dependencies: None
 ### Description: Set up and execute comprehensive integration testing in collaboration with the main instance to ensure proper functionality across all system components. This will be initiated after the compilation gate (Task 34) is resolved.
+### Details:
+
+
+## 3.13. Address remaining warnings in mooseng-chunkserver [to-do]
+### Dependencies: None
+### Description: Resolve the 11 remaining warnings in the mooseng-chunkserver component to ensure clean compilation and optimal code quality.
 ### Details:
 
 

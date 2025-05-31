@@ -6,9 +6,8 @@ use tokio::fs::{self, File, OpenOptions};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, AsyncSeekExt, BufReader, BufWriter};
 use tokio::sync::{RwLock, Semaphore};
 use tokio::time::{interval, Duration};
-use tracing::{debug, info, warn, error};
+use tracing::{info, warn, error};
 use chrono::{DateTime, Utc};
-use futures::stream::{self, StreamExt};
 use flate2::Compression;
 use flate2::write::GzEncoder;
 use flate2::read::GzDecoder;
@@ -119,7 +118,7 @@ impl SnapshotManager {
         info!("Creating snapshot: {:?}", path);
         
         // Calculate total size
-        let total_size: usize = data.iter().map(|(_, bytes)| bytes.len()).sum();
+        let _total_size: usize = data.iter().map(|(_, bytes)| bytes.len()).sum();
         let entries_count = data.len() as u64;
         
         // Create snapshot file

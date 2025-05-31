@@ -72,7 +72,7 @@ impl MasterHealthChecker {
         metrics.memory_usage_percent = Self::get_memory_usage().await?;
         
         // Session metrics
-        metrics.active_sessions = self.session_manager.get_active_session_count().await;
+        metrics.active_sessions = self.session_manager.get_active_session_count().await as u64;
         
         // Cache metrics
         let cache_stats = self.cache.get_stats().await;
@@ -116,7 +116,7 @@ impl MasterHealthChecker {
     
     async fn get_network_connections(&self) -> u64 {
         // Simplified - would count actual network connections
-        self.session_manager.get_active_session_count().await
+        self.session_manager.get_active_session_count().await as u64
     }
     
     fn evaluate_health(&self, metrics: &MasterMetrics) -> (HealthStatus, String, Vec<String>) {

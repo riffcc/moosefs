@@ -67,7 +67,7 @@ impl MetaloggerHealthChecker {
         metrics.disk_usage_percent = Self::get_disk_usage().await?;
         
         // Master connection health
-        if let Some(ref server) = self.server {
+        if let Some(ref _server) = self.server {
             // TODO: Implement actual ping/health check in MetaloggerServer
             metrics.master_connection_status = true; // Placeholder
             metrics.master_response_time_ms = 25.0; // Placeholder
@@ -443,7 +443,7 @@ impl HealthChecker for MetaloggerHealthChecker {
                 }
             }
             
-            SelfHealingAction::CustomAction { name, params } => {
+            SelfHealingAction::CustomAction { name, params: _ } => {
                 match name.as_str() {
                     "wal_rotate" => {
                         info!("Performing WAL rotation");

@@ -8,6 +8,16 @@ use std::path::Path;
 use std::sync::Arc;
 use tracing::{debug, error, info};
 
+/// Health statistics for metadata store monitoring
+#[derive(Debug, Clone)]
+pub struct MetadataHealthStats {
+    pub operations_per_second: f64,
+    pub disk_usage_percent: f64,
+    pub total_inodes: u64,
+    pub total_chunks: u64,
+    pub total_edges: u64,
+}
+
 const INODES_TREE: &str = "inodes";
 const EDGES_TREE: &str = "edges";
 const CHUNKS_TREE: &str = "chunks";
@@ -324,6 +334,22 @@ impl MetadataStore {
         self.flush().await?;
         debug!("Metadata saved to disk");
         Ok(())
+    }
+    
+    /// Get health statistics for monitoring
+    pub async fn get_stats(&self) -> MetadataHealthStats {
+        // In production, these would be real metrics
+        let total_inodes = self.inodes.len() as u64;
+        let total_chunks = self.chunks.len() as u64;
+        let total_edges = self.edges.len() as u64;
+        
+        MetadataHealthStats {
+            operations_per_second: 0.0, // TODO: Implement real operation counting
+            disk_usage_percent: 0.0,     // TODO: Implement real disk usage calculation
+            total_inodes,
+            total_chunks,
+            total_edges,
+        }
     }
 }
 

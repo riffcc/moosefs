@@ -832,18 +832,6 @@ impl ExternalTieBreaker { fn new() -> Self { Self } }
 pub struct NetworkPartitionDetector;
 impl NetworkPartitionDetector { fn new() -> Self { Self } }
 
-impl HLCTimestamp {
-    pub fn now() -> Self {
-        Self {
-            logical: 0,
-            physical: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_millis() as u64,
-            node_id: None,
-        }
-    }
-}
 
 // Use HLCTimestamp from multiregion module instead of redefining it
 

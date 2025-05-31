@@ -817,6 +817,7 @@ impl MetricsCollectorFactory {
 
 /// Generic component metrics collector
 pub struct ComponentMetricsCollector<T> {
+    #[allow(dead_code)]
     component_name: String,
     metrics: Arc<T>,
 }

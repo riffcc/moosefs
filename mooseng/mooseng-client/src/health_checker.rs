@@ -18,7 +18,9 @@ use crate::filesystem::MooseFuse;
 
 /// Client health checker
 pub struct ClientHealthChecker {
+    #[allow(dead_code)]
     master_client: Arc<MasterClient>,
+    #[allow(dead_code)]
     cache: Arc<ClientCache>,
     filesystem: Option<Arc<MooseFuse>>,
     metrics: Arc<RwLock<ClientMetrics>>,

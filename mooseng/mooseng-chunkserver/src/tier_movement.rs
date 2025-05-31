@@ -1,4 +1,4 @@
-use anyhow::{Result, Context};
+use anyhow::Result;
 use mooseng_common::types::{ChunkId, now_micros};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};

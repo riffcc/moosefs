@@ -252,14 +252,22 @@ impl RaftNode {
             return Ok(());
         }
         
-        if let Some(leader_state) = &mut self.leader_state {
+        let should_advance_commit = if let Some(leader_state) = &mut self.leader_state {
             if success {
                 leader_state.update_match_index(from, match_index);
-                self.try_advance_commit_index().await?;
+                leader_state.update_heartbeat(from);
+                true
             } else {
                 leader_state.decrement_next_index(from);
+                leader_state.update_heartbeat(from);
+                false
             }
-            leader_state.update_heartbeat(from);
+        } else {
+            false
+        };
+        
+        if should_advance_commit {
+            self.try_advance_commit_index().await?;
         }
         
         Ok(())
