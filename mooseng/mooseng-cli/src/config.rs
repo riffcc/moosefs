@@ -1,6 +1,7 @@
 use clap::Subcommand;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use crate::grpc_client::{load_client_config, save_client_config, GrpcClientConfig};
 
 #[derive(Subcommand)]
 pub enum ConfigCommands {
@@ -84,6 +85,53 @@ pub enum ConfigCommands {
         #[command(subcommand)]
         action: StorageClassCommands,
     },
+    /// Manage CLI client configuration
+    Client {
+        #[command(subcommand)]
+        action: ClientConfigCommands,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum ClientConfigCommands {
+    /// Show current CLI configuration
+    Show,
+    /// Set master server addresses
+    SetMasters {
+        /// Comma-separated list of master addresses
+        addresses: String,
+    },
+    /// Set connection timeout
+    SetTimeout {
+        /// Timeout in seconds
+        #[arg(short, long)]
+        connect: Option<u64>,
+        /// Request timeout in seconds
+        #[arg(short, long)]
+        request: Option<u64>,
+    },
+    /// Enable or disable TLS
+    SetTls {
+        /// Enable TLS
+        #[arg(short, long)]
+        enable: bool,
+        /// TLS certificate path
+        #[arg(short, long)]
+        cert_path: Option<String>,
+    },
+    /// Set retry configuration
+    SetRetry {
+        /// Number of retry attempts
+        #[arg(short, long)]
+        attempts: Option<u32>,
+        /// Retry delay in milliseconds
+        #[arg(short, long)]
+        delay: Option<u64>,
+    },
+    /// Reset CLI configuration to defaults
+    Reset,
+    /// Test connectivity with current configuration
+    Test,
 }
 
 #[derive(Subcommand)]
@@ -207,6 +255,9 @@ pub async fn handle_command(command: ConfigCommands) -> Result<(), Box<dyn std::
         }
         ConfigCommands::StorageClass { action } => {
             handle_storage_class_command(action).await
+        }
+        ConfigCommands::Client { action } => {
+            handle_client_config_command(action).await
         }
     }
 }
@@ -488,6 +539,175 @@ async fn delete_storage_class(name: &str, force: bool) -> Result<(), Box<dyn std
         println!("Force deletion enabled - will delete even if in use");
     }
     println!("Storage class deleted successfully (placeholder implementation)");
+    Ok(())
+}
+
+async fn handle_client_config_command(command: ClientConfigCommands) -> Result<(), Box<dyn std::error::Error>> {
+    match command {
+        ClientConfigCommands::Show => {
+            show_client_config().await
+        }
+        ClientConfigCommands::SetMasters { addresses } => {
+            set_masters(&addresses).await
+        }
+        ClientConfigCommands::SetTimeout { connect, request } => {
+            set_timeout(connect, request).await
+        }
+        ClientConfigCommands::SetTls { enable, cert_path } => {
+            set_tls(enable, cert_path).await
+        }
+        ClientConfigCommands::SetRetry { attempts, delay } => {
+            set_retry(attempts, delay).await
+        }
+        ClientConfigCommands::Reset => {
+            reset_client_config().await
+        }
+        ClientConfigCommands::Test => {
+            test_client_config().await
+        }
+    }
+}
+
+async fn show_client_config() -> Result<(), Box<dyn std::error::Error>> {
+    let config = load_client_config()?;
+    
+    println!("CLI Client Configuration:");
+    println!("{}", "=".repeat(40));
+    println!("Master Addresses:");
+    for (i, addr) in config.master_addresses.iter().enumerate() {
+        println!("  {}. {}", i + 1, addr);
+    }
+    println!("Connection Timeout: {} seconds", config.connect_timeout_secs);
+    println!("Request Timeout: {} seconds", config.request_timeout_secs);
+    println!("TLS Enabled: {}", config.enable_tls);
+    if let Some(cert_path) = &config.tls_cert_path {
+        println!("TLS Certificate: {}", cert_path);
+    }
+    println!("Retry Attempts: {}", config.retry_attempts);
+    println!("Retry Delay: {} ms", config.retry_delay_ms);
+    
+    Ok(())
+}
+
+async fn set_masters(addresses: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let mut config = load_client_config()?;
+    
+    config.master_addresses = addresses
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .collect();
+    
+    save_client_config(&config)?;
+    
+    println!("Updated master addresses:");
+    for addr in &config.master_addresses {
+        println!("  - {}", addr);
+    }
+    
+    Ok(())
+}
+
+async fn set_timeout(connect: Option<u64>, request: Option<u64>) -> Result<(), Box<dyn std::error::Error>> {
+    let mut config = load_client_config()?;
+    
+    if let Some(connect_timeout) = connect {
+        config.connect_timeout_secs = connect_timeout;
+        println!("Set connection timeout to {} seconds", connect_timeout);
+    }
+    
+    if let Some(request_timeout) = request {
+        config.request_timeout_secs = request_timeout;
+        println!("Set request timeout to {} seconds", request_timeout);
+    }
+    
+    save_client_config(&config)?;
+    Ok(())
+}
+
+async fn set_tls(enable: bool, cert_path: Option<String>) -> Result<(), Box<dyn std::error::Error>> {
+    let mut config = load_client_config()?;
+    
+    config.enable_tls = enable;
+    config.tls_cert_path = cert_path.clone();
+    
+    save_client_config(&config)?;
+    
+    if enable {
+        println!("TLS enabled");
+        if let Some(path) = cert_path {
+            println!("Using certificate: {}", path);
+        }
+    } else {
+        println!("TLS disabled");
+    }
+    
+    Ok(())
+}
+
+async fn set_retry(attempts: Option<u32>, delay: Option<u64>) -> Result<(), Box<dyn std::error::Error>> {
+    let mut config = load_client_config()?;
+    
+    if let Some(retry_attempts) = attempts {
+        config.retry_attempts = retry_attempts;
+        println!("Set retry attempts to {}", retry_attempts);
+    }
+    
+    if let Some(retry_delay) = delay {
+        config.retry_delay_ms = retry_delay;
+        println!("Set retry delay to {} ms", retry_delay);
+    }
+    
+    save_client_config(&config)?;
+    Ok(())
+}
+
+async fn reset_client_config() -> Result<(), Box<dyn std::error::Error>> {
+    let default_config = GrpcClientConfig::default();
+    save_client_config(&default_config)?;
+    
+    println!("CLI configuration reset to defaults");
+    println!("Master address: {:?}", default_config.master_addresses);
+    println!("Connection timeout: {} seconds", default_config.connect_timeout_secs);
+    println!("Request timeout: {} seconds", default_config.request_timeout_secs);
+    
+    Ok(())
+}
+
+async fn test_client_config() -> Result<(), Box<dyn std::error::Error>> {
+    use crate::grpc_client::MooseNGClient;
+    
+    println!("Testing CLI configuration...");
+    println!();
+    
+    let config = load_client_config()?;
+    let mut client = match MooseNGClient::new(config.clone()).await {
+        Ok(client) => {
+            println!("✓ Successfully connected to master servers");
+            client
+        }
+        Err(e) => {
+            println!("✗ Failed to connect: {}", e);
+            return Ok(());
+        }
+    };
+    
+    // Test connectivity to all configured masters
+    let results = client.test_connectivity().await;
+    
+    println!("Connectivity Test Results:");
+    println!("{}", "-".repeat(50));
+    
+    for (address, result) in results {
+        match result {
+            Ok(duration) => {
+                println!("✓ {} - Response time: {:.2}ms", address, duration.as_millis());
+            }
+            Err(e) => {
+                println!("✗ {} - Error: {}", address, e);
+            }
+        }
+    }
+    
     Ok(())
 }
 

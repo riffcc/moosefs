@@ -17,6 +17,7 @@ async-trait = { workspace = true }
 # gRPC
 tonic = { workspace = true }
 prost = { workspace = true }
+prost-types = { workspace = true }
 
 # Storage
 bincode = { workspace = true }
@@ -48,8 +49,12 @@ crossbeam = { workspace = true }
 lru = { workspace = true }
 blake3 = { workspace = true }
 crc32fast = { workspace = true }
+xxhash-rust = { version = "0.8", features = ["xxh3"] }
 hex = { workspace = true }
 num_cpus = { workspace = true }
+lazy_static = "1.5"
+rand = { workspace = true }
+tempfile = { workspace = true }
 
 # Networking
 hyper = { workspace = true }
@@ -62,6 +67,9 @@ memmap2 = { workspace = true }
 
 # Erasure coding
 reed-solomon-erasure = { workspace = true }
+
+# Object storage
+object_store = { version = "0.5.4", features = ["aws", "azure", "gcp"] }
 
 [dev-dependencies]
 tempfile = { workspace = true }

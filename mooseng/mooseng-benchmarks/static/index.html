@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MooseNG Benchmark Dashboard</title>
+    
+    <!-- CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/date-fns@2.30.0/index.min.js"></script>
+    
+    <style>
+        .dashboard-card {
+            transition: transform 0.2s;
+        }
+        .dashboard-card:hover {
+            transform: translateY(-2px);
+        }
+        
+        .metric-value {
+            font-size: 2rem;
+            font-weight: bold;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        
+        .status-online {
+            background-color: #28a745;
+            animation: pulse 2s infinite;
+        }
+        
+        .status-offline {
+            background-color: #6c757d;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        
+        .loading-spinner {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 200px;
+        }
+        
+        .trend-up {
+            color: #28a745;
+        }
+        
+        .trend-down {
+            color: #dc3545;
+        }
+        
+        .trend-stable {
+            color: #ffc107;
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">
+                <i class="fas fa-tachometer-alt me-2"></i>
+                MooseNG Benchmark Dashboard
+            </a>
+            
+            <div class="navbar-nav ms-auto">
+                <div class="nav-item d-flex align-items-center text-white">
+                    <span class="status-indicator" id="connectionStatus"></span>
+                    <span id="connectionText">Connecting...</span>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="container-fluid py-4">
+        <!-- Summary Cards -->
+        <div class="row mb-4">
+            <div class="col-lg-3 col-md-6 mb-3">
+                <div class="card dashboard-card h-100 bg-primary text-white">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center">
+                            <div class="flex-grow-1">
+                                <div class="metric-value" id="totalSessions">-</div>
+                                <div>Total Sessions</div>
+                            </div>
+                            <div class="ms-3">
+                                <i class="fas fa-folder-open fa-2x opacity-75"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-lg-3 col-md-6 mb-3">
+                <div class="card dashboard-card h-100 bg-success text-white">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center">
+                            <div class="flex-grow-1">
+                                <div class="metric-value" id="totalResults">-</div>
+                                <div>Total Results</div>
+                            </div>
+                            <div class="ms-3">
+                                <i class="fas fa-chart-bar fa-2x opacity-75"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-lg-3 col-md-6 mb-3">
+                <div class="card dashboard-card h-100 bg-info text-white">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center">
+                            <div class="flex-grow-1">
+                                <div class="metric-value" id="activeSessions">-</div>
+                                <div>Active Sessions</div>
+                            </div>
+                            <div class="ms-3">
+                                <i class="fas fa-play-circle fa-2x opacity-75"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-lg-3 col-md-6 mb-3">
+                <div class="card dashboard-card h-100 bg-warning text-white">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center">
+                            <div class="flex-grow-1">
+                                <div class="metric-value" id="performanceScore">-</div>
+                                <div>Performance Score</div>
+                            </div>
+                            <div class="ms-3">
+                                <i class="fas fa-medal fa-2x opacity-75"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts Row -->
+        <div class="row mb-4">
+            <div class="col-lg-8">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-chart-line me-2"></i>
+                            Performance Trends
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="trendsChart" height="100"></canvas>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-lg-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-chart-pie me-2"></i>
+                            Operation Distribution
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="distributionChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sessions and Results -->
+        <div class="row">
+            <div class="col-lg-6">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-history me-2"></i>
+                            Recent Sessions
+                        </h5>
+                        <button class="btn btn-sm btn-outline-primary" onclick="refreshSessions()">
+                            <i class="fas fa-sync-alt"></i>
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <div id="sessionsTable">
+                            <div class="loading-spinner">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-lg-6">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-stopwatch me-2"></i>
+                            Latest Results
+                        </h5>
+                        <button class="btn btn-sm btn-outline-primary" onclick="refreshResults()">
+                            <i class="fas fa-sync-alt"></i>
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <div id="resultsTable">
+                            <div class="loading-spinner">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Session Details Modal -->
+    <div class="modal fade" id="sessionModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Session Details</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="sessionModalBody">
+                    <!-- Session details will be loaded here -->
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script>
+        // Dashboard API Client
+        class DashboardAPI {
+            constructor(baseUrl = '') {
+                this.baseUrl = baseUrl;
+                this.wsUrl = `ws://${window.location.host}/ws`;
+                this.websocket = null;
+                this.connected = false;
+            }
+
+            async request(endpoint, options = {}) {
+                try {
+                    const response = await fetch(`${this.baseUrl}/api${endpoint}`, {
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...options.headers
+                        },
+                        ...options
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    
+                    return await response.json();
+                } catch (error) {
+                    console.error(`API request failed: ${endpoint}`, error);
+                    throw error;
+                }
+            }
+
+            async getSummary() {
+                return this.request('/summary');
+            }
+
+            async getSessions(limit = 10, offset = 0) {
+                return this.request(`/sessions?limit=${limit}&offset=${offset}`);
+            }
+
+            async getSession(sessionId) {
+                return this.request(`/sessions/${sessionId}`);
+            }
+
+            async getResults(params = {}) {
+                const query = new URLSearchParams(params).toString();
+                return this.request(`/results?${query}`);
+            }
+
+            async getStats() {
+                return this.request('/stats');
+            }
+
+            async getTrends(operation) {
+                return this.request(`/trends/${operation}`);
+            }
+
+            connectWebSocket() {
+                try {
+                    this.websocket = new WebSocket(this.wsUrl);
+                    
+                    this.websocket.onopen = () => {
+                        this.connected = true;
+                        this.updateConnectionStatus(true);
+                    };
+                    
+                    this.websocket.onclose = () => {
+                        this.connected = false;
+                        this.updateConnectionStatus(false);
+                        // Attempt to reconnect after 5 seconds
+                        setTimeout(() => this.connectWebSocket(), 5000);
+                    };
+                    
+                    this.websocket.onmessage = (event) => {
+                        try {
+                            const data = JSON.parse(event.data);
+                            this.handleWebSocketMessage(data);
+                        } catch (error) {
+                            console.error('WebSocket message parsing error:', error);
+                        }
+                    };
+                } catch (error) {
+                    console.error('WebSocket connection error:', error);
+                    this.updateConnectionStatus(false);
+                }
+            }
+
+            updateConnectionStatus(connected) {
+                const indicator = document.getElementById('connectionStatus');
+                const text = document.getElementById('connectionText');
+                
+                if (connected) {
+                    indicator.className = 'status-indicator status-online';
+                    text.textContent = 'Connected';
+                } else {
+                    indicator.className = 'status-indicator status-offline';
+                    text.textContent = 'Disconnected';
+                }
+            }
+
+            handleWebSocketMessage(data) {
+                console.log('WebSocket message:', data);
+                // Handle real-time updates here
+            }
+        }
+
+        // Dashboard Manager
+        class Dashboard {
+            constructor() {
+                this.api = new DashboardAPI();
+                this.charts = {};
+                this.refreshInterval = null;
+            }
+
+            async init() {
+                try {
+                    // Connect WebSocket
+                    this.api.connectWebSocket();
+                    
+                    // Load initial data
+                    await this.loadSummary();
+                    await this.loadSessions();
+                    await this.loadResults();
+                    
+                    // Set up auto-refresh
+                    this.refreshInterval = setInterval(() => {
+                        this.loadSummary();
+                        this.loadSessions();
+                        this.loadResults();
+                    }, 30000); // Refresh every 30 seconds
+                    
+                } catch (error) {
+                    console.error('Dashboard initialization failed:', error);
+                    this.showError('Failed to initialize dashboard');
+                }
+            }
+
+            async loadSummary() {
+                try {
+                    const response = await this.api.getSummary();
+                    if (response.success) {
+                        this.updateSummaryCards(response.data);
+                        this.updateTrendsChart(response.data.performance_trends);
+                    }
+                } catch (error) {
+                    console.error('Failed to load summary:', error);
+                }
+            }
+
+            updateSummaryCards(data) {
+                document.getElementById('totalSessions').textContent = data.total_sessions || '-';
+                document.getElementById('totalResults').textContent = data.total_results || '-';
+                document.getElementById('activeSessions').textContent = data.active_sessions || '-';
+                
+                // Calculate performance score (simplified)
+                const score = data.recent_results.length > 0 
+                    ? Math.round(data.recent_results.reduce((acc, r) => acc + (r.throughput || 0), 0) / data.recent_results.length)
+                    : 0;
+                document.getElementById('performanceScore').textContent = score;
+            }
+
+            updateTrendsChart(trends) {
+                const ctx = document.getElementById('trendsChart').getContext('2d');
+                
+                if (this.charts.trends) {
+                    this.charts.trends.destroy();
+                }
+                
+                const datasets = trends.map((trend, index) => ({
+                    label: trend.operation,
+                    data: trend.values.map(v => ({ x: v.timestamp, y: v.value })),
+                    borderColor: `hsl(${index * 60}, 70%, 50%)`,
+                    backgroundColor: `hsla(${index * 60}, 70%, 50%, 0.1)`,
+                    tension: 0.1
+                }));
+
+                this.charts.trends = new Chart(ctx, {
+                    type: 'line',
+                    data: { datasets },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            x: {
+                                type: 'time',
+                                time: {
+                                    unit: 'day'
+                                }
+                            },
+                            y: {
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: 'Duration (ms)'
+                                }
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                position: 'top',
+                            }
+                        }
+                    }
+                });
+            }
+
+            async loadSessions() {
+                try {
+                    const response = await this.api.getSessions(10, 0);
+                    if (response.success) {
+                        this.updateSessionsTable(response.data);
+                    }
+                } catch (error) {
+                    console.error('Failed to load sessions:', error);
+                }
+            }
+
+            updateSessionsTable(sessions) {
+                const container = document.getElementById('sessionsTable');
+                
+                if (sessions.length === 0) {
+                    container.innerHTML = '<p class="text-muted text-center">No sessions found</p>';
+                    return;
+                }
+
+                const table = `
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Status</th>
+                                    <th>Started</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${sessions.map(session => `
+                                    <tr>
+                                        <td>
+                                            <strong>${session.name}</strong>
+                                            ${session.description ? `<br><small class="text-muted">${session.description}</small>` : ''}
+                                        </td>
+                                        <td>
+                                            <span class="badge bg-${this.getStatusColor(session.status)}">
+                                                ${this.formatStatus(session.status)}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <small>${this.formatDate(session.start_time)}</small>
+                                        </td>
+                                        <td>
+                                            <button class="btn btn-sm btn-outline-primary" onclick="dashboard.showSessionDetails('${session.id}')">
+                                                <i class="fas fa-eye"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+                
+                container.innerHTML = table;
+            }
+
+            async loadResults() {
+                try {
+                    const response = await this.api.getResults({ limit: 10 });
+                    if (response.success) {
+                        this.updateResultsTable(response.data);
+                    }
+                } catch (error) {
+                    console.error('Failed to load results:', error);
+                }
+            }
+
+            updateResultsTable(results) {
+                const container = document.getElementById('resultsTable');
+                
+                if (results.length === 0) {
+                    container.innerHTML = '<p class="text-muted text-center">No results found</p>';
+                    return;
+                }
+
+                const table = `
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Operation</th>
+                                    <th>Duration</th>
+                                    <th>Throughput</th>
+                                    <th>When</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${results.map(result => `
+                                    <tr>
+                                        <td>
+                                            <strong>${result.operation}</strong>
+                                            <br><small class="text-muted">${result.suite_name}</small>
+                                        </td>
+                                        <td>${(result.mean_time_ns / 1000000).toFixed(2)} ms</td>
+                                        <td>${result.throughput ? result.throughput.toFixed(2) + ' ops/s' : 'N/A'}</td>
+                                        <td><small>${this.formatDate(result.timestamp)}</small></td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+                
+                container.innerHTML = table;
+            }
+
+            async showSessionDetails(sessionId) {
+                try {
+                    const response = await this.api.getSession(sessionId);
+                    if (response.success && response.data) {
+                        this.renderSessionModal(response.data);
+                        const modal = new bootstrap.Modal(document.getElementById('sessionModal'));
+                        modal.show();
+                    }
+                } catch (error) {
+                    console.error('Failed to load session details:', error);
+                    this.showError('Failed to load session details');
+                }
+            }
+
+            renderSessionModal(session) {
+                const body = document.getElementById('sessionModalBody');
+                
+                const html = `
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>Session Information</h6>
+                            <table class="table table-sm">
+                                <tr><td><strong>ID:</strong></td><td>${session.id}</td></tr>
+                                <tr><td><strong>Name:</strong></td><td>${session.name}</td></tr>
+                                <tr><td><strong>Status:</strong></td><td>
+                                    <span class="badge bg-${this.getStatusColor(session.status)}">
+                                        ${this.formatStatus(session.status)}
+                                    </span>
+                                </td></tr>
+                                <tr><td><strong>Started:</strong></td><td>${this.formatDate(session.start_time)}</td></tr>
+                                ${session.end_time ? `<tr><td><strong>Ended:</strong></td><td>${this.formatDate(session.end_time)}</td></tr>` : ''}
+                            </table>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>Configuration</h6>
+                            <pre class="small bg-light p-2 rounded">${JSON.stringify(session.config, null, 2)}</pre>
+                        </div>
+                    </div>
+                    ${session.description ? `
+                        <div class="mt-3">
+                            <h6>Description</h6>
+                            <p>${session.description}</p>
+                        </div>
+                    ` : ''}
+                `;
+                
+                body.innerHTML = html;
+            }
+
+            getStatusColor(status) {
+                const colors = {
+                    0: 'secondary', // Created
+                    1: 'warning',   // Running
+                    2: 'success',   // Completed
+                    3: 'danger',    // Failed
+                    4: 'secondary'  // Cancelled
+                };
+                return colors[status] || 'secondary';
+            }
+
+            formatStatus(status) {
+                const statuses = {
+                    0: 'Created',
+                    1: 'Running',
+                    2: 'Completed',
+                    3: 'Failed',
+                    4: 'Cancelled'
+                };
+                return statuses[status] || 'Unknown';
+            }
+
+            formatDate(dateString) {
+                const date = new Date(dateString);
+                return date.toLocaleString();
+            }
+
+            showError(message) {
+                // Simple error display - could be enhanced with toast notifications
+                console.error(message);
+            }
+
+            destroy() {
+                if (this.refreshInterval) {
+                    clearInterval(this.refreshInterval);
+                }
+                
+                if (this.api.websocket) {
+                    this.api.websocket.close();
+                }
+                
+                // Destroy charts
+                Object.values(this.charts).forEach(chart => chart.destroy());
+            }
+        }
+
+        // Global functions for button clicks
+        function refreshSessions() {
+            dashboard.loadSessions();
+        }
+
+        function refreshResults() {
+            dashboard.loadResults();
+        }
+
+        // Initialize dashboard
+        let dashboard;
+        document.addEventListener('DOMContentLoaded', () => {
+            dashboard = new Dashboard();
+            dashboard.init();
+        });
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (dashboard) {
+                dashboard.destroy();
+            }
+        });
+    </script>
+</body>
+</html>

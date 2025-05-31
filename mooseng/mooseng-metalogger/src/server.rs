@@ -322,7 +322,7 @@ impl MetaloggerServer {
                   server.config.network.listen_address,
                   server.config.network.listen_port);
             
-            let addr = format!("{}:{}",
+            let addr: std::net::SocketAddr = format!("{}:{}",
                              server.config.network.listen_address,
                              server.config.network.listen_port)
                 .parse()

@@ -3,7 +3,7 @@ use bytes::{Bytes, BytesMut};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::fs::{self, File, OpenOptions};
-use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
+use tokio::io::{AsyncReadExt, AsyncWriteExt, AsyncSeekExt, BufReader, BufWriter};
 use tokio::sync::{RwLock, Semaphore};
 use tokio::time::{interval, Duration};
 use tracing::{debug, info, warn, error};
@@ -45,11 +45,12 @@ impl SnapshotManager {
         fs::create_dir_all(&snapshot_dir).await
             .context("Failed to create snapshot directory")?;
 
+        let parallel_workers = config.parallel_workers;
         Ok(Self {
             config,
             snapshot_dir,
             snapshot_index: Arc::new(RwLock::new(0)),
-            semaphore: Arc::new(Semaphore::new(config.parallel_workers)),
+            semaphore: Arc::new(Semaphore::new(parallel_workers)),
         })
     }
 

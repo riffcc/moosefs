@@ -69,12 +69,14 @@ pub enum RaftMessage {
     InstallSnapshotResponse(InstallSnapshotResponse),
 }
 
+#[derive(Debug)]
 pub struct RaftRpc {
     pub node_id: NodeId,
     config: RaftConfig,
     connections: Arc<RwLock<HashMap<NodeId, RaftConnection>>>,
 }
 
+#[derive(Debug)]
 struct RaftConnection {
     endpoint: String,
     last_connected: std::time::Instant,

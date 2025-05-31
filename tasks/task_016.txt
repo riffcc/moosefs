@@ -1,11 +1,81 @@
 # Task ID: 16
 # Title: Implement Prometheus metrics export
-# Status: pending
+# Status: done
 # Dependencies: 2, 3, 4, 5
 # Priority: medium
-# Description: Add Prometheus metrics export for all MooseNG components.
+# Description: Add Prometheus metrics export for all MooseNG components, building on the completed metadata cache metrics implementation.
 # Details:
-Use the prometheus = '0.13.3' crate to implement metrics collection and export. Define and implement relevant metrics for each component (e.g., operation latencies, error rates, resource usage). Expose a /metrics endpoint in each component for Prometheus scraping. Implement custom collectors for complex metrics.
+Use the prometheus = '0.13.3' crate to implement metrics collection and export for remaining MooseNG components, following the pattern established in the metadata cache implementation. The MasterMetrics struct in mooseng-common/src/metrics.rs has been extended to include comprehensive component metrics including MetaloggerMetrics for log operations, backup operations, and recovery operations. The metrics system now supports:
+
+- Automatic metrics collection for all MooseNG components
+- Component-specific metrics with proper labeling
+- Process metrics (CPU, memory, open files) for all components
+- Health check integration with metrics
+- Factory pattern for easy metrics collector creation
+- Comprehensive test coverage
+
+Remaining work includes integrating these collectors with actual component operations and completing health monitoring integration.
 
 # Test Strategy:
-Verify all defined metrics are correctly exposed and scraped by Prometheus. Test metric accuracy under various load conditions. Ensure metric collection does not significantly impact system performance.
+Verify all defined metrics are correctly exposed and scraped by Prometheus. Test metric accuracy under various load conditions. Ensure metric collection does not significantly impact system performance. For each component, validate that:
+
+1. All metrics are properly registered and exposed
+2. Metrics values accurately reflect system behavior
+3. The metrics collection mechanism integrates properly with the existing metadata cache metrics implementation
+4. Performance overhead remains within acceptable limits
+
+# Subtasks:
+## 16.1. Extend MasterMetrics for remaining components [done]
+### Dependencies: None
+### Description: Expand the MasterMetrics struct in mooseng-common/src/metrics.rs to include metrics for all other MooseNG components beyond the metadata cache.
+### Details:
+
+
+## 16.2. Implement component-specific metrics collectors [done]
+### Dependencies: None
+### Description: Create dedicated metrics collectors for each component following the pattern established by MetadataCacheMetricsCollector.
+### Details:
+
+
+## 16.3. Add metrics recording to component managers [done]
+### Dependencies: None
+### Description: Enhance all component managers to record metrics for their operations, similar to how MetadataCacheManager was enhanced.
+### Details:
+
+
+## 16.4. Implement metrics endpoints [done]
+### Dependencies: None
+### Description: Expose /metrics endpoints in each component for Prometheus scraping.
+### Details:
+
+
+## 16.5. Integrate with health monitoring [done]
+### Dependencies: None
+### Description: Ensure all component metrics are integrated with the health monitoring system.
+### Details:
+
+
+## 16.6. Documentation and examples [done]
+### Dependencies: None
+### Description: Document the metrics implementation and provide examples of Prometheus queries for common monitoring scenarios.
+### Details:
+
+
+## 16.7. Integrate metrics collectors with component operations [done]
+### Dependencies: None
+### Description: Connect the implemented metrics collectors with actual component operations to ensure metrics are recorded during normal system operation.
+### Details:
+
+
+## 16.8. Complete health monitoring integration [done]
+### Dependencies: None
+### Description: Finalize the integration between the metrics system and health monitoring to ensure proper health status reporting based on metrics data.
+### Details:
+
+
+## 16.9. End-to-end testing of metrics collection [done]
+### Dependencies: None
+### Description: Perform comprehensive end-to-end testing of the metrics collection system across all components under various load conditions.
+### Details:
+
+

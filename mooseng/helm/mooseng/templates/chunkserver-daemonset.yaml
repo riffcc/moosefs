@@ -1,0 +1,200 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "mooseng.fullname" . }}-chunkserver
+  namespace: {{ .Values.namespace | default "mooseng" }}
+  labels:
+    {{- include "mooseng.labels" . | nindent 4 }}
+    app.kubernetes.io/component: chunkserver
+spec:
+  selector:
+    matchLabels:
+      {{- include "mooseng.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: chunkserver
+  template:
+    metadata:
+      labels:
+        {{- include "mooseng.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: chunkserver
+      {{- with .Values.chunkserver.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- if .Values.serviceAccount.create }}
+      serviceAccountName: {{ include "mooseng.serviceAccountName" . }}-chunkserver
+      {{- end }}
+      {{- with .Values.chunkserver.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.chunkserver.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+      - name: chunkserver
+        image: "{{ .Values.chunkserver.image.repository }}:{{ .Values.chunkserver.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.chunkserver.image.pullPolicy }}
+        ports:
+        - name: chunkserver
+          containerPort: {{ .Values.chunkserver.ports.server }}
+          protocol: TCP
+        env:
+        - name: RUST_LOG
+          value: "{{ .Values.chunkserver.config.logging.level }}"
+        - name: MOOSENG_MASTER_ENDPOINTS
+          value: "{{ include "mooseng.master.serviceName" . }}.{{ .Values.namespace | default "mooseng" }}.svc.cluster.local:{{ .Values.master.ports.raft }}"
+        - name: MOOSENG_BIND_ADDRESS
+          value: "{{ .Values.chunkserver.config.server.bindAddress }}"
+        - name: MOOSENG_PORT
+          value: "{{ .Values.chunkserver.ports.server }}"
+        - name: MOOSENG_DATA_DIRS
+          value: "{{ join "," .Values.chunkserver.config.storage.dataDirs }}"
+        - name: MOOSENG_CHUNK_SIZE_MB
+          value: "{{ .Values.chunkserver.config.storage.chunkSizeMb }}"
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        {{- with .Values.chunkserver.extraEnv }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        volumeMounts:
+        {{- range $index, $dir := .Values.chunkserver.config.storage.dataDirs }}
+        - name: data-{{ $index }}
+          mountPath: {{ $dir }}
+        {{- end }}
+        - name: chunkserver-logs
+          mountPath: {{ .Values.chunkserver.config.logging.logDir }}
+        {{- if .Values.chunkserver.hostInfo.enabled }}
+        - name: host-info
+          mountPath: /host
+          readOnly: true
+        {{- end }}
+        {{- with .Values.chunkserver.extraVolumeMounts }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        resources:
+          {{- toYaml .Values.chunkserver.resources | nindent 10 }}
+        readinessProbe:
+          exec:
+            command:
+            - /usr/local/bin/mooseng-chunkserver
+            - --health-check
+          initialDelaySeconds: {{ .Values.chunkserver.readinessProbe.initialDelaySeconds }}
+          periodSeconds: {{ .Values.chunkserver.readinessProbe.periodSeconds }}
+          timeoutSeconds: {{ .Values.chunkserver.readinessProbe.timeoutSeconds }}
+          failureThreshold: {{ .Values.chunkserver.readinessProbe.failureThreshold }}
+        livenessProbe:
+          exec:
+            command:
+            - /usr/local/bin/mooseng-chunkserver
+            - --health-check
+          initialDelaySeconds: {{ .Values.chunkserver.livenessProbe.initialDelaySeconds }}
+          periodSeconds: {{ .Values.chunkserver.livenessProbe.periodSeconds }}
+          timeoutSeconds: {{ .Values.chunkserver.livenessProbe.timeoutSeconds }}
+          failureThreshold: {{ .Values.chunkserver.livenessProbe.failureThreshold }}
+        securityContext:
+          {{- toYaml .Values.chunkserver.securityContext | nindent 10 }}
+      volumes:
+      {{- range $index, $dir := .Values.chunkserver.config.storage.dataDirs }}
+      - name: data-{{ $index }}
+        {{- if $.Values.chunkserver.persistence.hostPath.enabled }}
+        hostPath:
+          path: {{ $.Values.chunkserver.persistence.hostPath.basePath }}/data{{ $index }}
+          type: DirectoryOrCreate
+        {{- else }}
+        emptyDir: {}
+        {{- end }}
+      {{- end }}
+      - name: chunkserver-logs
+        {{- if .Values.chunkserver.persistence.hostPath.enabled }}
+        hostPath:
+          path: {{ .Values.chunkserver.persistence.hostPath.logsPath }}
+          type: DirectoryOrCreate
+        {{- else }}
+        emptyDir: {}
+        {{- end }}
+      {{- if .Values.chunkserver.hostInfo.enabled }}
+      - name: host-info
+        hostPath:
+          path: {{ .Values.chunkserver.hostInfo.path }}
+          type: Directory
+      {{- end }}
+      {{- with .Values.chunkserver.extraVolumes }}
+      {{- toYaml . | nindent 6 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.chunkserver.podSecurityContext | nindent 8 }}
+      terminationGracePeriodSeconds: {{ .Values.chunkserver.terminationGracePeriodSeconds }}
+      dnsPolicy: {{ .Values.chunkserver.dnsPolicy }}
+      restartPolicy: Always
+      {{- with .Values.chunkserver.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "mooseng.chunkserver.serviceName" . }}
+  namespace: {{ .Values.namespace | default "mooseng" }}
+  labels:
+    {{- include "mooseng.labels" . | nindent 4 }}
+    app.kubernetes.io/component: chunkserver
+spec:
+  type: ClusterIP
+  clusterIP: None  # Headless service for direct pod access
+  selector:
+    {{- include "mooseng.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: chunkserver
+  ports:
+  - name: chunkserver
+    port: {{ .Values.chunkserver.ports.server }}
+    targetPort: chunkserver
+{{- if .Values.serviceAccount.create }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "mooseng.serviceAccountName" . }}-chunkserver
+  namespace: {{ .Values.namespace | default "mooseng" }}
+  labels:
+    {{- include "mooseng.labels" . | nindent 4 }}
+    app.kubernetes.io/component: chunkserver
+{{- if .Values.rbac.create }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "mooseng.fullname" . }}-chunkserver
+  namespace: {{ .Values.namespace | default "mooseng" }}
+  labels:
+    {{- include "mooseng.labels" . | nindent 4 }}
+    app.kubernetes.io/component: chunkserver
+rules:
+{{- toYaml .Values.chunkserver.rbac.rules | nindent 0 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "mooseng.fullname" . }}-chunkserver
+  namespace: {{ .Values.namespace | default "mooseng" }}
+  labels:
+    {{- include "mooseng.labels" . | nindent 4 }}
+    app.kubernetes.io/component: chunkserver
+subjects:
+- kind: ServiceAccount
+  name: {{ include "mooseng.serviceAccountName" . }}-chunkserver
+  namespace: {{ .Values.namespace | default "mooseng" }}
+roleRef:
+  kind: Role
+  name: {{ include "mooseng.fullname" . }}-chunkserver
+  apiGroup: rbac.authorization.k8s.io
+{{- end }}
+{{- end }}

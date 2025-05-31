@@ -33,7 +33,7 @@ pub struct RaftState {
 }
 
 impl RaftState {
-    pub fn new(node_id: NodeId, initial_members: Vec<NodeId>) -> Self {
+    pub fn new(_node_id: NodeId, initial_members: Vec<NodeId>) -> Self {
         let mut cluster_members = HashSet::new();
         for member in initial_members {
             cluster_members.insert(member);
@@ -81,7 +81,7 @@ impl RaftState {
     pub fn get_voting_members(&self) -> Vec<NodeId> {
         self.cluster_members
             .iter()
-            .filter(|id| !self.non_voting_members.contains(id))
+            .filter(|id| !self.non_voting_members.contains(*id))
             .cloned()
             .collect()
     }

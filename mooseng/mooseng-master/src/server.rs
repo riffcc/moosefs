@@ -11,8 +11,9 @@ use crate::filesystem::FileSystem;
 use crate::chunk_manager::{ChunkManager, AllocationStrategy};
 use crate::session::SessionManager;
 use crate::storage_class::StorageClassManager;
-use crate::grpc_services::{GrpcServer, AdminService, ClientService, ChunkServerService};
+use crate::grpc_services::GrpcServer;
 use crate::raft::{RaftConsensus, RaftConfig};
+use crate::multiregion::raft_multiregion::MultiRegionRaft;
 
 pub struct MasterServer {
     config: Arc<MasterConfig>,
@@ -159,25 +160,6 @@ impl MasterServer {
         // Start background tasks
         self.start_background_tasks();
 
-        // Create gRPC services
-        let admin_service = AdminService::new(
-            self.metadata_store.clone(),
-            self.filesystem.clone(),
-            self.chunk_manager.clone(),
-            self.storage_class_manager.clone(),
-        );
-
-        let client_service = ClientService::new(
-            self.filesystem.clone(),
-            self.chunk_manager.clone(),
-            self.session_manager.clone(),
-        );
-
-        let cs_service = ChunkServerService::new(
-            self.chunk_manager.clone(),
-            self.session_manager.clone(),
-        );
-
         // Create and start gRPC server
         let grpc_server = GrpcServer::new(
             self.config.clone(),
@@ -186,6 +168,8 @@ impl MasterServer {
             self.chunk_manager.clone(),
             self.session_manager.clone(),
             self.storage_class_manager.clone(),
+            self.raft_consensus.clone(),
+            None, // multiregion_raft - not initialized yet
         );
 
         info!("Master Server fully initialized and ready to serve requests");
@@ -460,7 +444,7 @@ impl MasterServer {
 
         // Final cache flush
         info!("Flushing metadata cache");
-        self.cache.clear();
+        // Note: MetadataCache doesn't have flush, just clearing remaining references
 
         info!("Master Server shutdown complete");
         Ok(())

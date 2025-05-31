@@ -5,7 +5,8 @@
 
 use super::hybrid_clock::HLCTimestamp;
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
+use ::serde::{Deserialize, Serialize};
+use ::serde::de::DeserializeOwned;
 use std::collections::{HashMap, HashSet, BTreeMap, BTreeSet};
 use std::cmp::{Ord, Ordering};
 use std::hash::Hash;
@@ -15,7 +16,7 @@ use std::fmt::Debug;
 pub type NodeId = u64;
 
 /// Trait for all CRDT types
-pub trait CRDT: Clone + Debug + Serialize + for<'de> Deserialize<'de> {
+pub trait CRDT: Clone + Debug + Serialize + DeserializeOwned {
     /// Merge this CRDT with another CRDT of the same type
     /// This operation must be commutative, associative, and idempotent
     fn merge(&mut self, other: &Self) -> Result<()>;
@@ -29,7 +30,7 @@ pub trait CRDT: Clone + Debug + Serialize + for<'de> Deserialize<'de> {
 
 /// G-Counter: Grow-only counter CRDT
 /// Each node can only increment its own counter, but can read all counters
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, ::serde::Deserialize, PartialEq, Eq)]
 pub struct GCounter {
     /// Map from node_id to that node's counter value
     counters: HashMap<NodeId, u64>,
@@ -81,7 +82,7 @@ impl CRDT for GCounter {
 
 /// PN-Counter: Increment/Decrement counter CRDT
 /// Combines two G-Counters (positive and negative) to allow both operations
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, ::serde::Deserialize, PartialEq, Eq)]
 pub struct PNCounter {
     positive: GCounter,
     negative: GCounter,
@@ -130,17 +131,17 @@ impl CRDT for PNCounter {
 
 /// G-Set: Grow-only set CRDT
 /// Elements can only be added, never removed
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, ::serde::Deserialize, PartialEq, Eq)]
 pub struct GSet<T> 
 where 
-    T: Clone + Debug + Serialize + for<'de> Deserialize<'de> + Eq + Hash + Ord,
+    T: Clone + Debug + Serialize + DeserializeOwned + Eq + Hash + Ord,
 {
     elements: BTreeSet<T>,
 }
 
 impl<T> GSet<T> 
 where 
-    T: Clone + Debug + Serialize + for<'de> Deserialize<'de> + Eq + Hash + Ord,
+    T: Clone + Debug + Serialize + DeserializeOwned + Eq + Hash + Ord,
 {
     /// Create a new G-Set
     pub fn new() -> Self {
@@ -178,7 +179,7 @@ where
 
 impl<T> CRDT for GSet<T> 
 where 
-    T: Clone + Debug + Serialize + for<'de> Deserialize<'de> + Eq + Hash + Ord,
+    T: Clone + Debug + Serialize + DeserializeOwned + Eq + Hash + Ord,
 {
     fn merge(&mut self, other: &Self) -> Result<()> {
         for element in &other.elements {
@@ -196,12 +197,14 @@ where
     }
 }
 
+// Note: Using automatic derive for Deserialize works with proper bounds on the struct definition
+
 /// 2P-Set: Two-phase set CRDT
 /// Elements can be added and removed, but once removed, they cannot be added again
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct TwoPSet<T> 
 where 
-    T: Clone + Debug + Serialize + for<'de> Deserialize<'de> + Eq + Hash + Ord,
+    T: Clone + Debug + Serialize + DeserializeOwned + Eq + Hash + Ord,
 {
     added: GSet<T>,
     removed: GSet<T>,
@@ -209,7 +212,7 @@ where
 
 impl<T> TwoPSet<T> 
 where 
-    T: Clone + Debug + Serialize + for<'de> Deserialize<'de> + Eq + Hash + Ord,
+    T: Clone + Debug + Serialize + DeserializeOwned + Eq + Hash + Ord,
 {
     /// Create a new 2P-Set
     pub fn new() -> Self {
@@ -258,7 +261,7 @@ where
 
 impl<T> CRDT for TwoPSet<T> 
 where 
-    T: Clone + Debug + Serialize + for<'de> Deserialize<'de> + Eq + Hash + Ord,
+    T: Clone + Debug + Serialize + DeserializeOwned + Eq + Hash + Ord,
 {
     fn merge(&mut self, other: &Self) -> Result<()> {
         self.added.merge(&other.added)?;
@@ -275,12 +278,37 @@ where
     }
 }
 
+impl<'de, T> Deserialize<'de> for TwoPSet<T> 
+where 
+    T: Clone + Debug + Serialize + DeserializeOwned + Eq + Hash + Ord,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        #[derive(::serde::Deserialize)]
+        struct TwoPSetHelper<T> 
+        where 
+            T: Clone + Debug + Serialize + DeserializeOwned + Eq + Hash + Ord,
+        {
+            added: GSet<T>,
+            removed: GSet<T>,
+        }
+        
+        let helper = TwoPSetHelper::deserialize(deserializer)?;
+        Ok(TwoPSet {
+            added: helper.added,
+            removed: helper.removed,
+        })
+    }
+}
+
 /// LWW-Register: Last-Writer-Wins Register CRDT
 /// Each update includes a timestamp, and the value with the latest timestamp wins
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, ::serde::Deserialize, PartialEq, Eq)]
 pub struct LWWRegister<T> 
 where 
-    T: Clone + Debug + Serialize + for<'de> Deserialize<'de> + Eq,
+    T: Clone + Debug + Serialize + DeserializeOwned + Eq,
 {
     value: Option<T>,
     timestamp: HLCTimestamp,
@@ -289,13 +317,13 @@ where
 
 impl<T> LWWRegister<T> 
 where 
-    T: Clone + Debug + Serialize + for<'de> Deserialize<'de> + Eq,
+    T: Clone + Debug + Serialize + DeserializeOwned + Eq,
 {
     /// Create a new LWW-Register
     pub fn new(node_id: NodeId) -> Self {
         Self {
             value: None,
-            timestamp: HLCTimestamp::new(0, 0, node_id),
+            timestamp: HLCTimestamp::new_with_node(0, 0, node_id as u32),
             node_id,
         }
     }
@@ -323,7 +351,7 @@ where
 
 impl<T> CRDT for LWWRegister<T> 
 where 
-    T: Clone + Debug + Serialize + for<'de> Deserialize<'de> + Eq,
+    T: Clone + Debug + Serialize + DeserializeOwned + Eq,
 {
     fn merge(&mut self, other: &Self) -> Result<()> {
         if other.timestamp > self.timestamp || 
@@ -347,10 +375,10 @@ where
 
 /// OR-Set: Observed-Remove Set CRDT
 /// Uses unique identifiers for each add/remove operation to handle concurrent operations
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct ORSet<T> 
 where 
-    T: Clone + Debug + Serialize + for<'de> Deserialize<'de> + Eq + Hash + Ord,
+    T: Clone + Debug + Serialize + DeserializeOwned + Eq + Hash + Ord,
 {
     added: HashMap<T, BTreeSet<(HLCTimestamp, NodeId)>>,
     removed: HashMap<T, BTreeSet<(HLCTimestamp, NodeId)>>,
@@ -358,7 +386,7 @@ where
 
 impl<T> ORSet<T> 
 where 
-    T: Clone + Debug + Serialize + for<'de> Deserialize<'de> + Eq + Hash + Ord,
+    T: Clone + Debug + Serialize + DeserializeOwned + Eq + Hash + Ord,
 {
     /// Create a new OR-Set
     pub fn new() -> Self {
@@ -426,7 +454,7 @@ where
 
 impl<T> CRDT for ORSet<T> 
 where 
-    T: Clone + Debug + Serialize + for<'de> Deserialize<'de> + Eq + Hash + Ord,
+    T: Clone + Debug + Serialize + DeserializeOwned + Eq + Hash + Ord,
 {
     fn merge(&mut self, other: &Self) -> Result<()> {
         // Merge added operations
@@ -465,13 +493,38 @@ where
     }
 }
 
+impl<'de, T> Deserialize<'de> for ORSet<T> 
+where 
+    T: Clone + Debug + Serialize + DeserializeOwned + Eq + Hash + Ord,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        #[derive(::serde::Deserialize)]
+        struct ORSetHelper<T> 
+        where 
+            T: Clone + Debug + Serialize + DeserializeOwned + Eq + Hash,
+        {
+            added: HashMap<T, BTreeSet<(HLCTimestamp, NodeId)>>,
+            removed: HashMap<T, BTreeSet<(HLCTimestamp, NodeId)>>,
+        }
+        
+        let helper = ORSetHelper::deserialize(deserializer)?;
+        Ok(ORSet {
+            added: helper.added,
+            removed: helper.removed,
+        })
+    }
+}
+
 /// LWW-Map: Last-Writer-Wins Map CRDT
 /// A map where each key is associated with an LWW-Register
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct LWWMap<K, V> 
 where 
-    K: Clone + Debug + Serialize + for<'de> Deserialize<'de> + Eq + Hash + Ord,
-    V: Clone + Debug + Serialize + for<'de> Deserialize<'de> + Eq,
+    K: Clone + Debug + Serialize + DeserializeOwned + Eq + Hash + Ord,
+    V: Clone + Debug + Serialize + DeserializeOwned + Eq,
 {
     entries: BTreeMap<K, LWWRegister<V>>,
     node_id: NodeId,
@@ -479,8 +532,8 @@ where
 
 impl<K, V> LWWMap<K, V> 
 where 
-    K: Clone + Debug + Serialize + for<'de> Deserialize<'de> + Eq + Hash + Ord,
-    V: Clone + Debug + Serialize + for<'de> Deserialize<'de> + Eq,
+    K: Clone + Debug + Serialize + DeserializeOwned + Eq + Hash + Ord,
+    V: Clone + Debug + Serialize + DeserializeOwned + Eq,
 {
     /// Create a new LWW-Map
     pub fn new(node_id: NodeId) -> Self {
@@ -547,8 +600,8 @@ where
 
 impl<K, V> CRDT for LWWMap<K, V> 
 where 
-    K: Clone + Debug + Serialize + for<'de> Deserialize<'de> + Eq + Hash + Ord,
-    V: Clone + Debug + Serialize + for<'de> Deserialize<'de> + Eq,
+    K: Clone + Debug + Serialize + DeserializeOwned + Eq + Hash + Ord,
+    V: Clone + Debug + Serialize + DeserializeOwned + Eq,
 {
     fn merge(&mut self, other: &Self) -> Result<()> {
         for (key, other_register) in &other.entries {
@@ -584,9 +637,36 @@ where
     }
 }
 
+impl<'de, K, V> Deserialize<'de> for LWWMap<K, V> 
+where 
+    K: Clone + Debug + Serialize + DeserializeOwned + Eq + Hash + Ord,
+    V: Clone + Debug + Serialize + DeserializeOwned + Eq,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        #[derive(::serde::Deserialize)]
+        struct LWWMapHelper<K, V> 
+        where 
+            K: Clone + Debug + Serialize + DeserializeOwned + Eq + Hash + Ord,
+            V: Clone + Debug + Serialize + DeserializeOwned + Eq,
+        {
+            entries: BTreeMap<K, LWWRegister<V>>,
+            node_id: NodeId,
+        }
+        
+        let helper = LWWMapHelper::deserialize(deserializer)?;
+        Ok(LWWMap {
+            entries: helper.entries,
+            node_id: helper.node_id,
+        })
+    }
+}
+
 /// File metadata CRDT for MooseNG
 /// Represents file/directory metadata that can be updated concurrently across regions
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, ::serde::Deserialize, PartialEq, Eq)]
 pub struct FileMetadataCRDT {
     /// File path (immutable once set)
     pub path: String,
@@ -645,7 +725,7 @@ impl FileMetadataCRDT {
     
     /// Remove a tag
     pub fn remove_tag(&mut self, tag: &str, timestamp: HLCTimestamp, node_id: NodeId) -> Result<()> {
-        self.tags.remove(tag, timestamp, node_id)
+        self.tags.remove(&tag.to_string(), timestamp, node_id)
     }
     
     /// Set an attribute
@@ -785,7 +865,7 @@ impl CRDTManager {
 }
 
 /// Statistics about CRDT usage
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, ::serde::Deserialize)]
 pub struct CRDTStatistics {
     pub total_files: usize,
     pub total_size: usize,

@@ -489,6 +489,7 @@ pub mod timeouts {
 }
 
 /// Graceful shutdown coordinator
+#[derive(Clone)]
 pub struct ShutdownCoordinator {
     shutdown_tx: broadcast::Sender<()>,
     tasks: Arc<Mutex<Vec<(&'static str, JoinHandle<Result<()>>)>>>,

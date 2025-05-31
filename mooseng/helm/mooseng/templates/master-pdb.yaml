@@ -1,0 +1,16 @@
+{{- if .Values.podDisruptionBudget.master.enabled -}}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "mooseng.fullname" . }}-master
+  namespace: {{ .Values.namespace | default "mooseng" }}
+  labels:
+    {{- include "mooseng.labels" . | nindent 4 }}
+    app.kubernetes.io/component: master
+spec:
+  minAvailable: {{ .Values.podDisruptionBudget.master.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "mooseng.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: master
+{{- end -}}

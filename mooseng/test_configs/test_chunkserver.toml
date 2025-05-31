@@ -1,0 +1,14 @@
+[chunkserver]
+bind_address = "127.0.0.1:9422"
+master_address = "127.0.0.1:9420"
+data_dir = "./test_data/chunks"
+max_chunks = 10000
+
+[storage]
+enable_erasure_coding = true
+replication_factor = 2
+chunk_size = 67108864  # 64MB
+
+[health]
+check_interval_ms = 5000
+metrics_enabled = true

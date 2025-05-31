@@ -17,10 +17,12 @@ services:
       - MOOSENG_CLIENT_PORT=9421
       - MOOSENG_CHUNKSERVER_PORT=9422
       - MOOSENG_RAFT_PORT=9423
+      - MOOSENG_HEALTH_PORT=9430
     ports:
       - "9421:9421"  # Client port
       - "9422:9422"  # Chunkserver port
       - "9423:9423"  # Raft port
+      - "9430:9430"  # Health endpoints
     volumes:
       - master-1-data:/var/lib/mooseng/master
       - master-1-logs:/var/log/mooseng

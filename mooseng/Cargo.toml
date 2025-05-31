@@ -7,6 +7,7 @@ members = [
     "mooseng-client", 
     "mooseng-metalogger",
     "mooseng-cli",
+    "mooseng-benchmarks",
 ]
 resolver = "2"
 
@@ -16,6 +17,29 @@ edition = "2021"
 authors = ["MooseNG Contributors"]
 license = "GPL-3.0"
 repository = "https://github.com/mooseng/mooseng"
+
+# Main package with benchmark reporter binary
+[package]
+name = "mooseng"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "benchmark_reporter"
+path = "src/bin/benchmark_reporter.rs"
+
+[dependencies]
+mooseng-benchmarks = { path = "mooseng-benchmarks" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+clap = { workspace = true }
+num_cpus = { workspace = true }
+anyhow = { workspace = true }
+tokio = { workspace = true }
 
 [workspace.dependencies]
 # Async runtime
@@ -69,7 +93,7 @@ clap = { version = "4.5", features = ["derive"] }
 config = "0.14"
 
 # File system
-nix = "0.29"
+nix = { version = "0.29", features = ["fs", "zerocopy"] }
 libc = "0.2"
 fuser = "0.14"
 memmap2 = "0.9"
@@ -91,6 +115,11 @@ hex = "0.4"
 
 # Erasure coding
 reed-solomon-erasure = { version = "6.0", features = ["simd-accel"] }
+
+# Compression
+lz4_flex = "0.11"
+zstd = "0.13"
+flate2 = "1.0"
 
 # Testing
 criterion = "0.5"

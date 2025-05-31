@@ -1,0 +1,15 @@
+[master]
+bind_address = "127.0.0.1:9420"
+data_dir = "./test_data/master"
+metadata_cache_size = 1048576
+session_timeout_ms = 30000
+
+[raft]
+election_timeout_ms = 1000
+heartbeat_interval_ms = 250
+log_dir = "./test_data/raft_logs"
+
+[multiregion]
+region_id = 1
+enable_cross_region = true
+consistency_level = "eventual"

@@ -3,7 +3,7 @@ use dashmap::DashMap;
 use mooseng_common::types::{InodeId, SessionId, SessionInfo, now_micros};
 use std::net::IpAddr;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::RwLock;
 use tokio::time::{Duration, interval};
 use tracing::{debug, info, warn};
@@ -38,7 +38,7 @@ pub struct Session {
 pub struct SessionManager {
     sessions: Arc<DashMap<SessionId, Session>>,
     tokens: Arc<DashMap<String, SessionId>>,
-    next_session_id: AtomicU32,
+    next_session_id: AtomicU64,
     session_timeout: Duration,
 }
 
@@ -47,7 +47,7 @@ impl SessionManager {
         Self {
             sessions: Arc::new(DashMap::new()),
             tokens: Arc::new(DashMap::new()),
-            next_session_id: AtomicU32::new(1),
+            next_session_id: AtomicU64::new(1),
             session_timeout: Duration::from_millis(session_timeout_ms),
         }
     }

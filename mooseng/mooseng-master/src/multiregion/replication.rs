@@ -346,11 +346,11 @@ impl CrossRegionReplicator {
                     stream.is_healthy = stream.retry_count < 3;
                     warn!("Replication failed to region {}: {}", ack.region_id, reason);
                 }
-                ReplicationStatus::Conflict(conflict_info) => {
+                ReplicationStatus::Conflict(ref conflict_info) => {
                     warn!("Replication conflict in region {}: {:?}", ack.region_id, conflict_info);
                     
                     // Handle conflict resolution
-                    if let Err(e) = conflict_resolver.resolve_conflict(&ack, &conflict_info).await {
+                    if let Err(e) = conflict_resolver.resolve_conflict(&ack, conflict_info).await {
                         error!("Failed to resolve conflict: {}", e);
                     }
                 }

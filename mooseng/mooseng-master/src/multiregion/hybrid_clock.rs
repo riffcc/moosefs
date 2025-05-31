@@ -33,7 +33,7 @@ pub struct HybridLogicalClock {
 }
 
 /// HLC timestamp combining physical and logical components
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Default)]
 pub struct HLCTimestamp {
     /// Physical time component (microseconds since epoch)
     pub physical: u64,
@@ -323,7 +323,7 @@ impl HLCTimestamp {
         let physical = u64::from_be_bytes(bytes[0..8].try_into().unwrap());
         let logical = u32::from_be_bytes(bytes[8..12].try_into().unwrap());
         
-        Ok(Self { physical, logical })
+        Ok(Self { physical, logical, node_id: None })
     }
 }
 

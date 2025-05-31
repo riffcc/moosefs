@@ -18,7 +18,7 @@ pub mod monitoring;
 pub use raft_multiregion::{MultiRegionRaft, RegionStatus, PeerRegionStatus};
 pub use hybrid_clock::{HybridLogicalClock, HLCTimestamp};
 pub use consistency::ConsistencyLevel;
-pub use replication::{CrossRegionReplicator, ReplicationOperation, ReplicationAck, RegionReplicationStatus};
+pub use replication::{CrossRegionReplicator, ReplicationOperation, ReplicationAck, RegionReplicationStatus, ReplicationStatus};
 pub use placement::{
     RegionPlacementManager, PlacementPolicy, PlacementDecision, PlacementRules,
     AccessPattern, DataCriticality, RegionInfo, RegionCapacity, RegionLoad,
@@ -55,6 +55,7 @@ pub use monitoring::{
 };
 
 use std::time::Duration;
+use serde::{Serialize, Deserialize};
 
 /// Configuration for multiregion support
 #[derive(Debug, Clone)]
@@ -91,7 +92,7 @@ pub struct MultiregionConfig {
 }
 
 /// Information about a peer region
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct RegionPeer {
     pub region_id: u32,
     pub region_name: String,

@@ -5,7 +5,7 @@
 # Priority: high
 # Description: Develop health check mechanisms and self-healing capabilities for MooseNG components.
 # Details:
-Implement health check endpoints for each component using the comprehensive health check framework in mooseng-common/src/health.rs. The framework includes HealthMonitor for managing health checks across components, HealthChecker trait for component-specific implementations, self-healing actions, alert system with severity levels, and health history tracking. Continue development of component-specific health checkers for client and metalogger components, building on the existing implementations for master and chunk servers. Integrate the health monitoring system with monitoring CLI tools.
+Implement health check endpoints for each component using the comprehensive health check framework in mooseng-common/src/health.rs. The framework includes HealthMonitor for managing health checks across components, HealthChecker trait for component-specific implementations, self-healing actions, alert system with severity levels, and health history tracking. Continue development of component-specific health checkers for client and metalogger components, building on the existing implementations for master and chunk servers. Instance 2 (Health & Monitoring Specialist) is now working on completing the client and metalogger health checkers in mooseng-client/src/health_checker.rs and mooseng-metalogger/src/health_checker.rs respectively. Instance 2 will also handle the health monitoring CLI integration and end-to-end testing after completing the health checker implementations.
 
 # Test Strategy:
 Develop unit tests for individual health checks and self-healing actions. Create integration tests simulating various failure scenarios. Verify system can recover from failures without manual intervention. Test system behavior under cascading failure scenarios. Validate the alert system with different severity levels and rate limiting functionality.
@@ -29,27 +29,33 @@ Develop unit tests for individual health checks and self-healing actions. Create
 ### Details:
 
 
-## 21.4. Implement client component health checker [todo]
+## 21.4. Implement client component health checker [in-progress]
 ### Dependencies: None
-### Description: Develop health checker for client component with appropriate monitoring metrics and self-healing actions.
+### Description: Develop health checker for client component in mooseng-client/src/health_checker.rs with appropriate monitoring metrics and self-healing actions. Being implemented by Instance 2 (Health & Monitoring Specialist).
 ### Details:
 
 
-## 21.5. Implement metalogger component health checker [todo]
+## 21.5. Implement metalogger component health checker [in-progress]
 ### Dependencies: None
-### Description: Create health checker for metalogger component with appropriate monitoring metrics and self-healing actions.
+### Description: Create health checker for metalogger component in mooseng-metalogger/src/health_checker.rs with appropriate monitoring metrics and self-healing actions. Being implemented by Instance 2 (Health & Monitoring Specialist).
 ### Details:
 
 
 ## 21.6. Integrate health monitoring with CLI tools [todo]
 ### Dependencies: None
-### Description: Connect the health monitoring system with monitoring CLI tools to provide visibility and control over system health.
+### Description: Connect the health monitoring system with monitoring CLI tools to provide visibility and control over system health. Instance 2 will handle this integration after completing the health checker implementations.
 ### Details:
 
 
 ## 21.7. End-to-end testing of health monitoring and self-healing [todo]
 ### Dependencies: None
-### Description: Perform comprehensive testing of the entire health monitoring and self-healing system across all components.
+### Description: Perform comprehensive testing of the entire health monitoring and self-healing system across all components. Instance 2 will handle this testing after completing the health checker implementations and CLI integration.
+### Details:
+
+
+## 21.8. Coordinate with Instance 2 on health checker implementations [todo]
+### Dependencies: None
+### Description: Maintain communication with Instance 2 (Health & Monitoring Specialist) to ensure consistent implementation patterns across all health checker components and proper integration with the common framework.
 ### Details:
 
 

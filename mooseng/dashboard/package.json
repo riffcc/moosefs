@@ -1,0 +1,109 @@
+{
+  "name": "mooseng-dashboard",
+  "version": "1.0.0",
+  "description": "Web-based performance dashboard for MooseNG distributed file system",
+  "main": "public/index.html",
+  "scripts": {
+    "dev": "python3 -m http.server 8080 --directory public",
+    "serve": "python3 -m http.server 8080 --directory public",
+    "build": "npm run copy-assets && npm run bundle",
+    "copy-assets": "mkdir -p dist && cp -r public/* dist/ && cp -r assets dist/ && cp -r components dist/",
+    "bundle": "echo 'Bundling complete - using modular architecture'",
+    "test": "jest --coverage",
+    "test:watch": "jest --watch",
+    "lint": "eslint components/**/*.js assets/js/*.js --fix",
+    "format": "prettier --write 'components/**/*.js' 'assets/js/*.js' 'public/*.html'",
+    "clean": "rm -rf dist/ .cache/ coverage/",
+    "docs": "jsdoc -d docs components/**/*.js assets/js/*.js -c jsdoc.conf.json",
+    "benchmark": "node scripts/benchmark-dashboard.js",
+    "validate": "npm run lint && npm run test",
+    "deploy": "npm run build && npm run validate"
+  },
+  "keywords": [
+    "dashboard",
+    "performance",
+    "monitoring",
+    "distributed-filesystem",
+    "benchmarking",
+    "mooseng",
+    "rust"
+  ],
+  "author": "MooseNG Team",
+  "license": "MIT",
+  "devDependencies": {
+    "http-server": "^14.1.1",
+    "live-server": "^1.2.2",
+    "eslint": "^8.56.0",
+    "jest": "^29.7.0",
+    "jsdoc": "^4.0.2",
+    "prettier": "^3.1.1",
+    "@jest/environment-jsdom": "^29.7.0"
+  },
+  "dependencies": {
+    "chart.js": "^4.4.1",
+    "d3": "^7.8.5"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "browserslist": [
+    "> 1%",
+    "last 2 versions",
+    "not dead"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mooseng/mooseng"
+  },
+  "bugs": {
+    "url": "https://github.com/mooseng/mooseng/issues"
+  },
+  "homepage": "https://github.com/mooseng/mooseng#readme",
+  "jest": {
+    "testEnvironment": "jsdom",
+    "setupFilesAfterEnv": ["<rootDir>/tests/setup.js"],
+    "testMatch": ["<rootDir>/tests/**/*.test.js"],
+    "collectCoverageFrom": [
+      "components/**/*.js",
+      "assets/js/*.js",
+      "!**/node_modules/**"
+    ],
+    "coverageThreshold": {
+      "global": {
+        "branches": 70,
+        "functions": 70,
+        "lines": 70,
+        "statements": 70
+      }
+    }
+  },
+  "eslintConfig": {
+    "env": {
+      "browser": true,
+      "es2021": true,
+      "jest": true
+    },
+    "extends": "eslint:recommended",
+    "parserOptions": {
+      "ecmaVersion": 2021,
+      "sourceType": "module"
+    },
+    "globals": {
+      "Chart": "readonly",
+      "d3": "readonly"
+    },
+    "rules": {
+      "no-console": "warn",
+      "no-unused-vars": "error",
+      "semi": ["error", "always"],
+      "quotes": ["error", "single"]
+    }
+  },
+  "prettier": {
+    "singleQuote": true,
+    "trailingComma": "es5",
+    "tabWidth": 4,
+    "semi": true,
+    "printWidth": 100
+  }
+}

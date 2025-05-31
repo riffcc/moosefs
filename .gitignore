@@ -26,3 +26,8 @@ node_modules/
 
 # Prompts
 prompt.md
+
+# Added by Claude Task Master
+# Task files
+tasks.json
+tasks/ 

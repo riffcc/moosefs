@@ -121,7 +121,7 @@ async fn main() -> Result<()> {
     });
     
     // Start gRPC server with graceful shutdown
-    grpc_server.serve(addr, shutdown_rx).await?;
+    grpc_server.serve(addr, shutdown_rx).await.map_err(|e| anyhow::anyhow!("gRPC server error: {}", e))?;
     
     info!("Chunk server shut down gracefully");
     Ok(())

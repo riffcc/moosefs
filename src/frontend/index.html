@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MooseNG Performance Dashboard</title>
+    
+    <!-- Chart.js for visualizations -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    
+    <!-- D3.js for advanced visualizations -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    
+    <!-- Main CSS -->
+    <link rel="stylesheet" href="assets/css/dashboard.css">
+    <link rel="stylesheet" href="assets/css/components.css">
+</head>
+<body>
+    <!-- Header -->
+    <header class="dashboard-header">
+        <div class="header-content">
+            <div class="logo-section">
+                <h1>MooseNG Performance Dashboard</h1>
+                <span class="version">v4.57.6</span>
+            </div>
+            <div class="controls-section">
+                <select id="time-range" class="time-selector">
+                    <option value="1h">Last Hour</option>
+                    <option value="6h">Last 6 Hours</option>
+                    <option value="24h" selected>Last 24 Hours</option>
+                    <option value="7d">Last 7 Days</option>
+                    <option value="30d">Last 30 Days</option>
+                </select>
+                <button id="refresh-btn" class="refresh-button">🔄 Refresh</button>
+                <button id="theme-toggle" class="theme-toggle">🌙</button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Navigation -->
+    <nav class="dashboard-nav">
+        <ul class="nav-tabs">
+            <li><a href="#overview" class="nav-link active" data-section="overview">Overview</a></li>
+            <li><a href="#master-server" class="nav-link" data-section="master-server">Master Server</a></li>
+            <li><a href="#chunk-server" class="nav-link" data-section="chunk-server">Chunk Server</a></li>
+            <li><a href="#client" class="nav-link" data-section="client">Client</a></li>
+            <li><a href="#multiregion" class="nav-link" data-section="multiregion">Multi-Region</a></li>
+            <li><a href="#comparative" class="nav-link" data-section="comparative">Comparative Analysis</a></li>
+        </ul>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="dashboard-main">
+        <!-- Overview Section -->
+        <section id="overview" class="dashboard-section active">
+            <div class="section-header">
+                <h2>System Overview</h2>
+                <div class="status-indicators">
+                    <div class="status-item">
+                        <span class="status-dot status-good"></span>
+                        <span>All Systems Operational</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- KPI Cards -->
+            <div class="kpi-grid">
+                <div class="kpi-card">
+                    <h3>Overall Performance</h3>
+                    <div class="kpi-value" id="overall-grade">Loading...</div>
+                    <div class="kpi-trend" id="overall-trend"></div>
+                </div>
+                <div class="kpi-card">
+                    <h3>Throughput</h3>
+                    <div class="kpi-value" id="throughput-value">Loading...</div>
+                    <div class="kpi-trend" id="throughput-trend"></div>
+                </div>
+                <div class="kpi-card">
+                    <h3>Operations/sec</h3>
+                    <div class="kpi-value" id="ops-value">Loading...</div>
+                    <div class="kpi-trend" id="ops-trend"></div>
+                </div>
+                <div class="kpi-card">
+                    <h3>Total Response Time</h3>
+                    <div class="kpi-value" id="response-time-value">Loading...</div>
+                    <div class="kpi-trend" id="response-time-trend"></div>
+                </div>
+            </div>
+
+            <!-- Performance Charts -->
+            <div class="charts-grid">
+                <div class="chart-container">
+                    <h3>Performance Breakdown</h3>
+                    <canvas id="performance-breakdown-chart"></canvas>
+                </div>
+                <div class="chart-container">
+                    <h3>Throughput Over Time</h3>
+                    <canvas id="throughput-timeline-chart"></canvas>
+                </div>
+                <div class="chart-container">
+                    <h3>Response Time Distribution</h3>
+                    <canvas id="response-time-chart"></canvas>
+                </div>
+                <div class="chart-container">
+                    <h3>System Health Score</h3>
+                    <canvas id="health-score-chart"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <!-- Master Server Section -->
+        <section id="master-server" class="dashboard-section">
+            <div class="section-header">
+                <h2>Master Server Performance</h2>
+            </div>
+            <div id="master-server-content">
+                <!-- Content will be loaded from master-server component -->
+            </div>
+        </section>
+
+        <!-- Chunk Server Section -->
+        <section id="chunk-server" class="dashboard-section">
+            <div class="section-header">
+                <h2>Chunk Server Performance</h2>
+            </div>
+            <div id="chunk-server-content">
+                <!-- Content will be loaded from chunk-server component -->
+            </div>
+        </section>
+
+        <!-- Client Section -->
+        <section id="client" class="dashboard-section">
+            <div class="section-header">
+                <h2>Client Performance</h2>
+            </div>
+            <div id="client-content">
+                <!-- Content will be loaded from client component -->
+            </div>
+        </section>
+
+        <!-- Multi-Region Section -->
+        <section id="multiregion" class="dashboard-section">
+            <div class="section-header">
+                <h2>Multi-Region Performance</h2>
+            </div>
+            <div id="multiregion-content">
+                <!-- Content will be loaded dynamically -->
+            </div>
+        </section>
+
+        <!-- Comparative Analysis Section -->
+        <section id="comparative" class="dashboard-section">
+            <div class="section-header">
+                <h2>Comparative Analysis</h2>
+            </div>
+            <div id="comparative-content">
+                <!-- Content will be loaded dynamically -->
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="dashboard-footer">
+        <div class="footer-content">
+            <span>MooseNG Performance Dashboard © 2025</span>
+            <span id="last-updated">Last updated: Loading...</span>
+        </div>
+    </footer>
+
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="loading-overlay">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">Loading performance data...</div>
+    </div>
+
+    <!-- JavaScript Components -->
+    <script src="assets/js/dashboard-core.js"></script>
+    <script src="assets/js/chart-components.js"></script>
+    <script src="assets/js/data-manager.js"></script>
+    <script src="components/overview-section.js"></script>
+    <script src="components/master-server-component.js"></script>
+    <script src="components/chunk-server-component.js"></script>
+    <script src="components/client-component.js"></script>
+    <script src="assets/js/main.js"></script>
+</body>
+</html>

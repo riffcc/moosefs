@@ -1,0 +1,30 @@
+[benchmark]
+warmup_iterations = 5
+measurement_iterations = 50
+detailed_report = true
+
+[file_sizes]
+small = [1024, 4096, 65536]              # 1KB, 4KB, 64KB
+medium = [1048576, 10485760]             # 1MB, 10MB
+large = [104857600]                      # 100MB (disabled by default)
+
+[concurrency]
+levels = [1, 5, 10, 25]
+
+[regions]
+test_regions = ["region1", "region2", "region3"]
+
+[network]
+latency_simulation = true
+packet_loss_simulation = false
+bandwidth_limits = []
+
+[performance]
+enable_profiling = false
+memory_tracking = true
+cpu_tracking = true
+
+[output]
+results_dir = "test_results"
+log_level = "info"
+export_formats = ["json", "csv"]

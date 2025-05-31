@@ -32,7 +32,6 @@ use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::Arc;
 use tonic::{transport::Server, Request, Response, Status, Streaming};
-use tonic::codec::CompressionEncoding;
 use tracing::{error, info, warn, instrument};
 use futures_util::Stream;
 
@@ -42,6 +41,8 @@ use crate::{
     metadata::MetadataStore,
     session::SessionManager,
     storage_class::StorageClassManager,
+    raft::RaftConsensus,
+    multiregion::{MultiRegionRaft, ConsistencyLevel},
 };
 
 /// gRPC server wrapper that manages multiple tonic servers
@@ -58,6 +59,8 @@ impl GrpcServer {
         chunk_manager: Arc<ChunkManager>,
         session_manager: Arc<SessionManager>,
         storage_class_manager: Arc<StorageClassManager>,
+        raft_consensus: Option<Arc<RaftConsensus>>,
+        multiregion_raft: Option<Arc<MultiRegionRaft>>,
     ) -> Self {
         let master_service = MasterServiceImpl::new(
             metadata_store,
@@ -81,8 +84,6 @@ impl GrpcServer {
         info!("Starting MooseNG Master gRPC server on {}", addr);
 
         let master_service = MasterServiceServer::new(self.master_service)
-            .accept_compressed(CompressionEncoding::Gzip)
-            .send_compressed(CompressionEncoding::Gzip)
             .max_decoding_message_size(64 * 1024 * 1024) // 64MB max
             .max_encoding_message_size(64 * 1024 * 1024); // 64MB max
 
@@ -147,14 +148,84 @@ impl MasterService for MasterServiceImpl {
         let req = request.into_inner();
         info!("Creating file: {}", req.path);
         
-        // TODO: Implement actual file creation logic
-        // For now, return a placeholder response
-        let response = CreateFileResponse {
-            metadata: None, // TODO: Create actual metadata
-            session_id: self.session_manager.create_simple_session().await.unwrap_or(0),
-        };
+        // Parse parent directory and filename
+        let path = std::path::Path::new(&req.path);
+        let parent_path = path.parent()
+            .ok_or_else(|| Status::invalid_argument("Invalid file path"))?
+            .to_str()
+            .ok_or_else(|| Status::invalid_argument("Invalid path encoding"))?;
+        let filename = path.file_name()
+            .ok_or_else(|| Status::invalid_argument("Missing filename"))?
+            .to_str()
+            .ok_or_else(|| Status::invalid_argument("Invalid filename encoding"))?;
         
-        Ok(Response::new(response))
+        // Create file in filesystem
+        match self.filesystem.create_file(
+            parent_path,
+            filename,
+            req.mode.unwrap_or(0o644) as u16,
+            req.uid,
+            req.gid,
+            req.storage_class_id.unwrap_or(1),
+        ).await {
+            Ok(inode_id) => {
+                // Get the created file's metadata
+                let file_node = self.filesystem.get_inode(inode_id).await
+                    .map_err(|e| {
+                        error!("Failed to get created file metadata: {}", e);
+                        Status::internal("Failed to get file metadata")
+                    })?
+                    .ok_or_else(|| {
+                        error!("Created file inode {} not found", inode_id);
+                        Status::internal("File creation inconsistency")
+                    })?;
+                
+                // Create session for the file
+                let session_id = self.session_manager.create_file_session(
+                    inode_id,
+                    req.session_info.as_ref().map(|s| s.client_id.clone()).unwrap_or_default(),
+                ).await.map_err(|e| {
+                    error!("Failed to create session: {}", e);
+                    Status::internal("Failed to create session")
+                })?;
+                
+                // Convert to protobuf metadata
+                let metadata = Some(mooseng_protocol::FileMetadata {
+                    inode: inode_id,
+                    parent_inode: file_node.parent.unwrap_or(0),
+                    name: filename.to_string(),
+                    file_type: mooseng_protocol::FileType::RegularFile as i32,
+                    mode: file_node.mode as u32,
+                    uid: file_node.uid,
+                    gid: file_node.gid,
+                    size: 0,
+                    atime: file_node.atime,
+                    mtime: file_node.mtime,
+                    ctime: file_node.ctime,
+                    storage_class_id: file_node.storage_class_id as u32,
+                    chunk_count: 0,
+                });
+                
+                let response = CreateFileResponse {
+                    metadata,
+                    session_id,
+                };
+                
+                Ok(Response::new(response))
+            }
+            Err(e) => {
+                error!("Failed to create file: {}", e);
+                if e.to_string().contains("already exists") {
+                    Err(Status::already_exists("File already exists"))
+                } else if e.to_string().contains("not found") {
+                    Err(Status::not_found("Parent directory not found"))
+                } else if e.to_string().contains("Permission") {
+                    Err(Status::permission_denied("Permission denied"))
+                } else {
+                    Err(Status::internal(format!("Internal error creating file: {}", e)))
+                }
+            }
+        }
     }
 
     #[instrument(skip(self, request))]
@@ -165,11 +236,98 @@ impl MasterService for MasterServiceImpl {
         let req = request.into_inner();
         info!("Opening file: {}", req.path);
         
-        // TODO: Implement actual file opening logic
+        // Resolve file path to inode
+        let inode_id = self.filesystem.resolve_path(&req.path).await
+            .map_err(|e| {
+                error!("Failed to resolve path: {}", e);
+                Status::internal("Failed to resolve path")
+            })?
+            .ok_or_else(|| Status::not_found("File not found"))?;
+        
+        // Get file metadata
+        let file_node = self.filesystem.get_inode(inode_id).await
+            .map_err(|e| {
+                error!("Failed to get file metadata: {}", e);
+                Status::internal("Failed to get file metadata")
+            })?
+            .ok_or_else(|| Status::not_found("File not found"))?;
+        
+        // Verify it's a file
+        let (file_size, chunk_count) = match &file_node.node_type {
+            mooseng_common::types::FsNodeType::File { length, chunks, .. } => {
+                (*length, chunks.len() as u32)
+            }
+            _ => return Err(Status::invalid_argument("Path is not a file")),
+        };
+        
+        // Create file handle through session manager
+        let file_handle = self.session_manager.open_file(
+            inode_id,
+            req.flags,
+            req.session_info.as_ref().map(|s| s.client_id.clone()).unwrap_or_default(),
+        ).await.map_err(|e| {
+            error!("Failed to create file handle: {}", e);
+            Status::internal("Failed to create file handle")
+        })?;
+        
+        // Get chunk information if requested
+        let chunks = if req.include_chunks {
+            match &file_node.node_type {
+                mooseng_common::types::FsNodeType::File { chunks, .. } => {
+                    let mut chunk_infos = Vec::new();
+                    for chunk_id in chunks {
+                        if let Ok(locations) = self.chunk_manager.get_chunk_locations(*chunk_id).await {
+                            chunk_infos.push(mooseng_protocol::ChunkInfo {
+                                chunk_id: *chunk_id,
+                                chunk_index: chunk_infos.len() as u32,
+                                version: 1, // TODO: Get actual version
+                                size: mooseng_common::CHUNK_SIZE as u64,
+                                locations: locations.into_iter().map(|loc| {
+                                    mooseng_protocol::ChunkLocation {
+                                        server_id: loc.server_id,
+                                        ip: loc.ip,
+                                        port: loc.port as u32,
+                                        label: loc.label.unwrap_or_default(),
+                                    }
+                                }).collect(),
+                            });
+                        }
+                    }
+                    chunk_infos
+                }
+                _ => vec![],
+            }
+        } else {
+            vec![]
+        };
+        
+        // Extract filename from path
+        let filename = std::path::Path::new(&req.path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("");
+        
+        // Convert to protobuf metadata
+        let metadata = Some(mooseng_protocol::FileMetadata {
+            inode: inode_id,
+            parent_inode: file_node.parent.unwrap_or(0),
+            name: filename.to_string(),
+            file_type: mooseng_protocol::FileType::RegularFile as i32,
+            mode: file_node.mode as u32,
+            uid: file_node.uid,
+            gid: file_node.gid,
+            size: file_size,
+            atime: file_node.atime,
+            mtime: file_node.mtime,
+            ctime: file_node.ctime,
+            storage_class_id: file_node.storage_class_id as u32,
+            chunk_count,
+        });
+        
         let response = OpenFileResponse {
-            metadata: None, // TODO: Get actual metadata
-            file_handle: 1, // TODO: Generate real file handle
-            chunks: vec![], // TODO: Get actual chunk info
+            metadata,
+            file_handle,
+            chunks,
         };
         
         Ok(Response::new(response))
@@ -183,10 +341,20 @@ impl MasterService for MasterServiceImpl {
         let req = request.into_inner();
         info!("Closing file handle: {}", req.file_handle);
         
-        // TODO: Implement actual file closing logic
-        let response = CloseFileResponse { success: true };
-        
-        Ok(Response::new(response))
+        // Close file handle through session manager
+        match self.session_manager.close_file(req.file_handle).await {
+            Ok(_) => {
+                let response = CloseFileResponse { success: true };
+                Ok(Response::new(response))
+            }
+            Err(e) => {
+                error!("Failed to close file handle {}: {}", req.file_handle, e);
+                // Still return success as the client expects, but log the error
+                // This matches MooseFS behavior where close rarely fails
+                let response = CloseFileResponse { success: true };
+                Ok(Response::new(response))
+            }
+        }
     }
 
     #[instrument(skip(self, request))]

@@ -41,6 +41,7 @@ impl PeerReplicationState {
     }
 }
 
+#[derive(Debug)]
 pub struct ReplicationManager {
     node_id: NodeId,
     node: Arc<RwLock<RaftNode>>,

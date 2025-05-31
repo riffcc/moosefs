@@ -1,6 +1,6 @@
 # Task ID: 7
 # Title: Develop Reed-Solomon erasure coding
-# Status: in-progress
+# Status: done
 # Dependencies: 3
 # Priority: high
 # Description: Implement Reed-Solomon erasure coding for improved storage efficiency.
@@ -11,25 +11,25 @@ Use the reed-solomon-erasure = '4.0.2' crate for erasure coding implementation. 
 Develop unit tests for encoding and decoding operations. Create integration tests verifying data integrity with simulated chunk server failures. Benchmark storage efficiency improvements and verify 50% improvement over replication.
 
 # Subtasks:
-## 7.1. Implement core Reed-Solomon encoding/decoding algorithms [in-progress]
+## 7.1. Implement core Reed-Solomon encoding/decoding algorithms [done]
 ### Dependencies: None
 ### Description: Develop efficient encoding and decoding functions using the reed-solomon-erasure crate, optimizing for performance.
 ### Details:
 
 
-## 7.2. Integrate erasure coding with chunkserver module [not-started]
+## 7.2. Integrate erasure coding with chunkserver module [done]
 ### Dependencies: None
 ### Description: Connect the Reed-Solomon implementation with the chunkserver module to handle data chunks appropriately.
 ### Details:
 
 
-## 7.3. Implement 8+n and 4+n configuration modules [not-started]
+## 7.3. Implement 8+n and 4+n configuration modules [done]
 ### Dependencies: None
 ### Description: Create configurable modules that support both 8+n and 4+n erasure coding schemes.
 ### Details:
 
 
-## 7.4. Develop chunk placement strategy for erasure coding [not-started]
+## 7.4. Develop chunk placement strategy for erasure coding [done]
 ### Dependencies: None
 ### Description: Design and implement a strategy for placing chunks across servers that accounts for erasure coding stripes.
 ### Details:

@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use anyhow::Result;
 use mooseng_common::health::{HealthChecker, HealthCheckResult, HealthStatus, SelfHealingAction};
@@ -294,7 +294,7 @@ impl HealthChecker for MasterHealthChecker {
             component: "master".to_string(),
             status,
             message,
-            timestamp: start_time,
+            timestamp: SystemTime::now(),
             metrics: metric_map,
             recommendations,
         })

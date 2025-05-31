@@ -114,10 +114,34 @@ SUCCESS CRITERIA:
 7. <100ms read latency within regions
 8. <500ms write latency for cross-region consistency
 
+ARCHITECTURAL INSIGHTS FROM RESEARCH:
+
+Based on research into leading distributed file systems (Ceph, JuiceFS):
+
+1. METADATA SEPARATION STRATEGY (from JuiceFS):
+   - Clear separation of metadata and data storage
+   - Pluggable metadata backends (Redis, SQL, key-value stores)
+   - Multi-level client-side caching (memory, disk, read-ahead, write-back)
+   - Session management for consistency guarantees
+
+2. CONSENSUS AND REPLICATION (from Ceph):
+   - CRUSH-like algorithm for deterministic data placement
+   - Primary-copy replication pattern
+   - BlueStore-inspired direct block management
+   - Read balancing across primary PGs
+   - MDS-style load balancing for metadata
+
+3. IMPLEMENTATION PRIORITIES:
+   - Focus on client-side caching performance first
+   - Implement deterministic placement before complex consensus
+   - Build multi-site replication similar to Ceph RGW
+   - Use hybrid approaches: consensus for metadata, placement algorithms for data
+
 DEVELOPMENT APPROACH:
 - Clean room implementation (no code copying)
-- Test-driven development
-- Extensive documentation
-- Performance benchmarking at each milestone
+- Test-driven development with continuous benchmarking
+- Extensive documentation with architectural decision records
+- Performance benchmarking at each milestone (following established patterns)
 - Security-first design principles
-EOF
+- Iterative approach: start with single-region, then multi-region
+- Focus on operational excellence and observability

@@ -1,6 +1,6 @@
 # Task ID: 10
 # Title: Develop Kubernetes deployment
-# Status: pending
+# Status: done
 # Dependencies: 9
 # Priority: medium
 # Description: Create Kubernetes manifests and Helm charts for MooseNG deployment.

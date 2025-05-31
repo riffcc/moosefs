@@ -12,13 +12,14 @@ pub mod read_scaling;
 pub mod optimization;
 pub mod multiregion_optimization;
 pub mod test_runner;
+pub mod block_replication;
 
 #[cfg(test)]
 pub mod tests;
 
-pub use state::{RaftState, NodeState, Term, LogIndex};
+pub use state::{RaftState, NodeState, Term, LogIndex, NodeId};
 pub use node::RaftNode;
-pub use log::{LogEntry, RaftLog};
+pub use log::{LogEntry, RaftLog, LogCommand};
 pub use rpc::{RaftRpc, RaftMessage};
 pub use election::ElectionManager;
 pub use replication::ReplicationManager;

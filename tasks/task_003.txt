@@ -1,11 +1,79 @@
 # Task ID: 3
 # Title: Develop Chunk Server core functionality
-# Status: done
+# Status: in-progress
 # Dependencies: 1
 # Priority: high
 # Description: Implement the basic structure and functionality of the Chunk Server, including data storage and retrieval operations.
 # Details:
-Create a new crate 'chunk-server'. Implement chunk allocation, read, and write operations using tokio for async I/O. Use the memmap2 = '0.5.10' crate for efficient memory-mapped file operations. Implement a basic chunk format with metadata and data sections. Use direct I/O for chunk operations where supported by the OS.
+Create a new crate 'chunk-server'. Implement chunk allocation, read, and write operations using tokio for async I/O. Use the memmap2 = '0.5.10' crate for efficient memory-mapped file operations. Implement a basic chunk format with metadata and data sections. Use direct I/O for chunk operations where supported by the OS. Implement background processes for maintenance, verification, and metrics collection. Focus on getting essential functionality working before addressing optional modules. Instance 2 (Infrastructure Specialist) is actively working on chunk server completion, handling subtasks 3.5-3.11. Final integration with the coordinator will be coordinated after the compilation gate (Task 34) is resolved.
 
 # Test Strategy:
-Develop unit tests for chunk operations. Create integration tests to verify data integrity across write and read operations. Benchmark performance against direct file system operations.
+Develop unit tests for chunk operations. Create integration tests to verify data integrity across write and read operations. Benchmark performance against direct file system operations. Test heartbeat functionality, chunk verification, and metrics collection. Ensure proper integration testing with other system components. Coordinate with main instance for comprehensive integration testing after compilation gate (Task 34) is resolved.
+
+# Subtasks:
+## 3.1. Implement heartbeat task to master server [done]
+### Dependencies: None
+### Description: Created a background task that sends periodic heartbeat signals to the master server to indicate chunk server health and availability.
+### Details:
+
+
+## 3.2. Implement background chunk verification [done]
+### Dependencies: None
+### Description: Developed a background process that periodically verifies the integrity of stored chunks to detect corruption or data loss.
+### Details:
+
+
+## 3.3. Add metrics collection task [done]
+### Dependencies: None
+### Description: Implemented a background task that collects and reports performance metrics from the chunk server.
+### Details:
+
+
+## 3.4. Fix compilation issues [done]
+### Dependencies: None
+### Description: Resolved compilation issues in the chunk server codebase to ensure proper building and execution.
+### Details:
+
+
+## 3.5. Resolve gRPC protocol compatibility issues [in-progress]
+### Dependencies: None
+### Description: Address remaining compatibility issues with the gRPC protocol to ensure proper communication between chunk server and other components. Instance 2 (Infrastructure Specialist) is actively working on this subtask.
+### Details:
+
+
+## 3.6. Fix Instant serialization issues [in-progress]
+### Dependencies: None
+### Description: Check for and fix any Instant serialization issues in the chunk server similar to those resolved in the coordinator. Instance 2 (Infrastructure Specialist) is actively working on this subtask.
+### Details:
+
+
+## 3.7. Address scope conflicts and type mismatches [in-progress]
+### Dependencies: None
+### Description: Identify and resolve any scope conflicts, type mismatches, and private field access issues in the chunk server codebase. Instance 2 (Infrastructure Specialist) is actively working on this subtask.
+### Details:
+
+
+## 3.8. Perform code cleanup [in-progress]
+### Dependencies: None
+### Description: Refactor and clean up the codebase to improve readability, maintainability, and performance. Ensure no duplicate functions and fix any problematic imports. Instance 2 (Infrastructure Specialist) is actively working on this subtask.
+### Details:
+
+
+## 3.9. Complete final integration work [in-progress]
+### Dependencies: None
+### Description: Finalize integration of all components to achieve full compilation and functionality of the chunk server. Instance 2 (Infrastructure Specialist) is actively working on this subtask, with coordination with main instance for integration testing after compilation gate (Task 34) is resolved.
+### Details:
+
+
+## 3.11. Prioritize and implement optional modules [in-progress]
+### Dependencies: None
+### Description: After core functionality is working, assess and implement optional modules based on priority and system requirements. Instance 2 (Infrastructure Specialist) is actively working on this subtask.
+### Details:
+
+
+## 3.12. Coordinate integration testing with main instance [to-do]
+### Dependencies: None
+### Description: Set up and execute comprehensive integration testing in collaboration with the main instance to ensure proper functionality across all system components. This will be initiated after the compilation gate (Task 34) is resolved.
+### Details:
+
+

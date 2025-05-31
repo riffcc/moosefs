@@ -15,7 +15,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
-use tokio::time::timeout;
+use tokio::time::{timeout, sleep};
 
 /// Test helper to create a basic Raft configuration
 fn create_test_config(node_id: &str, peers: Vec<String>) -> RaftConfig {
@@ -194,7 +194,6 @@ mod unit_tests {
 #[cfg(test)]
 mod integration_tests {
     use super::*;
-    use tokio::time::{sleep, Duration};
 
     #[tokio::test]
     async fn test_single_node_cluster() -> Result<()> {

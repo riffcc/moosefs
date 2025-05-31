@@ -46,7 +46,7 @@ async fn main() -> Result<()> {
     let shutdown = ShutdownCoordinator::new();
 
     // Create and start metalogger server
-    let server = Arc::new(MetaloggerServer::new(config, shutdown.clone()).await?);
+    let server = std::sync::Arc::new(MetaloggerServer::new(config, shutdown.clone()).await?);
     
     // Run the server
     if let Err(e) = server.run().await {

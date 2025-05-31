@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "mooseng.fullname" . }}-config
+  namespace: {{ .Values.namespace | default "mooseng" }}
+  labels:
+    {{- include "mooseng.labels" . | nindent 4 }}
+data:
+  cluster_name: {{ .Values.cluster.name | quote }}
+  replication_factor: {{ .Values.cluster.replicationFactor | quote }}
+  chunk_size_mb: {{ .Values.cluster.chunkSizeMB | quote }}
+  log_level: {{ .Values.master.config.logging.level | quote }}
+  chunkserver_port: {{ .Values.chunkserver.ports.server | quote }}

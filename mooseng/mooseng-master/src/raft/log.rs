@@ -28,6 +28,13 @@ pub enum LogCommand {
         change_type: crate::raft::membership::ConfigChangeType,
         joint_config: crate::raft::membership::JointConfiguration,
     },
+    
+    /// Custom command for extensibility
+    Custom {
+        command_type: String,
+        key: String,
+        value: Vec<u8>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -62,6 +69,18 @@ pub struct RaftLog {
     snapshot_index: LogIndex,
     snapshot_term: Term,
     log_file: File,
+}
+
+impl std::fmt::Debug for RaftLog {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RaftLog")
+            .field("log_dir", &self.log_dir)
+            .field("entries_count", &self.entries.len())
+            .field("snapshot_index", &self.snapshot_index)
+            .field("snapshot_term", &self.snapshot_term)
+            .field("log_file", &"<file>")
+            .finish()
+    }
 }
 
 impl RaftLog {

@@ -53,6 +53,36 @@ scrape_configs:
     scrape_interval: 30s
     scrape_timeout: 10s
 
+  # MooseNG Health endpoints
+  - job_name: 'mooseng-health'
+    static_configs:
+      - targets:
+        - 'master-1:9430'    # Health endpoints
+        - 'master-2:9430'
+        - 'master-3:9430'
+        - 'chunkserver-1:9430'
+        - 'chunkserver-2:9430'
+        - 'chunkserver-3:9430'
+        - 'metalogger-1:9430'
+    metrics_path: /metrics
+    scrape_interval: 15s
+    scrape_timeout: 10s
+
+  # MooseNG Health status endpoints
+  - job_name: 'mooseng-health-status'
+    static_configs:
+      - targets:
+        - 'master-1:9430'
+        - 'master-2:9430'
+        - 'master-3:9430'
+        - 'chunkserver-1:9430'
+        - 'chunkserver-2:9430'
+        - 'chunkserver-3:9430'
+        - 'metalogger-1:9430'
+    metrics_path: /health
+    scrape_interval: 30s
+    scrape_timeout: 15s
+
   # System metrics (if node_exporter is deployed)
   - job_name: 'node'
     static_configs:

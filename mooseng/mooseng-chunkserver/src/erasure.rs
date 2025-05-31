@@ -2,17 +2,16 @@
 // Provides efficient data encoding and decoding for improved storage efficiency
 
 use anyhow::{anyhow, Result};
-use reed_solomon_erasure::{galois_8::ReedSolomon, Error as ReedSolomonError};
-use std::sync::Arc;
+use reed_solomon_erasure::galois_8::ReedSolomon;
 use std::collections::HashMap;
-use tokio::sync::{Mutex, RwLock};
-use tracing::{debug, info, warn, error};
+use std::sync::Arc;
+use tokio::sync::Mutex;
+use tracing::{debug, info};
 use bytes::{Bytes, BytesMut};
-use mooseng_common::types::{ChunkId, ChunkVersion};
-use crate::{Chunk, ChunkMetadata, ChecksumType, ChunkChecksum};
+use crate::chunk::{Chunk, ChunkMetadata, ChunkChecksum};
 
 /// Erasure coding configuration
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ErasureConfig {
     /// Number of data shards
     pub data_shards: usize,
@@ -361,7 +360,7 @@ impl ShardPlacement {
     fn round_robin_placement(&self, servers: &[String]) -> Vec<Vec<usize>> {
         let mut placement = vec![vec![]; self.config.total_shards()];
         
-        for (i, _) in placement.iter_mut().enumerate() {
+        for i in 0..placement.len() {
             let server_idx = i % servers.len();
             placement[i] = vec![server_idx];
         }
@@ -441,14 +440,14 @@ mod tests {
         assert_eq!(shards.len(), 6); // 4 data + 2 parity
         
         // Decode with all shards
-        let mut decode_shards: Vec<Option<Bytes>> = shards.iter()
+        let decode_shards: Vec<Option<Bytes>> = shards.iter()
             .map(|s| Some(s.clone()))
             .collect();
         let decoded = coder.decode(decode_shards, data_size).await.unwrap();
         assert_eq!(decoded, original);
         
         // Decode with 2 missing shards
-        let mut partial_shards: Vec<Option<Bytes>> = shards.iter()
+        let partial_shards: Vec<Option<Bytes>> = shards.iter()
             .enumerate()
             .map(|(i, s)| if i < 2 { None } else { Some(s.clone()) })
             .collect();

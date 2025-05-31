@@ -3,10 +3,10 @@ use bytes::{Bytes, BytesMut};
 use mooseng_common::types::{ChunkId, ChunkVersion};
 use std::fs::File;
 use std::io::{self, IoSlice, IoSliceMut};
-use std::os::unix::io::{AsRawFd, RawFd};
+use std::os::unix::io::{AsRawFd, RawFd, AsFd};
 use std::path::Path;
 use std::sync::Arc;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncReadExt, AsyncWriteExt, AsyncSeekExt};
 use tracing::{debug, error, info, warn};
 
 use crate::{
@@ -15,11 +15,100 @@ use crate::{
     mmap::{MmapFile, MmapManager},
 };
 
-/// Zero-copy data transfer implementation
+/// Zero-copy data transfer implementation with enhanced memory management
 pub struct ZeroCopyTransfer {
     mmap_manager: Arc<MmapManager>,
     use_sendfile: bool,
     use_splice: bool,
+    // Enhanced features
+    buffer_pool: Arc<BufferPool>,
+    prefetch_size: usize,
+    metrics: Arc<ZeroCopyMetrics>,
+}
+
+/// High-performance buffer pool for zero-copy operations
+pub struct BufferPool {
+    small_buffers: tokio::sync::Mutex<Vec<BytesMut>>,  // < 64KB
+    medium_buffers: tokio::sync::Mutex<Vec<BytesMut>>, // 64KB - 1MB
+    large_buffers: tokio::sync::Mutex<Vec<BytesMut>>,  // > 1MB
+    buffer_metrics: BufferMetrics,
+}
+
+#[derive(Debug, Default)]
+pub struct BufferMetrics {
+    pub small_allocated: std::sync::atomic::AtomicU64,
+    pub medium_allocated: std::sync::atomic::AtomicU64,
+    pub large_allocated: std::sync::atomic::AtomicU64,
+    pub pool_hits: std::sync::atomic::AtomicU64,
+    pub pool_misses: std::sync::atomic::AtomicU64,
+}
+
+impl BufferPool {
+    const SMALL_BUFFER_SIZE: usize = 64 * 1024;     // 64KB
+    const MEDIUM_BUFFER_SIZE: usize = 1024 * 1024;  // 1MB
+    const LARGE_BUFFER_SIZE: usize = 4 * 1024 * 1024; // 4MB
+    const MAX_POOLED_BUFFERS: usize = 32;
+
+    pub fn new() -> Self {
+        Self {
+            small_buffers: tokio::sync::Mutex::new(Vec::with_capacity(Self::MAX_POOLED_BUFFERS)),
+            medium_buffers: tokio::sync::Mutex::new(Vec::with_capacity(Self::MAX_POOLED_BUFFERS)),
+            large_buffers: tokio::sync::Mutex::new(Vec::with_capacity(Self::MAX_POOLED_BUFFERS)),
+            buffer_metrics: BufferMetrics::default(),
+        }
+    }
+
+    /// Get a buffer from the pool or allocate a new one
+    pub async fn get_buffer(&self, size: usize) -> BytesMut {
+        let (pool, buffer_size, metric) = if size <= Self::SMALL_BUFFER_SIZE {
+            (&self.small_buffers, Self::SMALL_BUFFER_SIZE, &self.buffer_metrics.small_allocated)
+        } else if size <= Self::MEDIUM_BUFFER_SIZE {
+            (&self.medium_buffers, Self::MEDIUM_BUFFER_SIZE, &self.buffer_metrics.medium_allocated)
+        } else {
+            (&self.large_buffers, Self::LARGE_BUFFER_SIZE.max(size), &self.buffer_metrics.large_allocated)
+        };
+
+        let mut pool_guard = pool.lock().await;
+        if let Some(mut buffer) = pool_guard.pop() {
+            buffer.clear();
+            buffer.reserve(size);
+            self.buffer_metrics.pool_hits.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            buffer
+        } else {
+            self.buffer_metrics.pool_misses.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            metric.fetch_add(buffer_size as u64, std::sync::atomic::Ordering::Relaxed);
+            BytesMut::with_capacity(buffer_size)
+        }
+    }
+
+    /// Return a buffer to the pool
+    pub async fn return_buffer(&self, buffer: BytesMut) {
+        let capacity = buffer.capacity();
+        let pool = if capacity <= Self::SMALL_BUFFER_SIZE {
+            &self.small_buffers
+        } else if capacity <= Self::MEDIUM_BUFFER_SIZE {
+            &self.medium_buffers
+        } else {
+            &self.large_buffers
+        };
+
+        let mut pool_guard = pool.lock().await;
+        if pool_guard.len() < Self::MAX_POOLED_BUFFERS {
+            pool_guard.push(buffer);
+        }
+        // If pool is full, buffer will be dropped (deallocated)
+    }
+
+    /// Get buffer pool statistics
+    pub fn get_stats(&self) -> (u64, u64, u64, u64, u64) {
+        (
+            self.buffer_metrics.small_allocated.load(std::sync::atomic::Ordering::Relaxed),
+            self.buffer_metrics.medium_allocated.load(std::sync::atomic::Ordering::Relaxed),
+            self.buffer_metrics.large_allocated.load(std::sync::atomic::Ordering::Relaxed),
+            self.buffer_metrics.pool_hits.load(std::sync::atomic::Ordering::Relaxed),
+            self.buffer_metrics.pool_misses.load(std::sync::atomic::Ordering::Relaxed),
+        )
+    }
 }
 
 impl ZeroCopyTransfer {
@@ -28,10 +117,34 @@ impl ZeroCopyTransfer {
             mmap_manager,
             use_sendfile: cfg!(target_os = "linux"),
             use_splice: cfg!(target_os = "linux"),
+            buffer_pool: Arc::new(BufferPool::new()),
+            prefetch_size: 128 * 1024, // 128KB prefetch
+            metrics: Arc::new(ZeroCopyMetrics::default()),
         }
     }
+
+    pub fn new_with_config(mmap_manager: Arc<MmapManager>, prefetch_size: usize) -> Self {
+        Self {
+            mmap_manager,
+            use_sendfile: cfg!(target_os = "linux"),
+            use_splice: cfg!(target_os = "linux"),
+            buffer_pool: Arc::new(BufferPool::new()),
+            prefetch_size,
+            metrics: Arc::new(ZeroCopyMetrics::default()),
+        }
+    }
+
+    /// Get zero-copy metrics
+    pub fn get_metrics(&self) -> Arc<ZeroCopyMetrics> {
+        self.metrics.clone()
+    }
+
+    /// Get buffer pool statistics
+    pub fn get_buffer_stats(&self) -> (u64, u64, u64, u64, u64) {
+        self.buffer_pool.get_stats()
+    }
     
-    /// Read chunk data using zero-copy techniques
+    /// Read chunk data using enhanced zero-copy techniques with intelligent prefetching
     pub async fn read_chunk<P: AsRef<Path>>(
         &self,
         path: P,
@@ -39,19 +152,74 @@ impl ZeroCopyTransfer {
         length: u64,
     ) -> ChunkResult<Bytes> {
         let path = path.as_ref();
+        let start_time = std::time::Instant::now();
         
         // Try memory-mapped I/O first
         if let Ok(Some(mmap_file)) = self.mmap_manager.get_mmap(path).await {
             debug!("Using memory-mapped I/O for {}", path.display());
-            return mmap_file.slice(offset, length);
+            let result = mmap_file.slice(offset, length);
+            self.metrics.record_mmap_read(length);
+            return result;
         }
         
-        // Fallback to standard read
-        debug!("Using standard read for {}", path.display());
-        self.standard_read(path, offset, length).await
+        // Enhanced buffered read with prefetching
+        debug!("Using enhanced buffered read with prefetching for {}", path.display());
+        let result = self.enhanced_buffered_read(path, offset, length).await;
+        
+        let duration = start_time.elapsed();
+        debug!("Zero-copy read completed in {:?} for {} bytes", duration, length);
+        
+        result
     }
     
-    /// Write chunk data using zero-copy techniques
+    /// Enhanced buffered read with intelligent prefetching and buffer pooling
+    async fn enhanced_buffered_read<P: AsRef<Path>>(
+        &self,
+        path: P,
+        offset: u64,
+        length: u64,
+    ) -> ChunkResult<Bytes> {
+        let mut file = tokio::fs::File::open(path.as_ref()).await
+            .map_err(|e| ChunkServerError::Io(e))?;
+
+        if offset > 0 {
+            file.seek(io::SeekFrom::Start(offset)).await
+                .map_err(|e| ChunkServerError::Io(e))?;
+        }
+
+        // Determine if we should prefetch more data
+        let prefetch_length = if length < self.prefetch_size as u64 {
+            // For small reads, prefetch additional data
+            (length + self.prefetch_size as u64).min(
+                file.metadata().await.map(|m| m.len().saturating_sub(offset)).unwrap_or(length)
+            )
+        } else {
+            length
+        };
+
+        // Get buffer from pool
+        let mut buffer = self.buffer_pool.get_buffer(prefetch_length as usize).await;
+        buffer.resize(prefetch_length as usize, 0);
+
+        // Read data
+        file.read_exact(&mut buffer).await
+            .map_err(|e| ChunkServerError::Io(e))?;
+
+        // Extract the requested portion
+        let result = if prefetch_length > length {
+            let result = Bytes::from(buffer.split_to(length as usize).freeze());
+            // Return remaining buffer to pool
+            self.buffer_pool.return_buffer(buffer).await;
+            result
+        } else {
+            // Full buffer is used, just freeze it
+            Bytes::from(buffer.freeze())
+        };
+
+        Ok(result)
+    }
+    
+    /// Write chunk data using enhanced zero-copy techniques
     pub async fn write_chunk<P: AsRef<Path>>(
         &self,
         path: P,
@@ -59,8 +227,8 @@ impl ZeroCopyTransfer {
         offset: u64,
     ) -> ChunkResult<()> {
         let path = path.as_ref();
+        let start_time = std::time::Instant::now();
         
-        // For writes, we use standard async I/O but optimize with vectored I/O
         debug!("Writing {} bytes to {} at offset {}", data.len(), path.display(), offset);
         
         let mut file = tokio::fs::OpenOptions::new()
@@ -75,13 +243,112 @@ impl ZeroCopyTransfer {
                 .map_err(|e| ChunkServerError::Io(e))?;
         }
         
-        file.write_all(data).await
-            .map_err(|e| ChunkServerError::Io(e))?;
+        // Use vectored write for better performance with large data
+        if data.len() > 64 * 1024 {
+            self.vectored_write(&mut file, data).await?;
+        } else {
+            file.write_all(data).await
+                .map_err(|e| ChunkServerError::Io(e))?;
+        }
         
         file.sync_all().await
             .map_err(|e| ChunkServerError::Io(e))?;
         
+        let duration = start_time.elapsed();
+        self.metrics.record_mmap_write(data.len() as u64);
+        debug!("Write completed in {:?} for {} bytes", duration, data.len());
+        
         Ok(())
+    }
+    
+    /// Vectored write for large data blocks
+    async fn vectored_write(&self, file: &mut tokio::fs::File, data: &Bytes) -> ChunkResult<()> {
+        const CHUNK_SIZE: usize = 256 * 1024; // 256KB chunks
+        
+        for chunk in data.chunks(CHUNK_SIZE) {
+            file.write_all(chunk).await
+                .map_err(|e| ChunkServerError::Io(e))?;
+        }
+        
+        self.metrics.record_vectored_io();
+        Ok(())
+    }
+    
+    /// Batch write multiple chunks efficiently
+    pub async fn write_chunks_batch<P: AsRef<Path>>(
+        &self,
+        writes: &[(P, &Bytes, u64)], // (path, data, offset) tuples
+    ) -> ChunkResult<Vec<ChunkResult<()>>> {
+        let start_time = std::time::Instant::now();
+        
+        let mut futures = Vec::with_capacity(writes.len());
+        for (path, data, offset) in writes {
+            let future = self.write_chunk(path, data, *offset);
+            futures.push(future);
+        }
+        
+        let results = futures::future::join_all(futures).await;
+        
+        let duration = start_time.elapsed();
+        debug!("Batch write of {} chunks completed in {:?}", writes.len(), duration);
+        
+        Ok(results)
+    }
+    
+    /// Async copy with progress callback
+    pub async fn copy_with_progress<P1: AsRef<Path>, P2: AsRef<Path>, F>(
+        &self,
+        src_path: P1,
+        dst_path: P2,
+        progress_callback: F,
+    ) -> ChunkResult<u64>
+    where
+        F: Fn(u64, u64) + Send + Sync, // (bytes_copied, total_bytes)
+    {
+        let src_path = src_path.as_ref();
+        let dst_path = dst_path.as_ref();
+        
+        let metadata = tokio::fs::metadata(src_path).await
+            .map_err(|e| ChunkServerError::Io(e))?;
+        let total_bytes = metadata.len();
+        
+        let mut src_file = tokio::fs::File::open(src_path).await
+            .map_err(|e| ChunkServerError::Io(e))?;
+        let mut dst_file = tokio::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(dst_path)
+            .await
+            .map_err(|e| ChunkServerError::Io(e))?;
+        
+        const COPY_BUFFER_SIZE: usize = 1024 * 1024; // 1MB
+        let mut bytes_copied = 0u64;
+        
+        loop {
+            let mut buffer = self.buffer_pool.get_buffer(COPY_BUFFER_SIZE).await;
+            buffer.resize(COPY_BUFFER_SIZE, 0);
+            
+            let bytes_read = match src_file.read(&mut buffer).await {
+                Ok(0) => break, // EOF
+                Ok(n) => n,
+                Err(e) => return Err(ChunkServerError::Io(e)),
+            };
+            
+            buffer.truncate(bytes_read);
+            dst_file.write_all(&buffer).await
+                .map_err(|e| ChunkServerError::Io(e))?;
+            
+            bytes_copied += bytes_read as u64;
+            progress_callback(bytes_copied, total_bytes);
+            
+            self.buffer_pool.return_buffer(buffer).await;
+        }
+        
+        dst_file.sync_all().await
+            .map_err(|e| ChunkServerError::Io(e))?;
+        
+        Ok(bytes_copied)
     }
     
     /// Transfer data between files using zero-copy
@@ -177,18 +444,16 @@ impl ZeroCopyTransfer {
             .open(dst_path.as_ref())
             .map_err(|e| ChunkServerError::Io(e))?;
         
-        let src_fd = src_file.as_raw_fd();
-        let dst_fd = dst_file.as_raw_fd();
-        
         // Set destination offset
         if dst_offset > 0 {
-            nix::unistd::lseek(dst_fd, dst_offset as i64, nix::unistd::Whence::SeekSet)
-                .map_err(|e| ChunkServerError::Io(io::Error::new(io::ErrorKind::Other, e)))?;
+            use std::os::unix::fs::FileExt;
+            dst_file.write_at(&[], dst_offset)
+                .map_err(|e| ChunkServerError::Io(e))?;
         }
         
         // Perform sendfile
         let mut offset = src_offset as i64;
-        let bytes_sent = sendfile(dst_fd, src_fd, Some(&mut offset), length as usize)
+        let bytes_sent = nix::sys::sendfile::sendfile(&dst_file, &src_file, Some(&mut offset), length as usize)
             .map_err(|e| ChunkServerError::Io(io::Error::new(io::ErrorKind::Other, e)))?;
         
         Ok(bytes_sent as u64)

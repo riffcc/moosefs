@@ -243,7 +243,6 @@ impl ErasurePlacementStrategy {
             if let Some(region_servers) = servers_by_region.get(region) {
                 for server in region_servers {
                     if !used_servers.contains(&server.id) {
-                        let is_data = shard_idx < self.config.data_shards;
                         assignments.push(ShardAssignment {
                             shard_index: shard_idx,
                             primary_server: server.id.clone(),

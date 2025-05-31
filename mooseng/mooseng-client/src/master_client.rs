@@ -1,19 +1,18 @@
 use tonic::transport::{Channel, Endpoint};
 use std::time::Duration;
 use tracing::info;
+use prost_types;
 
 use mooseng_protocol::{
     MasterServiceClient,
     GetFileInfoRequest,
     ListDirectoryRequest,
     CreateFileRequest,
-    OpenFileRequest,
     DeleteFileRequest,
     CreateDirectoryRequest,
     DeleteDirectoryRequest,
     RenameFileRequest,
     SetFileAttributesRequest,
-    GetChunkLocationsRequest,
     FileMetadata,
     FileType as ProtoFileType,
 };
@@ -83,9 +82,8 @@ impl MasterClient {
             
         Ok(FileAttr {
             inode: metadata.inode,
-            parent: metadata.parent,
             file_type,
-            mode: metadata.mode,
+            mode: metadata.mode as u16,
             uid: metadata.uid,
             gid: metadata.gid,
             atime,
@@ -174,6 +172,7 @@ impl MasterClient {
             name: name.to_string(),
             mode,
             storage_class_id: 0, // TODO: Handle storage class properly
+            xattrs: Default::default(), // Empty extended attributes
         });
         
         let response = self.client.create_file(request).await
@@ -217,5 +216,117 @@ impl MasterClient {
             .map_err(|e| ClientError::GrpcError(e))?;
             
         Ok(())
+    }
+    
+    /// Create a directory
+    pub async fn mkdir(&mut self, parent: InodeId, name: &str, mode: u32) -> ClientResult<(InodeId, FileAttr)> {
+        let request = tonic::Request::new(CreateDirectoryRequest {
+            session_id: self.session_id,
+            parent,
+            name: name.to_string(),
+            mode,
+            storage_class_id: 0, // TODO: Handle storage class properly
+            xattrs: Default::default(), // Empty extended attributes
+        });
+        
+        let response = self.client.create_directory(request).await
+            .map_err(|e| ClientError::GrpcError(e))?;
+        let create_response = response.into_inner();
+        
+        if let Some(metadata) = create_response.metadata {
+            let attr = Self::metadata_to_attr(&metadata)?;
+            Ok((metadata.inode, attr))
+        } else {
+            Err(ClientError::MasterError("Failed to create directory".to_string()))
+        }
+    }
+    
+    /// Remove a directory
+    pub async fn rmdir(&mut self, parent: InodeId, name: &str) -> ClientResult<()> {
+        // First lookup the directory to get its inode
+        let (inode, _) = self.lookup(parent, name).await?;
+        
+        let request = tonic::Request::new(DeleteDirectoryRequest {
+            session_id: self.session_id,
+            inode,
+            recursive: false,
+        });
+        
+        self.client.delete_directory(request).await
+            .map_err(|e| ClientError::GrpcError(e))?;
+            
+        Ok(())
+    }
+    
+    /// Rename a file or directory
+    pub async fn rename(&mut self, parent: InodeId, name: &str, newparent: InodeId, newname: &str) -> ClientResult<()> {
+        // First lookup the file to get its inode
+        let (inode, _) = self.lookup(parent, name).await?;
+        
+        let request = tonic::Request::new(RenameFileRequest {
+            session_id: self.session_id,
+            inode,
+            new_parent: newparent,
+            new_name: newname.to_string(),
+        });
+        
+        self.client.rename_file(request).await
+            .map_err(|e| ClientError::GrpcError(e))?;
+            
+        Ok(())
+    }
+    
+    /// Set file attributes
+    pub async fn setattr(
+        &mut self,
+        inode: InodeId,
+        mode: Option<u32>,
+        uid: Option<u32>,
+        gid: Option<u32>,
+        size: Option<u64>,
+        atime: Option<u64>,
+        mtime: Option<u64>,
+    ) -> ClientResult<FileAttr> {
+        // SetFileAttributesRequest uses path, so we need to construct a path from inode
+        // For now, we'll use inode as path - this should be handled properly with a path cache
+        let path = format!("/{}", inode); // TODO: Implement proper inode-to-path mapping
+        
+        // Convert microseconds to google::protobuf::Timestamp
+        let atime_timestamp = atime.map(|us| {
+            let secs = us / 1_000_000;
+            let nanos = ((us % 1_000_000) * 1_000) as i32;
+            prost_types::Timestamp {
+                seconds: secs as i64,
+                nanos,
+            }
+        });
+        
+        let mtime_timestamp = mtime.map(|us| {
+            let secs = us / 1_000_000;
+            let nanos = ((us % 1_000_000) * 1_000) as i32;
+            prost_types::Timestamp {
+                seconds: secs as i64,
+                nanos,
+            }
+        });
+        
+        let request = tonic::Request::new(SetFileAttributesRequest {
+            path,
+            mode,
+            uid,
+            gid,
+            atime: atime_timestamp,
+            mtime: mtime_timestamp,
+        });
+        
+        let response = self.client.set_file_attributes(request).await
+            .map_err(|e| ClientError::GrpcError(e))?;
+        let attr_response = response.into_inner();
+        
+        if let Some(metadata) = attr_response.metadata {
+            Self::metadata_to_attr(&metadata)
+        } else {
+            Err(ClientError::MasterError("Failed to set attributes".to_string()))
+        }
     }
 }

@@ -1,0 +1,19 @@
+{
+    "timestamp": "2025-05-31T15:52:49+01:00",
+    "environment": {
+        "os": "Linux",
+        "arch": "x86_64",
+        "cores": "16"
+    },
+    "results": {
+        "file_system_ms": 196,
+        "network_ms": 1282,
+        "cpu_memory_ms": 958,
+        "concurrency_ms": 30,
+        "throughput_ms": 381,
+        "throughput_mbps": "131.57",
+        "total_time_ms": 2847,
+        "ops_per_second": "1760.56",
+        "grade": "A+ (Excellent)"
+    }
+}

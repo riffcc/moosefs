@@ -1,0 +1,43 @@
+1. Get the application URL by running these commands:
+
+{{- if .Values.master.service.loadBalancer.enabled }}
+   NOTE: It may take a few minutes for the LoadBalancer IP to be available.
+   You can watch the status of by running 'kubectl get --namespace {{ .Values.namespace | default "mooseng" }} svc -w {{ include "mooseng.master.serviceName" . }}-lb'
+   
+   export SERVICE_IP=$(kubectl get svc --namespace {{ .Values.namespace | default "mooseng" }} {{ include "mooseng.master.serviceName" . }}-lb --template "{{"{{ range (index .status.loadBalancer.ingress 0) }}{{.}}{{ end }}"}}")
+   echo "MooseNG Master endpoint: $SERVICE_IP:{{ .Values.master.ports.server }}"
+{{- else }}
+   kubectl port-forward --namespace {{ .Values.namespace | default "mooseng" }} service/{{ include "mooseng.master.serviceName" . }} {{ .Values.master.ports.server }}:{{ .Values.master.ports.server }}
+   echo "MooseNG Master endpoint: localhost:{{ .Values.master.ports.server }}"
+{{- end }}
+
+2. Check the status of the cluster:
+   kubectl get pods --namespace {{ .Values.namespace | default "mooseng" }} -l "app.kubernetes.io/instance={{ .Release.Name }}"
+
+3. View the logs:
+   # Master logs
+   kubectl logs --namespace {{ .Values.namespace | default "mooseng" }} -l "app.kubernetes.io/instance={{ .Release.Name }},app.kubernetes.io/component=master" -f
+
+   # Chunkserver logs
+   kubectl logs --namespace {{ .Values.namespace | default "mooseng" }} -l "app.kubernetes.io/instance={{ .Release.Name }},app.kubernetes.io/component=chunkserver" -f
+
+{{- if .Values.monitoring.prometheus.enabled }}
+4. Access Prometheus metrics:
+   kubectl port-forward --namespace {{ .Values.namespace | default "mooseng" }} service/{{ include "mooseng.fullname" . }}-prometheus 9090:9090
+   Open http://localhost:9090 in your browser
+{{- end }}
+
+{{- if .Values.monitoring.grafana.enabled }}
+5. Access Grafana dashboards:
+   kubectl port-forward --namespace {{ .Values.namespace | default "mooseng" }} service/{{ include "mooseng.fullname" . }}-grafana 3000:3000
+   Open http://localhost:3000 in your browser
+   Username: admin
+   Password: {{ .Values.monitoring.grafana.adminPassword }}
+{{- end }}
+
+{{- if .Values.cli.enabled }}
+6. Use the CLI tools:
+   kubectl exec -it --namespace {{ .Values.namespace | default "mooseng" }} deployment/{{ include "mooseng.fullname" . }}-cli -- mooseng-cli status
+{{- end }}
+
+For more information, visit: https://github.com/moosefs/moosefs

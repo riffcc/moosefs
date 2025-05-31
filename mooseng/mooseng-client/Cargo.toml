@@ -12,10 +12,12 @@ mooseng-protocol = { path = "../mooseng-protocol" }
 
 # Async runtime
 tokio = { workspace = true, features = ["full"] }
+async-trait = { workspace = true }
 
 # gRPC
 tonic = { workspace = true }
 prost = { workspace = true }
+prost-types = { workspace = true }
 
 # FUSE
 fuser = { workspace = true }
@@ -51,6 +53,7 @@ moka = { version = "0.12", features = ["future"] }
 # File system operations
 nix = { workspace = true }
 libc = { workspace = true }
+axum = "0.8.4"
 
 [dev-dependencies]
 tempfile = { workspace = true }

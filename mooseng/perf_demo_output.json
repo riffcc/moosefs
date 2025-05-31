@@ -1,0 +1,73 @@
+    Finished `release` profile [optimized] target(s) in 0.01s
+     Running `target/release/mooseng-perf-demo`
+🚀 MooseNG Performance Demonstration
+=====================================
+Testing realistic distributed file system performance...
+
+📁 Testing File Operations...
+....... Done!
+🗂️  Testing Metadata Operations...
+ Done!
+🌐 Testing Network Performance...
+ Done!
+🌍 Testing Multi-region Performance...
+ Done!
+👥 Testing Concurrent Client Performance...
+ Done!
+🔒 Testing Erasure Coding Performance...
+ Done!
+
+================================================================================
+🎯 MOOSENG PERFORMANCE RESULTS
+================================================================================
+⏱️  Total Test Time: 22.64s
+🔢 Total Operations: 350490
+📊 Operations/Second: 15479
+⚡ Average Latency: 1.142ms
+🚀 Peak Throughput: 6634028 MB/s
+🏆 Performance Grade: A+ (Exceptional)
+
+📈 DETAILED RESULTS:
+--------------------------------------------------------------------------------
+Operation                           Latency (ms) Throughput (MB/s)      Samples
+--------------------------------------------------------------------------------
+file_write_1KB                          0.052566              19         1000
+file_write_4KB                          0.052621              74         1000
+file_write_64KB                         0.052641            1187         1000
+file_write_1024KB                       0.052683           18981         1000
+large_file_write_10MB                   0.156700           63816           10
+large_file_write_100MB                  0.153988          649398           10
+large_file_write_1024MB                 0.154355         6634028           10
+directory_listing                       0.052648             N/A        50000
+file_creation                           0.071452             N/A        10000
+attribute_access                        0.052621             N/A       100000
+grpc_metadata_call                      0.100133             N/A        10000
+chunk_transfer_0MB                      0.052317            1195          100
+chunk_transfer_1MB                      0.059468           16816          100
+chunk_transfer_64MB                     0.590058          108464           10
+cross_region_replication_1MB           25.141584              40          100
+raft_consensus                          0.153751             N/A        10000
+concurrent_clients_10                   0.052648             N/A         1000
+concurrent_clients_50                   0.052631             N/A         5000
+concurrent_clients_100                  0.052632             N/A        10000
+concurrent_clients_500                  0.052660             N/A        50000
+concurrent_clients_1000                 0.052627             N/A       100000
+erasure_coding_8+4                      0.066052          968932           50
+erasure_coding_6+3                      0.065346          979389           50
+erasure_coding_4+2                      0.065453          977796           50
+
+🌟 PERFORMANCE HIGHLIGHTS:
+   🚀 Highest Throughput: large_file_write_1024MB (6634028 MB/s)
+   ⚡ Fastest Operation: chunk_transfer_0MB (0.052317ms)
+   📊 Highest Volume: attribute_access (100000 operations)
+
+💡 PERFORMANCE INSIGHTS:
+   ✅ Outstanding throughput capability (>2 GB/s) suitable for enterprise workloads
+   ✅ Good latency (<5ms) suitable for most applications
+   ✅ High IOPS (>10K ops/sec) for metadata-intensive applications
+
+🎯 USE CASE RECOMMENDATIONS:
+================================================================================
+
+✅ Performance demonstration completed!
+📊 Results saved to performance_results.json and performance_results.csv

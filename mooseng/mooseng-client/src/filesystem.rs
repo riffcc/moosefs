@@ -1,15 +1,14 @@
 use fuser::{
     FileAttr as FuseFileAttr, FileType as FuseFileType, Filesystem, Request, ReplyAttr,
     ReplyData, ReplyDirectory, ReplyEntry, ReplyOpen, ReplyWrite, ReplyEmpty,
-    FUSE_ROOT_ID,
+    ReplyCreate,
 };
-use libc::{ENOENT, ENOSYS, EIO, EACCES, EINVAL};
-use std::collections::BTreeMap;
+use libc::{ENOENT, EIO, EACCES, EINVAL};
 use std::ffi::OsStr;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::{RwLock, mpsc, oneshot};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 
 use mooseng_common::types::{
     FileAttr, FileType, InodeId, MFS_ROOT_ID, now_micros,
@@ -97,6 +96,34 @@ enum FuseRequest {
         parent: u64,
         name: String,
         reply: oneshot::Sender<ClientResult<()>>,
+    },
+    Mkdir {
+        parent: u64,
+        name: String,
+        mode: u32,
+        reply: oneshot::Sender<ClientResult<(InodeId, FileAttr)>>,
+    },
+    Rmdir {
+        parent: u64,
+        name: String,
+        reply: oneshot::Sender<ClientResult<()>>,
+    },
+    Rename {
+        parent: u64,
+        name: String,
+        newparent: u64,
+        newname: String,
+        reply: oneshot::Sender<ClientResult<()>>,
+    },
+    SetAttr {
+        inode: u64,
+        mode: Option<u32>,
+        uid: Option<u32>,
+        gid: Option<u32>,
+        size: Option<u64>,
+        atime: Option<u64>,
+        mtime: Option<u64>,
+        reply: oneshot::Sender<ClientResult<FileAttr>>,
     },
 }
 
@@ -202,6 +229,47 @@ impl MooseFuse {
                         drop(master);
                         if result.is_ok() {
                             worker_cache.invalidate_dir(parent).await;
+                        }
+                        let _ = reply.send(result);
+                    }
+                    FuseRequest::Mkdir { parent, name, mode, reply } => {
+                        let mut master = worker_master.write().await;
+                        let result = master.mkdir(parent, &name, mode).await;
+                        drop(master);
+                        if let Ok((inode, attr)) = &result {
+                            worker_cache.put_attr(*inode, attr.clone()).await;
+                            worker_cache.invalidate_dir(parent).await;
+                            worker_cache.remove_negative(parent, &name).await;
+                        }
+                        let _ = reply.send(result);
+                    }
+                    FuseRequest::Rmdir { parent, name, reply } => {
+                        let mut master = worker_master.write().await;
+                        let result = master.rmdir(parent, &name).await;
+                        drop(master);
+                        if result.is_ok() {
+                            worker_cache.invalidate_dir(parent).await;
+                        }
+                        let _ = reply.send(result);
+                    }
+                    FuseRequest::Rename { parent, name, newparent, newname, reply } => {
+                        let mut master = worker_master.write().await;
+                        let result = master.rename(parent, &name, newparent, &newname).await;
+                        drop(master);
+                        if result.is_ok() {
+                            worker_cache.invalidate_dir(parent).await;
+                            if parent != newparent {
+                                worker_cache.invalidate_dir(newparent).await;
+                            }
+                        }
+                        let _ = reply.send(result);
+                    }
+                    FuseRequest::SetAttr { inode, mode, uid, gid, size, atime, mtime, reply } => {
+                        let mut master = worker_master.write().await;
+                        let result = master.setattr(inode, mode, uid, gid, size, atime, mtime).await;
+                        drop(master);
+                        if let Ok(attr) = &result {
+                            worker_cache.put_attr(inode, attr.clone()).await;
                         }
                         let _ = reply.send(result);
                     }
@@ -357,7 +425,7 @@ impl Filesystem for MooseFuse {
         }
         
         match rx.blocking_recv() {
-            Ok(Ok((inode, attr))) => {
+            Ok(Ok((_inode, attr))) => {
                 let fuse_attr = convert_file_attr(&attr);
                 let ttl = Duration::from_secs(1);
                 reply.entry(&ttl, &fuse_attr, 0);
@@ -595,8 +663,10 @@ impl Filesystem for MooseFuse {
         }
         
         match rx.blocking_recv() {
-            Ok(Ok((_, _, fh))) => {
-                reply.opened(fh, 0);
+            Ok(Ok((inode, attr, fh))) => {
+                let fuse_attr = convert_file_attr(&attr);
+                let ttl = Duration::from_secs(1);
+                reply.created(&ttl, &fuse_attr, 0, fh, 0);
             }
             Ok(Err(e)) => {
                 error!("create error: {}", e);
@@ -701,32 +771,162 @@ impl Filesystem for MooseFuse {
         }
     }
     
-    // Placeholder implementations for other operations
-    fn mkdir(&mut self, _req: &Request, _parent: u64, _name: &OsStr, _mode: u32, _umask: u32, reply: ReplyEntry) {
-        warn!("mkdir not implemented yet");
-        reply.error(ENOSYS);
+    // Directory operations
+    fn mkdir(&mut self, _req: &Request, parent: u64, name: &OsStr, mode: u32, _umask: u32, reply: ReplyEntry) {
+        let name = match name.to_str() {
+            Some(name) => name,
+            None => {
+                reply.error(EINVAL);
+                return;
+            }
+        };
+        
+        debug!("mkdir: parent={}, name={}, mode={:o}", parent, name, mode);
+        
+        if self.config.read_only {
+            reply.error(EACCES);
+            return;
+        }
+        
+        let (tx, rx) = oneshot::channel();
+        let request = FuseRequest::Mkdir {
+            parent,
+            name: name.to_string(),
+            mode,
+            reply: tx,
+        };
+        
+        if self.request_tx.send(request).is_err() {
+            error!("Failed to send mkdir request");
+            reply.error(EIO);
+            return;
+        }
+        
+        match rx.blocking_recv() {
+            Ok(Ok((_inode, attr))) => {
+                let fuse_attr = convert_file_attr(&attr);
+                let ttl = Duration::from_secs(1);
+                reply.entry(&ttl, &fuse_attr, 0);
+            }
+            Ok(Err(e)) => {
+                error!("mkdir error: {}", e);
+                reply.error(e.to_errno());
+            }
+            Err(_) => {
+                error!("Mkdir request failed: channel closed");
+                reply.error(EIO);
+            }
+        }
     }
     
-    fn rmdir(&mut self, _req: &Request, _parent: u64, _name: &OsStr, reply: ReplyEmpty) {
-        warn!("rmdir not implemented yet");
-        reply.error(ENOSYS);
+    fn rmdir(&mut self, _req: &Request, parent: u64, name: &OsStr, reply: ReplyEmpty) {
+        let name = match name.to_str() {
+            Some(name) => name,
+            None => {
+                reply.error(EINVAL);
+                return;
+            }
+        };
+        
+        debug!("rmdir: parent={}, name={}", parent, name);
+        
+        if self.config.read_only {
+            reply.error(EACCES);
+            return;
+        }
+        
+        let (tx, rx) = oneshot::channel();
+        let request = FuseRequest::Rmdir {
+            parent,
+            name: name.to_string(),
+            reply: tx,
+        };
+        
+        if self.request_tx.send(request).is_err() {
+            error!("Failed to send rmdir request");
+            reply.error(EIO);
+            return;
+        }
+        
+        match rx.blocking_recv() {
+            Ok(Ok(())) => {
+                reply.ok();
+            }
+            Ok(Err(e)) => {
+                error!("rmdir error: {}", e);
+                reply.error(e.to_errno());
+            }
+            Err(_) => {
+                error!("Rmdir request failed: channel closed");
+                reply.error(EIO);
+            }
+        }
     }
     
-    fn rename(&mut self, _req: &Request, _parent: u64, _name: &OsStr, _newparent: u64, _newname: &OsStr, _flags: u32, reply: ReplyEmpty) {
-        warn!("rename not implemented yet");
-        reply.error(ENOSYS);
+    fn rename(&mut self, _req: &Request, parent: u64, name: &OsStr, newparent: u64, newname: &OsStr, _flags: u32, reply: ReplyEmpty) {
+        let name = match name.to_str() {
+            Some(name) => name,
+            None => {
+                reply.error(EINVAL);
+                return;
+            }
+        };
+        
+        let newname = match newname.to_str() {
+            Some(name) => name,
+            None => {
+                reply.error(EINVAL);
+                return;
+            }
+        };
+        
+        debug!("rename: parent={}, name={}, newparent={}, newname={}", parent, name, newparent, newname);
+        
+        if self.config.read_only {
+            reply.error(EACCES);
+            return;
+        }
+        
+        let (tx, rx) = oneshot::channel();
+        let request = FuseRequest::Rename {
+            parent,
+            name: name.to_string(),
+            newparent,
+            newname: newname.to_string(),
+            reply: tx,
+        };
+        
+        if self.request_tx.send(request).is_err() {
+            error!("Failed to send rename request");
+            reply.error(EIO);
+            return;
+        }
+        
+        match rx.blocking_recv() {
+            Ok(Ok(())) => {
+                reply.ok();
+            }
+            Ok(Err(e)) => {
+                error!("rename error: {}", e);
+                reply.error(e.to_errno());
+            }
+            Err(_) => {
+                error!("Rename request failed: channel closed");
+                reply.error(EIO);
+            }
+        }
     }
     
     fn setattr(
         &mut self,
         _req: &Request,
-        _ino: u64,
-        _mode: Option<u32>,
-        _uid: Option<u32>,
-        _gid: Option<u32>,
-        _size: Option<u64>,
-        _atime: Option<fuser::TimeOrNow>,
-        _mtime: Option<fuser::TimeOrNow>,
+        ino: u64,
+        mode: Option<u32>,
+        uid: Option<u32>,
+        gid: Option<u32>,
+        size: Option<u64>,
+        atime: Option<fuser::TimeOrNow>,
+        mtime: Option<fuser::TimeOrNow>,
         _ctime: Option<SystemTime>,
         _fh: Option<u64>,
         _crtime: Option<SystemTime>,
@@ -735,7 +935,61 @@ impl Filesystem for MooseFuse {
         _flags: Option<u32>,
         reply: ReplyAttr,
     ) {
-        warn!("setattr not implemented yet");
-        reply.error(ENOSYS);
+        debug!("setattr: ino={}, mode={:?}, uid={:?}, gid={:?}, size={:?}", 
+               ino, mode, uid, gid, size);
+        
+        if self.config.read_only {
+            reply.error(EACCES);
+            return;
+        }
+        
+        // Convert TimeOrNow to Option<u64> (microseconds)
+        let atime_us = atime.map(|t| match t {
+            fuser::TimeOrNow::SpecificTime(time) => {
+                time.duration_since(UNIX_EPOCH).unwrap_or_default().as_micros() as u64
+            }
+            fuser::TimeOrNow::Now => now_micros(),
+        });
+        
+        let mtime_us = mtime.map(|t| match t {
+            fuser::TimeOrNow::SpecificTime(time) => {
+                time.duration_since(UNIX_EPOCH).unwrap_or_default().as_micros() as u64
+            }
+            fuser::TimeOrNow::Now => now_micros(),
+        });
+        
+        let (tx, rx) = oneshot::channel();
+        let request = FuseRequest::SetAttr {
+            inode: ino,
+            mode,
+            uid,
+            gid,
+            size,
+            atime: atime_us,
+            mtime: mtime_us,
+            reply: tx,
+        };
+        
+        if self.request_tx.send(request).is_err() {
+            error!("Failed to send setattr request");
+            reply.error(EIO);
+            return;
+        }
+        
+        match rx.blocking_recv() {
+            Ok(Ok(attr)) => {
+                let fuse_attr = convert_file_attr(&attr);
+                let ttl = Duration::from_secs(1);
+                reply.attr(&ttl, &fuse_attr);
+            }
+            Ok(Err(e)) => {
+                error!("setattr error: {}", e);
+                reply.error(e.to_errno());
+            }
+            Err(_) => {
+                error!("SetAttr request failed: channel closed");
+                reply.error(EIO);
+            }
+        }
     }
 }

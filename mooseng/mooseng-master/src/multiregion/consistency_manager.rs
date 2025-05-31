@@ -83,7 +83,9 @@ pub struct SessionState {
     pub last_write_timestamp: HLCTimestamp,
     pub read_your_writes: HashMap<String, HLCTimestamp>, // path -> timestamp
     pub monotonic_reads: HashMap<String, HLCTimestamp>,  // path -> timestamp
+    #[serde(skip, default = "Instant::now")]
     pub created_at: Instant,
+    #[serde(skip, default = "Instant::now")]
     pub last_activity: Instant,
 }
 
@@ -122,7 +124,9 @@ pub enum ViolationType {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NetworkPartition {
     pub affected_regions: Vec<u32>,
+    #[serde(skip, default = "Instant::now")]
     pub start_time: Instant,
+    #[serde(skip)]
     pub estimated_end_time: Option<Instant>,
     pub partition_type: PartitionType,
 }
@@ -194,7 +198,7 @@ impl Default for ConsistencyManagerConfig {
     fn default() -> Self {
         Self {
             default_consistency: ConsistencyLevel::BoundedStaleness(Duration::from_secs(5)),
-            session_timeout: Duration::from_hours(1),
+            session_timeout: Duration::from_secs(3600), // 1 hour
             quorum_timeout: Duration::from_secs(10),
             max_eventual_staleness: Duration::from_secs(30),
             adaptive_strategy: AdaptiveStrategy::LatencyAdaptive,
@@ -487,7 +491,7 @@ impl ConsistencyManager {
         // Check if local data is fresh enough
         let now = {
             let mut clock = self.clock.lock().await;
-            clock.now()
+            clock.now()?
         };
         
         let staleness = Duration::from_millis(
@@ -717,7 +721,7 @@ impl ConsistencyManager {
         // For now, return a mock response
         let now = {
             let mut clock = self.clock.lock().await;
-            clock.now()
+            clock.now()?
         };
         
         Ok(OperationResponse {
@@ -739,7 +743,7 @@ impl ConsistencyManager {
         
         let now = {
             let mut clock = self.clock.lock().await;
-            clock.now()
+            clock.now()?
         };
         
         Ok(OperationResponse {
@@ -757,7 +761,7 @@ impl ConsistencyManager {
     async fn perform_local_write(&self, request: &WriteRequest) -> Result<OperationResponse> {
         let now = {
             let mut clock = self.clock.lock().await;
-            clock.now()
+            clock.now()?
         };
         
         Ok(OperationResponse {
@@ -784,10 +788,10 @@ impl ConsistencyManager {
             operation_id: request.operation_id,
             success: true,
             data: None,
-            timestamp: HLCTimestamp::new(
+            timestamp: HLCTimestamp::new_with_node(
                 SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?.as_millis() as u64,
                 0,
-                region_id as u64,
+                region_id,
             ),
             region_id,
             staleness: None,
@@ -807,7 +811,6 @@ impl ConsistencyManager {
             final_result: Some(b"consensus_data".to_vec()),
             timestamp: HLCTimestamp::new(
                 SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?.as_millis() as u64,
-                0,
                 0,
             ),
         })

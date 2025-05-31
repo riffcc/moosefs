@@ -13,6 +13,7 @@ mooseng-protocol = { path = "../mooseng-protocol" }
 # Async runtime
 tokio = { workspace = true, features = ["full"] }
 async-stream = "0.3"
+async-trait = "0.1"
 
 # gRPC
 tonic = { workspace = true }
@@ -30,6 +31,7 @@ prometheus = { workspace = true }
 # Serialization
 serde = { workspace = true }
 serde_json = { workspace = true }
+serde_bytes = "0.11"
 
 # Error handling
 anyhow = { workspace = true }
@@ -50,6 +52,9 @@ crossbeam = { workspace = true }
 rand = { workspace = true }
 glob = "0.3"
 
+# Compression
+flate2 = "1.0"
+
 # Networking
 hyper = { workspace = true }
 tower = { workspace = true }
@@ -58,10 +63,23 @@ tower = { workspace = true }
 tempfile = { workspace = true }
 criterion = { workspace = true }
 proptest = { workspace = true }
+fastrand = "2.0"
 
 [[bin]]
 name = "mooseng-master"
 
 [[bench]]
 name = "raft_benchmarks"
+harness = false
+
+[[bench]]
+name = "cache_benchmarks"
+harness = false
+
+[[bench]]
+name = "cache_performance"
+harness = false
+
+[[bench]]
+name = "metadata_cache_benchmarks"
 harness = false

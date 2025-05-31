@@ -23,6 +23,20 @@ pub struct ElectionManager {
     election_timeout_generator: Box<dyn Fn() -> Duration + Send + Sync>,
 }
 
+impl std::fmt::Debug for ElectionManager {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ElectionManager")
+            .field("node_id", &self.node_id)
+            .field("node", &self.node)
+            .field("config", &self.config)
+            .field("rpc", &self.rpc)
+            .field("safety_checker", &self.safety_checker)
+            .field("shutdown_tx", &self.shutdown_tx)
+            .field("election_timeout_generator", &"<function>")
+            .finish()
+    }
+}
+
 impl ElectionManager {
     pub fn new(
         node_id: NodeId,

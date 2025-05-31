@@ -23,7 +23,7 @@ pub type RegionId = u32;
 pub type AvailabilityZoneId = String;
 
 /// Data placement policies for different scenarios
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PlacementPolicy {
     /// Place data close to users (latency optimization)
     LatencyOptimized,
@@ -746,7 +746,7 @@ impl HLCTimestamp {
         HLCTimestamp {
             physical: now.as_millis() as u64,
             logical: 0,
-            node_id: 0, // This should be set properly in real implementation
+            node_id: Some(0), // This should be set properly in real implementation
         }
     }
 }

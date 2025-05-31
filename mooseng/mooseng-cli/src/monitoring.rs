@@ -1,6 +1,10 @@
 use clap::Subcommand;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::time::{Duration, Instant};
+use crate::grpc_client::{MooseNGClient, load_client_config};
+use anyhow::{Context, Result};
+use tracing::{info, warn, error};
 
 #[derive(Subcommand)]
 pub enum MonitorCommands {
@@ -186,7 +190,6 @@ pub async fn handle_command(command: MonitorCommands) -> Result<(), Box<dyn std:
 }
 
 async fn show_metrics(component: &str, id: Option<&str>, interval: u64, count: u64) -> Result<(), Box<dyn std::error::Error>> {
-    // TODO: Implement actual metrics retrieval
     println!("Monitoring {} metrics", component);
     if let Some(component_id) = id {
         println!("Component ID: {}", component_id);
@@ -194,34 +197,31 @@ async fn show_metrics(component: &str, id: Option<&str>, interval: u64, count: u
     println!("Refresh interval: {} seconds", interval);
     println!();
 
+    // Try to connect to gRPC client
+    let grpc_client = create_grpc_client().await;
     let mut iterations = 0;
+    
     loop {
-        // Generate sample metrics
-        let metrics = ClusterMetrics {
-            timestamp: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)?
-                .as_secs(),
-            total_operations: 15420 + iterations * 50,
-            read_operations: 10280 + iterations * 30,
-            write_operations: 5140 + iterations * 20,
-            avg_read_latency_ms: 2.5 + (iterations as f64 * 0.1),
-            avg_write_latency_ms: 8.2 + (iterations as f64 * 0.2),
-            throughput_mbps: 125.6 + (iterations as f64 * 2.0),
-            cpu_usage_percent: 45.2 + (iterations as f64 * 0.5) % 20.0,
-            memory_usage_percent: 72.1 + (iterations as f64 * 0.3) % 15.0,
-            network_io_mbps: 89.4 + (iterations as f64 * 1.5),
-            disk_io_mbps: 234.7 + (iterations as f64 * 3.0),
-            active_connections: 1250 + iterations * 5,
-            cache_hit_rate: 0.89 + (iterations as f64 * 0.001) % 0.1,
+        let metrics = if let Ok(ref mut client) = grpc_client.as_ref() {
+            // Fetch real metrics from cluster
+            fetch_cluster_metrics(client, component).await.unwrap_or_else(|e| {
+                eprintln!("Warning: Failed to fetch cluster metrics: {}. Using fallback data.", e);
+                generate_fallback_metrics(iterations)
+            })
+        } else {
+            // Use fallback metrics if gRPC connection failed
+            generate_fallback_metrics(iterations)
         };
 
         // Clear screen and display metrics
         print!("\x1B[2J\x1B[1;1H"); // Clear screen and move cursor to top-left
-        println!("MooseNG Cluster Metrics - {} ({})", component, 
+        let connection_status = if grpc_client.is_ok() { "🟢 LIVE" } else { "🔴 OFFLINE" };
+        println!("MooseNG Cluster Metrics - {} ({}) [{}]", component, 
                  chrono::DateTime::from_timestamp(metrics.timestamp as i64, 0)
                      .unwrap_or_default()
-                     .format("%Y-%m-%d %H:%M:%S"));
-        println!("{}", "=".repeat(60));
+                     .format("%Y-%m-%d %H:%M:%S"),
+                 connection_status);
+        println!("{}", "=".repeat(70));
         
         println!("Operations:");
         println!("  Total: {} ops/s", metrics.total_operations);
@@ -241,6 +241,12 @@ async fn show_metrics(component: &str, id: Option<&str>, interval: u64, count: u
         println!("  Cache Hit Rate: {:.1}%", metrics.cache_hit_rate * 100.0);
         println!("  Active Connections: {}", metrics.active_connections);
         
+        if grpc_client.is_err() {
+            println!();
+            println!("⚠️  Note: Unable to connect to master server. Displaying simulated data.");
+            println!("   Check that the master server is running and accessible.");
+        }
+        
         iterations += 1;
         
         if count > 0 && iterations >= count {
@@ -251,6 +257,62 @@ async fn show_metrics(component: &str, id: Option<&str>, interval: u64, count: u
     }
 
     Ok(())
+}
+
+/// Create gRPC client for cluster communication
+async fn create_grpc_client() -> Result<MooseNGClient, Box<dyn std::error::Error>> {
+    let config = load_client_config()?;
+    let client = MooseNGClient::new(config).await?;
+    Ok(client)
+}
+
+/// Fetch real cluster metrics from master server
+async fn fetch_cluster_metrics(client: &mut MooseNGClient, component: &str) -> Result<ClusterMetrics> {
+    let cluster_status = client.get_cluster_status().await
+        .context("Failed to get cluster status")?;
+    
+    // Convert gRPC response to our metrics format
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_secs();
+    
+    Ok(ClusterMetrics {
+        timestamp,
+        total_operations: cluster_status.total_operations as u64,
+        read_operations: cluster_status.read_operations as u64,
+        write_operations: cluster_status.write_operations as u64,
+        avg_read_latency_ms: cluster_status.avg_read_latency_ms,
+        avg_write_latency_ms: cluster_status.avg_write_latency_ms,
+        throughput_mbps: cluster_status.throughput_mbps,
+        cpu_usage_percent: cluster_status.cpu_usage_percent,
+        memory_usage_percent: cluster_status.memory_usage_percent,
+        network_io_mbps: cluster_status.network_io_mbps,
+        disk_io_mbps: cluster_status.disk_io_mbps,
+        active_connections: cluster_status.active_connections as u64,
+        cache_hit_rate: cluster_status.cache_hit_rate,
+    })
+}
+
+/// Generate fallback metrics when gRPC is unavailable
+fn generate_fallback_metrics(iterations: u64) -> ClusterMetrics {
+    ClusterMetrics {
+        timestamp: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+        total_operations: 15420 + iterations * 50,
+        read_operations: 10280 + iterations * 30,
+        write_operations: 5140 + iterations * 20,
+        avg_read_latency_ms: 2.5 + (iterations as f64 * 0.1),
+        avg_write_latency_ms: 8.2 + (iterations as f64 * 0.2),
+        throughput_mbps: 125.6 + (iterations as f64 * 2.0),
+        cpu_usage_percent: 45.2 + (iterations as f64 * 0.5) % 20.0,
+        memory_usage_percent: 72.1 + (iterations as f64 * 0.3) % 15.0,
+        network_io_mbps: 89.4 + (iterations as f64 * 1.5),
+        disk_io_mbps: 234.7 + (iterations as f64 * 3.0),
+        active_connections: 1250 + iterations * 5,
+        cache_hit_rate: 0.89 + (iterations as f64 * 0.001) % 0.1,
+    }
 }
 
 async fn show_stats(range: &str, verbose: bool) -> Result<(), Box<dyn std::error::Error>> {
@@ -291,7 +353,535 @@ async fn show_stats(range: &str, verbose: bool) -> Result<(), Box<dyn std::error
 }
 
 async fn show_health(detailed: bool) -> Result<(), Box<dyn std::error::Error>> {
-    // TODO: Implement actual health check retrieval
+    println!("Collecting cluster health status...");
+    
+    // Try to connect to gRPC client first
+    let grpc_client = create_grpc_client().await;
+    let health = if let Ok(mut client) = grpc_client {
+        println!("🟢 Connected to master server - fetching live health data");
+        collect_cluster_health_grpc(&mut client).await.unwrap_or_else(|e| {
+            eprintln!("Warning: Failed to fetch health data via gRPC: {}. Using fallback data.", e);
+            collect_cluster_health_fallback()
+        })
+    } else {
+        println!("🔴 Unable to connect to master server - using simulated data");
+        collect_cluster_health_fallback()
+    };
+    
+    display_health_status(&health, detailed).await;
+    Ok(())
+}
+
+/// Collect cluster health via gRPC
+async fn collect_cluster_health_grpc(client: &mut MooseNGClient) -> Result<HealthStatus> {
+    let cluster_status = client.get_cluster_status().await
+        .context("Failed to get cluster status")?;
+    
+    let mut components = HashMap::new();
+    let mut alerts = Vec::new();
+    let mut recommendations = Vec::new();
+    
+    // Add master component health from cluster status
+    let mut master_metrics = HashMap::new();
+    master_metrics.insert("cpu_usage".to_string(), cluster_status.cpu_usage_percent);
+    master_metrics.insert("memory_usage".to_string(), cluster_status.memory_usage_percent);
+    master_metrics.insert("total_operations".to_string(), cluster_status.total_operations as f64);
+    master_metrics.insert("cache_hit_rate".to_string(), cluster_status.cache_hit_rate);
+    
+    let master_health = if cluster_status.cpu_usage_percent > 90.0 || cluster_status.memory_usage_percent > 95.0 {
+        HealthLevel::Critical
+    } else if cluster_status.cpu_usage_percent > 80.0 || cluster_status.memory_usage_percent > 85.0 {
+        HealthLevel::Warning
+    } else {
+        HealthLevel::Healthy
+    };
+    
+    components.insert("master".to_string(), ComponentHealth {
+        name: "Master Server".to_string(),
+        health: master_health,
+        status: format!("Master online - {} active connections", cluster_status.active_connections),
+        metrics: master_metrics,
+        last_check: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+    });
+    
+    // Generate alerts based on metrics
+    if cluster_status.cpu_usage_percent > 90.0 {
+        alerts.push(Alert {
+            id: "high-cpu".to_string(),
+            level: AlertLevel::Critical,
+            component: "master".to_string(),
+            message: format!("High CPU usage: {:.1}%", cluster_status.cpu_usage_percent),
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+            acknowledged: false,
+        });
+    }
+    
+    if cluster_status.memory_usage_percent > 90.0 {
+        alerts.push(Alert {
+            id: "high-memory".to_string(),
+            level: AlertLevel::Warning,
+            component: "master".to_string(),
+            message: format!("High memory usage: {:.1}%", cluster_status.memory_usage_percent),
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+            acknowledged: false,
+        });
+    }
+    
+    if cluster_status.cache_hit_rate < 0.7 {
+        recommendations.push(format!(
+            "Cache hit rate is low ({:.1}%). Consider increasing cache size or reviewing access patterns.",
+            cluster_status.cache_hit_rate * 100.0
+        ));
+    }
+    
+    // Determine overall health
+    let overall_health = determine_overall_health(&components, &alerts);
+    
+    Ok(HealthStatus {
+        overall_health,
+        components,
+        alerts,
+        recommendations,
+    })
+}
+
+/// Fallback health collection when gRPC is unavailable
+fn collect_cluster_health_fallback() -> HealthStatus {
+    let mut components = HashMap::new();
+    let mut alerts = Vec::new();
+    let mut recommendations = Vec::new();
+    
+    // Create mock master health since we can't connect to real cluster
+    let mut master_metrics = HashMap::new();
+    master_metrics.insert("cpu_usage".to_string(), 35.2);
+    master_metrics.insert("memory_usage".to_string(), 68.4);
+    master_metrics.insert("uptime_hours".to_string(), 168.5);
+    master_metrics.insert("active_sessions".to_string(), 42.0);
+    
+    components.insert("master".to_string(), ComponentHealth {
+        name: "Master Server".to_string(),
+        health: HealthLevel::Unknown,
+        status: "Unable to connect - status unknown".to_string(),
+        metrics: master_metrics,
+        last_check: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+    });
+    
+    // Add connectivity alert
+    alerts.push(Alert {
+        id: "master-connectivity".to_string(),
+        level: AlertLevel::Warning,
+        component: "master".to_string(),
+        message: "Unable to connect to master server for health check".to_string(),
+        timestamp: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+        acknowledged: false,
+    });
+    
+    // Add basic recommendations
+    recommendations.push("Check network connectivity to master server".to_string());
+    recommendations.push("Verify master server configuration and status".to_string());
+    
+    // Determine overall health
+    let overall_health = determine_overall_health(&components, &alerts);
+    
+    HealthStatus {
+        overall_health,
+        components,
+        alerts,
+        recommendations,
+    }
+}
+
+async fn collect_master_health() -> Result<Option<ComponentHealth>, Box<dyn std::error::Error>> {
+    // TODO: Re-enable when mooseng_master health module is available
+    // use mooseng_common::health::{HealthMonitor, HealthChecker, HealthStatus as CommonHealthStatus};
+    // use mooseng_master::health_checker::MasterHealthChecker;
+    use std::sync::Arc;
+    
+    // TODO: Replace with actual master health check when modules are available
+    // For now, return placeholder health status
+    let mut metrics = HashMap::new();
+    metrics.insert("cpu_usage".to_string(), 35.2);
+    metrics.insert("memory_usage".to_string(), 68.4);
+    metrics.insert("uptime_hours".to_string(), 168.5);
+    metrics.insert("active_sessions".to_string(), 42.0);
+    metrics.insert("metadata_operations_per_sec".to_string(), 1250.0);
+    
+    Ok(Some(ComponentHealth {
+        name: "Master Server".to_string(),
+        health: HealthLevel::Healthy,
+        status: "Master server running (placeholder status)".to_string(),
+        metrics,
+        last_check: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+    }))
+}
+
+async fn collect_chunkserver_health() -> Result<HashMap<String, ComponentHealth>, Box<dyn std::error::Error>> {
+    // TODO: Re-enable when mooseng_chunkserver health module is available
+    // use mooseng_common::health::{HealthChecker, HealthStatus as CommonHealthStatus};
+    // use mooseng_chunkserver::health_checker::ChunkServerHealthChecker;
+    use std::sync::Arc;
+    
+    let mut chunkservers = HashMap::new();
+    
+    // TODO: Replace with actual chunk server discovery and health checks
+    // For now, simulate a couple of chunk servers with placeholder data
+    let chunk_server_ids = vec!["cs-001", "cs-002", "cs-003"];
+    
+    for (i, server_id) in chunk_server_ids.iter().enumerate() {
+        let mut metrics = HashMap::new();
+        metrics.insert("cpu_usage".to_string(), 40.0 + (i as f64 * 5.0));
+        metrics.insert("memory_usage".to_string(), 70.0 + (i as f64 * 8.0));
+        metrics.insert("disk_usage".to_string(), 65.0 + (i as f64 * 15.0));
+        metrics.insert("active_chunks".to_string(), 15000.0 + (i as f64 * 2500.0));
+        metrics.insert("network_io_mbps".to_string(), 85.0 + (i as f64 * 10.0));
+        
+        let health_level = if i == 1 { HealthLevel::Warning } else { HealthLevel::Healthy };
+        let status = if i == 1 { 
+            "High disk usage detected".to_string() 
+        } else { 
+            "Chunk server operating normally".to_string() 
+        };
+        
+        chunkservers.insert(server_id.to_string(), ComponentHealth {
+            name: format!("Chunk Server {}", server_id),
+            health: health_level,
+            status,
+            metrics,
+            last_check: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+        });
+    }
+    
+    Ok(chunkservers)
+}
+
+async fn collect_metalogger_health() -> Result<HashMap<String, ComponentHealth>, Box<dyn std::error::Error>> {
+    // TODO: Re-enable when mooseng_metalogger health module is available
+    // use mooseng_common::health::{HealthChecker, HealthStatus as CommonHealthStatus};
+    // use mooseng_metalogger::health_checker::MetaloggerHealthChecker;
+    use std::sync::Arc;
+    
+    let mut metaloggers = HashMap::new();
+    
+    // TODO: Replace with actual metalogger discovery and health checks
+    // For now, simulate metaloggers with placeholder data
+    let metalogger_ids = vec!["ml-001", "ml-002"];
+    
+    for (i, metalogger_id) in metalogger_ids.iter().enumerate() {
+        let mut metrics = HashMap::new();
+        metrics.insert("cpu_usage".to_string(), 25.0 + (i as f64 * 3.0));
+        metrics.insert("memory_usage".to_string(), 45.0 + (i as f64 * 5.0));
+        metrics.insert("replication_lag_ms".to_string(), 150.0 + (i as f64 * 50.0));
+        metrics.insert("wal_size_mb".to_string(), 1024.0 + (i as f64 * 256.0));
+        metrics.insert("last_snapshot_age_hours".to_string(), 12.0 + (i as f64 * 2.0));
+        
+        metaloggers.insert(metalogger_id.to_string(), ComponentHealth {
+            name: format!("Metalogger {}", metalogger_id),
+            health: HealthLevel::Healthy,
+            status: "Metalogger replicating metadata successfully".to_string(),
+            metrics,
+            last_check: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+        });
+    }
+    
+    Ok(metaloggers)
+}
+
+async fn collect_client_health() -> Result<HashMap<String, ComponentHealth>, Box<dyn std::error::Error>> {
+    // TODO: Re-enable when mooseng_client health module is available
+    // use mooseng_common::health::{HealthChecker, HealthStatus as CommonHealthStatus};
+    // use mooseng_client::health_checker::ClientHealthChecker;
+    use std::sync::Arc;
+    
+    let mut clients = HashMap::new();
+    
+    // TODO: Replace with actual client discovery and health checks
+    // Client health is optional - only check if clients are detected/running
+    // For now, simulate minimal client presence with placeholder data
+    
+    if std::env::var("MOOSENG_CLI_CHECK_CLIENT_HEALTH").is_ok() {
+        let client_ids = vec!["client-001"];
+        
+        for client_id in client_ids {
+            let mut metrics = HashMap::new();
+            metrics.insert("cache_hit_rate".to_string(), 0.85);
+            metrics.insert("active_connections".to_string(), 5.0);
+            metrics.insert("read_operations_per_sec".to_string(), 125.0);
+            metrics.insert("write_operations_per_sec".to_string(), 45.0);
+            
+            clients.insert(client_id.to_string(), ComponentHealth {
+                name: format!("Client {}", client_id),
+                health: HealthLevel::Healthy,
+                status: "Client connected and operating normally".to_string(),
+                metrics,
+                last_check: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs(),
+            });
+        }
+    }
+    
+    Ok(clients)
+}
+
+fn determine_overall_health(components: &HashMap<String, ComponentHealth>, alerts: &[Alert]) -> HealthLevel {
+    // Check for critical alerts
+    if alerts.iter().any(|a| matches!(a.level, AlertLevel::Critical)) {
+        return HealthLevel::Critical;
+    }
+    
+    // Check component health levels
+    let critical_components = components.values()
+        .filter(|c| matches!(c.health, HealthLevel::Critical))
+        .count();
+    
+    if critical_components > 0 {
+        return HealthLevel::Critical;
+    }
+    
+    let warning_components = components.values()
+        .filter(|c| matches!(c.health, HealthLevel::Warning))
+        .count();
+    
+    if warning_components > 0 || alerts.iter().any(|a| matches!(a.level, AlertLevel::Error | AlertLevel::Warning)) {
+        return HealthLevel::Warning;
+    }
+    
+    HealthLevel::Healthy
+}
+
+fn generate_health_recommendations(components: &HashMap<String, ComponentHealth>, alerts: &[Alert]) -> Vec<String> {
+    let mut recommendations = Vec::new();
+    
+    // Check for high disk usage
+    let high_disk_servers: Vec<_> = components.iter()
+        .filter(|(name, component)| {
+            name.starts_with("chunkserver") && 
+            component.metrics.get("disk_usage").unwrap_or(&0.0) > &85.0
+        })
+        .map(|(name, _)| name.clone())
+        .collect();
+    
+    if !high_disk_servers.is_empty() {
+        recommendations.push(format!(
+            "Consider adding more chunk servers or rebalancing data. High disk usage on: {}",
+            high_disk_servers.join(", ")
+        ));
+    }
+    
+    // Check for replication lag
+    let high_lag_metaloggers: Vec<_> = components.iter()
+        .filter(|(name, component)| {
+            name.starts_with("metalogger") && 
+            component.metrics.get("replication_lag_ms").unwrap_or(&0.0) > &5000.0
+        })
+        .map(|(name, _)| name.clone())
+        .collect();
+    
+    if !high_lag_metaloggers.is_empty() {
+        recommendations.push(format!(
+            "High replication lag detected on: {}. Check network connectivity and master server performance.",
+            high_lag_metaloggers.join(", ")
+        ));
+    }
+    
+    // Check for old snapshots
+    let old_snapshot_metaloggers: Vec<_> = components.iter()
+        .filter(|(name, component)| {
+            name.starts_with("metalogger") && 
+            component.metrics.get("last_snapshot_age_hours").unwrap_or(&0.0) > &24.0
+        })
+        .map(|(name, _)| name.clone())
+        .collect();
+    
+    if !old_snapshot_metaloggers.is_empty() {
+        recommendations.push(format!(
+            "Create fresh snapshots on: {}. Old snapshots may impact recovery capabilities.",
+            old_snapshot_metaloggers.join(", ")
+        ));
+    }
+    
+    // Check for cache performance
+    let low_cache_components: Vec<_> = components.iter()
+        .filter(|(_, component)| {
+            component.metrics.get("cache_hit_rate").unwrap_or(&1.0) < &0.7
+        })
+        .map(|(name, _)| name.clone())
+        .collect();
+    
+    if !low_cache_components.is_empty() {
+        recommendations.push(format!(
+            "Low cache hit rate on: {}. Consider increasing cache size or reviewing access patterns.",
+            low_cache_components.join(", ")
+        ));
+    }
+    
+    recommendations
+}
+
+async fn display_health_status(health: &HealthStatus, detailed: bool) {
+    println!("Cluster Health Status: {:?}", health.overall_health);
+    println!("{}", "=".repeat(50));
+    
+    // Group components by type for better display
+    let mut master_components = Vec::new();
+    let mut chunkserver_components = Vec::new();
+    let mut metalogger_components = Vec::new();
+    let mut client_components = Vec::new();
+    
+    for (name, component) in &health.components {
+        if name.starts_with("master") {
+            master_components.push((name, component));
+        } else if name.starts_with("chunkserver") {
+            chunkserver_components.push((name, component));
+        } else if name.starts_with("metalogger") {
+            metalogger_components.push((name, component));
+        } else if name.starts_with("client") {
+            client_components.push((name, component));
+        }
+    }
+    
+    // Display master components
+    if !master_components.is_empty() {
+        println!("Master Servers:");
+        for (_, component) in master_components {
+            display_component_health(component, detailed);
+        }
+        println!();
+    }
+    
+    // Display chunk server components
+    if !chunkserver_components.is_empty() {
+        println!("Chunk Servers:");
+        for (_, component) in chunkserver_components {
+            display_component_health(component, detailed);
+        }
+        println!();
+    }
+    
+    // Display metalogger components
+    if !metalogger_components.is_empty() {
+        println!("Metaloggers:");
+        for (_, component) in metalogger_components {
+            display_component_health(component, detailed);
+        }
+        println!();
+    }
+    
+    // Display client components (if any)
+    if !client_components.is_empty() {
+        println!("Clients:");
+        for (_, component) in client_components {
+            display_component_health(component, detailed);
+        }
+        println!();
+    }
+    
+    // Display active alerts
+    if !health.alerts.is_empty() {
+        println!("Active Alerts:");
+        for alert in &health.alerts {
+            let ack_status = if alert.acknowledged { " (ACK)" } else { "" };
+            let age = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs() - alert.timestamp;
+            println!("  [{:?}] {}: {} ({}m ago){}", 
+                     alert.level, alert.component, alert.message, age / 60, ack_status);
+        }
+        println!();
+    }
+    
+    // Display recommendations
+    if !health.recommendations.is_empty() {
+        println!("Recommendations:");
+        for rec in &health.recommendations {
+            println!("  • {}", rec);
+        }
+        println!();
+    }
+    
+    // Display summary
+    let healthy_count = health.components.values()
+        .filter(|c| matches!(c.health, HealthLevel::Healthy))
+        .count();
+    let warning_count = health.components.values()
+        .filter(|c| matches!(c.health, HealthLevel::Warning))
+        .count();
+    let critical_count = health.components.values()
+        .filter(|c| matches!(c.health, HealthLevel::Critical))
+        .count();
+    
+    println!("Summary: {} healthy, {} warning, {} critical components", 
+             healthy_count, warning_count, critical_count);
+}
+
+fn display_component_health(component: &ComponentHealth, detailed: bool) {
+    let status_icon = match component.health {
+        HealthLevel::Healthy => "✓",
+        HealthLevel::Warning => "⚠",
+        HealthLevel::Critical => "✗",
+        HealthLevel::Unknown => "?",
+    };
+    
+    println!("  {} {}: {:?}", status_icon, component.name, component.health);
+    println!("    Status: {}", component.status);
+    
+    if detailed {
+        println!("    Metrics:");
+        for (metric_name, value) in &component.metrics {
+            let formatted_name = metric_name.replace('_', " ");
+            if metric_name.contains("percent") || metric_name.contains("usage") {
+                println!("      {}: {:.1}%", formatted_name, value);
+            } else if metric_name.contains("rate") || metric_name.contains("ratio") {
+                println!("      {}: {:.3}", formatted_name, value);
+            } else if metric_name.contains("hours") {
+                println!("      {}: {:.1}h", formatted_name, value);
+            } else if metric_name.contains("ms") {
+                println!("      {}: {:.1}ms", formatted_name, value);
+            } else if metric_name.contains("mb") {
+                println!("      {}: {:.1}MB", formatted_name, value);
+            } else if value.fract() == 0.0 && *value < 1000000.0 {
+                println!("      {}: {:.0}", formatted_name, value);
+            } else {
+                println!("      {}: {:.1}", formatted_name, value);
+            }
+        }
+        
+        let last_check_age = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() - component.last_check;
+        println!("    Last check: {}s ago", last_check_age);
+    }
+}
+
+// Keep the existing placeholder implementation as fallback
+async fn show_health_placeholder(detailed: bool) -> Result<(), Box<dyn std::error::Error>> {
     let health = HealthStatus {
         overall_health: HealthLevel::Warning,
         components: {

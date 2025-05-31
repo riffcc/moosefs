@@ -5,6 +5,9 @@ mod admin;
 mod cluster;
 mod monitoring;
 mod config;
+mod data;
+mod grpc_client;
+mod benchmark;
 
 #[derive(Parser)]
 #[command(name = "mooseng")]
@@ -37,6 +40,16 @@ enum Commands {
         #[command(subcommand)]
         action: config::ConfigCommands,
     },
+    /// Data upload, download, and management operations
+    Data {
+        #[command(subcommand)]
+        action: data::DataCommands,
+    },
+    /// Benchmark operations for performance testing
+    Benchmark {
+        #[command(subcommand)]
+        action: benchmark::BenchmarkCommands,
+    },
 }
 
 #[tokio::main]
@@ -48,6 +61,8 @@ async fn main() {
         Commands::Admin { action } => admin::handle_command(action).await,
         Commands::Monitor { action } => monitoring::handle_command(action).await,
         Commands::Config { action } => config::handle_command(action).await,
+        Commands::Data { action } => data::handle_command(action).await,
+        Commands::Benchmark { action } => benchmark::handle_command(action).await,
     };
 
     if let Err(e) = result {

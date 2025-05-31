@@ -227,7 +227,7 @@ pub enum ProtocolSelectionStrategy {
     CustomWeighted { weights: HashMap<String, f64> },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum MessageType {
     Heartbeat,
     LogReplication,
@@ -281,7 +281,8 @@ pub struct InterRegionMessage {
     pub source_region: u32,
     pub destination_region: u32,
     pub message_type: MessageType,
-    pub payload: Bytes,
+    #[serde(with = "serde_bytes")]
+    pub payload: Vec<u8>,
     pub timestamp: HLCTimestamp,
     pub correlation_id: Option<String>,
     pub compression: CompressionType,

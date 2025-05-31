@@ -1,0 +1,82 @@
+version: '3.8'
+
+services:
+  mooseng-master-test:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.master
+    ports:
+      - "9420:9420"
+    volumes:
+      - ./test_data/master:/data
+      - ./test_configs:/config
+    environment:
+      - RUST_LOG=debug
+      - MOOSENG_CONFIG=/config/test_master.toml
+    networks:
+      - mooseng-test
+
+  mooseng-chunkserver-test-1:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.chunkserver
+    ports:
+      - "9422:9422"
+    volumes:
+      - ./test_data/chunks1:/data
+      - ./test_configs:/config
+    environment:
+      - RUST_LOG=debug
+      - MOOSENG_CONFIG=/config/test_chunkserver.toml
+      - CHUNKSERVER_ID=1
+    depends_on:
+      - mooseng-master-test
+    networks:
+      - mooseng-test
+
+  mooseng-chunkserver-test-2:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.chunkserver
+    ports:
+      - "9423:9422"
+    volumes:
+      - ./test_data/chunks2:/data
+      - ./test_configs:/config
+    environment:
+      - RUST_LOG=debug
+      - MOOSENG_CONFIG=/config/test_chunkserver.toml
+      - CHUNKSERVER_ID=2
+    depends_on:
+      - mooseng-master-test
+    networks:
+      - mooseng-test
+
+  benchmark-runner:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.cli
+    volumes:
+      - ./test_results:/results
+      - ./test_configs:/config
+      - .:/workspace
+    working_dir: /workspace
+    environment:
+      - RUST_LOG=info
+    depends_on:
+      - mooseng-master-test
+      - mooseng-chunkserver-test-1
+      - mooseng-chunkserver-test-2
+    networks:
+      - mooseng-test
+    command: >
+      bash -c "
+        sleep 10 &&
+        cargo run --release --package mooseng-benchmarks --bin comprehensive_bench --
+          --master-address mooseng-master-test:9420
+          --output /results/docker_test_results.json
+      "
+
+networks:
+  mooseng-test:
+    driver: bridge

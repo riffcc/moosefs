@@ -9,6 +9,11 @@ repository.workspace = true
 [dependencies]
 mooseng-common = { path = "../mooseng-common" }
 mooseng-protocol = { path = "../mooseng-protocol" }
+mooseng-master = { path = "../mooseng-master" }
+mooseng-chunkserver = { path = "../mooseng-chunkserver" }
+mooseng-client = { path = "../mooseng-client" }
+mooseng-metalogger = { path = "../mooseng-metalogger" }
+mooseng-benchmarks = { path = "../mooseng-benchmarks" }
 
 # CLI framework
 clap = { workspace = true, features = ["derive", "env", "wrap_help"] }
@@ -51,6 +56,8 @@ bytes = { workspace = true }
 chrono = { workspace = true }
 humansize = "2.1"
 futures = { workspace = true }
+shellexpand = "3.1"
+hostname = "0.4"
 
 # HTTP client (for REST API)
 reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
@@ -63,7 +70,3 @@ predicates = "3.1"
 [[bin]]
 name = "mooseng"
 path = "src/main.rs"
-
-[[bin]]
-name = "mooseng-admin"
-path = "src/admin.rs"

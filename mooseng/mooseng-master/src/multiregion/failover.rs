@@ -187,7 +187,7 @@ pub enum PartitionType {
 }
 
 /// Failure events
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FailureEvent {
     pub event_id: String,
     pub timestamp: HLCTimestamp,
@@ -744,12 +744,9 @@ impl HLCTimestamp {
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_millis() as u64,
+            node_id: None,
         }
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct HLCTimestamp {
-    pub logical: u64,
-    pub physical: u64,
-}
+// Use HLCTimestamp from hybrid_clock module instead of redefining it

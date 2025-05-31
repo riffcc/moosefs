@@ -1,0 +1,156 @@
+{
+  "timestamp": "2025-05-31T15:35:46.151034558+00:00",
+  "results": [
+    {
+      "operation": "file_write_1KB",
+      "mean_time_ms": 0.052565999999999995,
+      "throughput_mbps": 18.57772168271541,
+      "samples": 1000
+    },
+    {
+      "operation": "file_write_4KB",
+      "mean_time_ms": 0.052621,
+      "throughput_mbps": 74.23362582474627,
+      "samples": 1000
+    },
+    {
+      "operation": "file_write_64KB",
+      "mean_time_ms": 0.052641,
+      "throughput_mbps": 1187.2765818546563,
+      "samples": 1000
+    },
+    {
+      "operation": "file_write_1024KB",
+      "mean_time_ms": 0.052682999999999994,
+      "throughput_mbps": 18981.270648775273,
+      "samples": 1000
+    },
+    {
+      "operation": "large_file_write_10MB",
+      "mean_time_ms": 0.15669999999999998,
+      "throughput_mbps": 63815.92424284001,
+      "samples": 10
+    },
+    {
+      "operation": "large_file_write_100MB",
+      "mean_time_ms": 0.153988,
+      "throughput_mbps": 649398.3000051302,
+      "samples": 10
+    },
+    {
+      "operation": "large_file_write_1024MB",
+      "mean_time_ms": 0.15435500000000002,
+      "throughput_mbps": 6634027.768329903,
+      "samples": 10
+    },
+    {
+      "operation": "directory_listing",
+      "mean_time_ms": 0.052648,
+      "throughput_mbps": null,
+      "samples": 50000
+    },
+    {
+      "operation": "file_creation",
+      "mean_time_ms": 0.071452,
+      "throughput_mbps": null,
+      "samples": 10000
+    },
+    {
+      "operation": "attribute_access",
+      "mean_time_ms": 0.052621,
+      "throughput_mbps": null,
+      "samples": 100000
+    },
+    {
+      "operation": "grpc_metadata_call",
+      "mean_time_ms": 0.100133,
+      "throughput_mbps": null,
+      "samples": 10000
+    },
+    {
+      "operation": "chunk_transfer_0MB",
+      "mean_time_ms": 0.052317,
+      "throughput_mbps": 1194.6373969673032,
+      "samples": 100
+    },
+    {
+      "operation": "chunk_transfer_1MB",
+      "mean_time_ms": 0.059468,
+      "throughput_mbps": 16815.692942756355,
+      "samples": 100
+    },
+    {
+      "operation": "chunk_transfer_64MB",
+      "mean_time_ms": 0.590058,
+      "throughput_mbps": 108463.80342562585,
+      "samples": 10
+    },
+    {
+      "operation": "cross_region_replication_1MB",
+      "mean_time_ms": 25.141584,
+      "throughput_mbps": 39.77474038759464,
+      "samples": 100
+    },
+    {
+      "operation": "raft_consensus",
+      "mean_time_ms": 0.153751,
+      "throughput_mbps": null,
+      "samples": 10000
+    },
+    {
+      "operation": "concurrent_clients_10",
+      "mean_time_ms": 0.052648,
+      "throughput_mbps": null,
+      "samples": 1000
+    },
+    {
+      "operation": "concurrent_clients_50",
+      "mean_time_ms": 0.052631,
+      "throughput_mbps": null,
+      "samples": 5000
+    },
+    {
+      "operation": "concurrent_clients_100",
+      "mean_time_ms": 0.052632,
+      "throughput_mbps": null,
+      "samples": 10000
+    },
+    {
+      "operation": "concurrent_clients_500",
+      "mean_time_ms": 0.05266,
+      "throughput_mbps": null,
+      "samples": 50000
+    },
+    {
+      "operation": "concurrent_clients_1000",
+      "mean_time_ms": 0.052627,
+      "throughput_mbps": null,
+      "samples": 100000
+    },
+    {
+      "operation": "erasure_coding_8+4",
+      "mean_time_ms": 0.066052,
+      "throughput_mbps": 968932.1005690962,
+      "samples": 50
+    },
+    {
+      "operation": "erasure_coding_6+3",
+      "mean_time_ms": 0.06534599999999999,
+      "throughput_mbps": 979388.7634727167,
+      "samples": 50
+    },
+    {
+      "operation": "erasure_coding_4+2",
+      "mean_time_ms": 0.065453,
+      "throughput_mbps": 977796.3830700667,
+      "samples": 50
+    }
+  ],
+  "summary": {
+    "total_operations": 350490,
+    "average_latency_ms": 1.1420681250000002,
+    "peak_throughput_mbps": 6634027.768329903,
+    "operations_per_second": 15479.44102562692,
+    "grade": "A+ (Exceptional)"
+  }
+}

@@ -28,6 +28,9 @@ crc32fast = { workspace = true }
 # Logging
 tracing = { workspace = true }
 
+# Metrics
+prometheus = { workspace = true }
+
 # Async
 tokio = { workspace = true, features = ["sync", "time", "rt", "rt-multi-thread", "macros"] }
 tokio-util = { workspace = true }
@@ -40,6 +43,7 @@ rand = { workspace = true }
 # Networking
 tonic = { workspace = true }
 flate2 = "1.0"
+hyper = { version = "0.14", features = ["server", "http1", "http2", "runtime"] }
 
 # TLS and security
 rustls = { workspace = true }

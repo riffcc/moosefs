@@ -10,6 +10,17 @@ global:
 # Common configuration
 nameOverride: ""
 fullnameOverride: ""
+namespace: "mooseng"
+createNamespace: true
+
+# Service account configuration
+serviceAccount:
+  create: true
+  name: ""
+
+# RBAC configuration
+rbac:
+  create: true
 
 # Cluster configuration
 cluster:
@@ -23,29 +34,32 @@ master:
   replicaCount: 3
   
   image:
-    registry: ""
     repository: mooseng/master
     tag: "latest"
     pullPolicy: IfNotPresent
   
+  ports:
+    server: 9421
+    raft: 9422
+    metrics: 9423
+  
   service:
     type: ClusterIP
-    clientPort: 9421
-    chunkserverPort: 9422
-    raftPort: 9423
     annotations: {}
+    loadBalancer:
+      enabled: false
   
   persistence:
     enabled: true
     storageClass: "fast-ssd"
-    dataSize: 10Gi
-    logsSize: 5Gi
-    accessMode: ReadWriteOnce
+    size: 10Gi
+    accessModes:
+      - ReadWriteOnce
   
   resources:
     requests:
-      memory: "1Gi"
-      cpu: "500m"
+      memory: "512Mi"
+      cpu: "250m"
     limits:
       memory: "2Gi"
       cpu: "1000m"
@@ -54,28 +68,77 @@ master:
   tolerations: []
   affinity: {}
   
-  podSecurityContext:
-    fsGroup: 1000
+  podAnnotations: {}
   
-  securityContext:
+  podSecurityContext:
     runAsNonRoot: true
     runAsUser: 1000
     runAsGroup: 1000
+    fsGroup: 1000
+  
+  securityContext:
     allowPrivilegeEscalation: false
     readOnlyRootFilesystem: true
+    runAsNonRoot: true
+    runAsUser: 1000
     capabilities:
       drop:
       - ALL
   
+  livenessProbe:
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  
+  readinessProbe:
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+  
+  extraEnv: []
+  extraVolumes: []
+  extraVolumeMounts: []
+  
   config:
-    logLevel: "info"
-    metadataChecksumPeriod: 3600
-    changelogPreserveSeconds: 86400
+    server:
+      listenAddr: "0.0.0.0"
+      workers: 8
+    data:
+      dataDir: "/var/lib/mooseng/master"
+      metadataBackupInterval: 300
+      metadataChecksum: true
     raft:
+      clusterId: "mooseng-k8s"
       electionTimeoutMs: 5000
       heartbeatIntervalMs: 1000
       logCompactionThreshold: 10000
-      snapshotThreshold: 100000
+    cache:
+      enable: true
+      sizeMb: 1024
+      ttlSeconds: 300
+      hotThreshold: 5
+    logging:
+      level: "info"
+      logDir: "/var/log/mooseng"
+      fileRotation: true
+      maxFileSizeMb: 100
+      maxFiles: 10
+    monitoring:
+      metricsEnabled: true
+      healthCheckInterval: 30
+      prometheusMetrics: true
+    storageClasses:
+      - id: 1
+        name: "default"
+        copies: 2
+        tier: "standard"
+      - id: 2
+        name: "archive"
+        copies: 1
+        erasureScheme: "8+4"
+        tier: "cold"
 
 # Chunk server configuration
 chunkserver:
@@ -83,14 +146,15 @@ chunkserver:
   deploymentType: "daemonset"  # or "deployment"
   
   image:
-    registry: ""
     repository: mooseng/chunkserver
     tag: "latest"
     pullPolicy: IfNotPresent
   
+  ports:
+    server: 9420
+  
   service:
     type: ClusterIP
-    port: 9420
     annotations: {}
   
   # For DaemonSet deployment
@@ -107,17 +171,10 @@ chunkserver:
   replicaCount: 3
   
   persistence:
-    enabled: true
     hostPath:
       enabled: true
-      data1: "/var/lib/mooseng/chunks/data1"
-      data2: "/var/lib/mooseng/chunks/data2"
-      logs: "/var/log/mooseng/chunkserver"
-    pvc:
-      enabled: false
-      storageClass: "fast-ssd"
-      dataSize: 100Gi
-      logsSize: 10Gi
+      basePath: "/var/lib/mooseng/chunks"
+      logsPath: "/var/log/mooseng/chunkserver"
   
   resources:
     requests:
@@ -128,6 +185,8 @@ chunkserver:
       cpu: "2000m"
   
   affinity: {}
+  
+  podAnnotations: {}
   
   podSecurityContext:
     fsGroup: 1000
@@ -142,15 +201,46 @@ chunkserver:
       drop:
       - ALL
   
+  livenessProbe:
+    initialDelaySeconds: 30
+    periodSeconds: 30
+    timeoutSeconds: 10
+    failureThreshold: 3
+  
+  readinessProbe:
+    initialDelaySeconds: 15
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  
+  terminationGracePeriodSeconds: 60
+  dnsPolicy: ClusterFirst
+  
+  hostInfo:
+    enabled: true
+    path: "/"
+  
+  extraEnv: []
+  extraVolumes: []
+  extraVolumeMounts: []
+  
+  rbac:
+    rules:
+    - apiGroups: [""]
+      resources: ["pods", "nodes"]
+      verbs: ["get", "list", "watch"]
+  
   config:
-    logLevel: "info"
-    maxChunksPerFile: 65536
-    syncOnWrite: false
-    performance:
-      workerThreads: 8
-      ioQueueDepth: 32
-      readAheadKB: 128
-      writeCacheMB: 256
+    server:
+      bindAddress: "0.0.0.0"
+    storage:
+      dataDirs:
+        - "/data1"
+        - "/data2"
+      chunkSizeMb: 64
+    logging:
+      level: "info"
+      logDir: "/var/log/mooseng"
 
 # Metalogger configuration
 metalogger:

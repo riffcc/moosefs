@@ -105,9 +105,9 @@ impl ChunkCache {
     /// Create a new chunk cache
     pub fn new(config: CacheConfig) -> Result<Self> {
         let max_entries = NonZeroUsize::new(config.max_entries)
-            .ok_or_else(|| ChunkServerError::CacheError { 
-                message: "Cache max_entries must be greater than 0".to_string() 
-            })?;
+            .ok_or_else(|| ChunkServerError::Cache(
+                "Cache max_entries must be greater than 0".to_string() 
+            ))?;
         
         let cache = Arc::new(RwLock::new(LruCache::new(max_entries)));
         let mut stats = CacheStats::default();

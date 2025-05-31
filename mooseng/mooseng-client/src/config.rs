@@ -34,6 +34,18 @@ pub struct ClientConfig {
     
     /// Allow root to access the mount
     pub allow_root: bool,
+    
+    /// Health monitoring configuration
+    pub health_check_interval_secs: Option<u64>,
+    pub health_check_timeout_secs: Option<u64>,
+    pub health_failure_threshold: Option<u32>,
+    pub health_recovery_threshold: Option<u32>,
+    pub enable_self_healing: Option<bool>,
+    pub max_healing_actions_per_hour: Option<u32>,
+    
+    /// Health check HTTP endpoint configuration
+    pub health_endpoint_enabled: Option<bool>,
+    pub health_endpoint_bind_addr: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -103,6 +115,14 @@ impl Default for ClientConfig {
             read_only: false,
             allow_other: false,
             allow_root: false,
+            health_check_interval_secs: None,
+            health_check_timeout_secs: None,
+            health_failure_threshold: None,
+            health_recovery_threshold: None,
+            enable_self_healing: None,
+            max_healing_actions_per_hour: None,
+            health_endpoint_enabled: None,
+            health_endpoint_bind_addr: None,
         }
     }
 }

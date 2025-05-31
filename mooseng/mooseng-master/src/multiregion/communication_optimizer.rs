@@ -260,7 +260,7 @@ struct CompressionEngine {
 
 /// Network statistics
 #[derive(Debug, Default)]
-struct NetworkStatistics {
+pub struct NetworkStatistics {
     total_operations_sent: u64,
     total_bytes_sent: u64,
     total_bytes_received: u64,

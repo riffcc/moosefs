@@ -39,7 +39,7 @@ pub type ChunkId = u64;
 pub type ChunkServerId = u16;
 
 /// Unique identifier for sessions
-pub type SessionId = u32;
+pub type SessionId = u64;
 
 /// Version number for chunks
 pub type ChunkVersion = u32;

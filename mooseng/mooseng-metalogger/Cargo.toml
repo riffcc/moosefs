@@ -12,6 +12,7 @@ mooseng-protocol = { path = "../mooseng-protocol" }
 
 # Async runtime
 tokio = { workspace = true, features = ["full"] }
+async-trait = { workspace = true }
 
 # gRPC
 tonic = { workspace = true }
@@ -48,6 +49,10 @@ flate2 = "1.0"
 # Networking
 hyper = { workspace = true }
 tower = { workspace = true }
+
+# System info
+libc = "0.2"
+axum = "0.8.4"
 
 [dev-dependencies]
 tempfile = { workspace = true }

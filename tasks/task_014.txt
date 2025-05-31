@@ -1,6 +1,6 @@
 # Task ID: 14
 # Title: Implement native compression support
-# Status: pending
+# Status: done
 # Dependencies: 3
 # Priority: medium
 # Description: Add native compression capabilities to MooseNG for improved storage efficiency.

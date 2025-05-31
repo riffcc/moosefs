@@ -1,0 +1,10 @@
+[client]
+master_address = "127.0.0.1:9420"
+mount_point = "./test_data/mount"
+cache_size = 1048576
+session_timeout_ms = 30000
+
+[performance]
+max_concurrent_operations = 100
+readahead_size = 262144
+writeback_cache = true

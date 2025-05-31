@@ -1,6 +1,6 @@
 # Task ID: 27
 # Title: Implement automatic region discovery and topology management
-# Status: pending
+# Status: done
 # Dependencies: 8
 # Priority: medium
 # Description: Develop mechanisms for automatic discovery of regions and management of cluster topology.

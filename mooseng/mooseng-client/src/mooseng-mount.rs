@@ -1,8 +1,9 @@
-use clap::Parser;
-use mooseng_client::{ClientConfig, MooseFuse};
+use clap::{Arg, Command};
+use mooseng_client::{ClientConfig, filesystem::MooseFuse};
 use std::path::PathBuf;
-use tracing::{error, info, Level};
-use tracing_subscriber;
+use std::sync::Arc;
+use tracing::{error, info};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -118,21 +119,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err("Mount point is not a directory".into());
     }
 
-    // Connect to master server
-    info!("Connecting to master server...");
-    let client = match MooseNGClient::connect(config.clone()).await {
-        Ok(client) => {
-            info!("Successfully connected to master server");
-            Arc::new(client)
+    // Create FUSE filesystem
+    info!("Creating FUSE filesystem...");
+    let fs = match MooseFuse::new(config.clone()).await {
+        Ok(fs) => {
+            info!("Successfully created FUSE filesystem");
+            fs
         }
         Err(e) => {
-            error!("Failed to connect to master server: {}", e);
+            error!("Failed to create FUSE filesystem: {}", e);
             return Err(e.into());
         }
     };
-
-    // Create FUSE filesystem
-    let fs = MooseNGFS::new(client, config.clone());
 
     // Prepare mount options
     let mut options = vec![

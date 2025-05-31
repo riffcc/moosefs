@@ -1,0 +1,250 @@
+# Prometheus configuration for multi-region MooseNG benchmarking
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'mooseng-multiregion'
+    environment: 'benchmark'
+
+rule_files:
+  - "/etc/prometheus/rules/*.yml"
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager:9093
+
+scrape_configs:
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+    metrics_path: /metrics
+    scrape_interval: 30s
+
+  # MooseNG Master servers
+  - job_name: 'mooseng-master-us-east'
+    static_configs:
+      - targets: ['master-us-east:9423']
+    labels:
+      region: 'us-east'
+      component: 'master'
+    metrics_path: /metrics
+    scrape_interval: 15s
+    scrape_timeout: 10s
+
+  - job_name: 'mooseng-master-eu-west'
+    static_configs:
+      - targets: ['master-eu-west:9423']
+    labels:
+      region: 'eu-west'
+      component: 'master'
+    metrics_path: /metrics
+    scrape_interval: 15s
+    scrape_timeout: 10s
+
+  - job_name: 'mooseng-master-ap-south'
+    static_configs:
+      - targets: ['master-ap-south:9423']
+    labels:
+      region: 'ap-south'
+      component: 'master'
+    metrics_path: /metrics
+    scrape_interval: 15s
+    scrape_timeout: 10s
+
+  # MooseNG Chunkservers - US East
+  - job_name: 'mooseng-chunkserver-us-east'
+    static_configs:
+      - targets: 
+        - 'chunkserver-us-east-1:9444'
+        - 'chunkserver-us-east-2:9444'
+    labels:
+      region: 'us-east'
+      component: 'chunkserver'
+    metrics_path: /metrics
+    scrape_interval: 15s
+    scrape_timeout: 10s
+
+  # MooseNG Chunkservers - EU West
+  - job_name: 'mooseng-chunkserver-eu-west'
+    static_configs:
+      - targets: 
+        - 'chunkserver-eu-west-1:9444'
+        - 'chunkserver-eu-west-2:9444'
+    labels:
+      region: 'eu-west'
+      component: 'chunkserver'
+    metrics_path: /metrics
+    scrape_interval: 15s
+    scrape_timeout: 10s
+
+  # MooseNG Chunkservers - AP South
+  - job_name: 'mooseng-chunkserver-ap-south'
+    static_configs:
+      - targets: 
+        - 'chunkserver-ap-south-1:9444'
+        - 'chunkserver-ap-south-2:9444'
+    labels:
+      region: 'ap-south'
+      component: 'chunkserver'
+    metrics_path: /metrics
+    scrape_interval: 15s
+    scrape_timeout: 10s
+
+  # Network monitoring containers
+  - job_name: 'network-monitoring'
+    static_configs:
+      - targets: 
+        - 'netem-us-eu:9445'
+        - 'netem-us-ap:9445'
+        - 'netem-eu-ap:9445'
+    labels:
+      component: 'network-simulator'
+    metrics_path: /metrics
+    scrape_interval: 30s
+
+  # Benchmark runner metrics
+  - job_name: 'benchmark-runner'
+    static_configs:
+      - targets: ['benchmark-runner:9446']
+    labels:
+      component: 'benchmark'
+    metrics_path: /metrics
+    scrape_interval: 10s
+    scrape_timeout: 8s
+
+  # Node Exporter for system metrics (if available)
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: 
+        - 'master-us-east:9100'
+        - 'master-eu-west:9100'
+        - 'master-ap-south:9100'
+        - 'chunkserver-us-east-1:9100'
+        - 'chunkserver-us-east-2:9100'
+        - 'chunkserver-eu-west-1:9100'
+        - 'chunkserver-eu-west-2:9100'
+        - 'chunkserver-ap-south-1:9100'
+        - 'chunkserver-ap-south-2:9100'
+    labels:
+      component: 'system'
+    metrics_path: /metrics
+    scrape_interval: 30s
+
+  # cAdvisor for container metrics (if using Docker)
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: 
+        - 'master-us-east:8080'
+        - 'master-eu-west:8080'
+        - 'master-ap-south:8080'
+    labels:
+      component: 'container'
+    metrics_path: /metrics
+    scrape_interval: 30s
+
+# Remote write configuration for long-term storage
+remote_write:
+  - url: "http://prometheus-long-term:9090/api/v1/write"
+    queue_config:
+      max_samples_per_send: 1000
+      max_shards: 200
+      capacity: 2500
+
+# Recording rules for performance calculations
+recording_rules:
+  - name: mooseng_performance
+    rules:
+      # Request rate across all regions
+      - record: mooseng:request_rate_5m
+        expr: sum(rate(mooseng_requests_total[5m])) by (region, operation)
+        labels:
+          metric_type: "performance"
+
+      # Error rate across all regions
+      - record: mooseng:error_rate_5m
+        expr: sum(rate(mooseng_errors_total[5m])) by (region, operation) / sum(rate(mooseng_requests_total[5m])) by (region, operation)
+        labels:
+          metric_type: "reliability"
+
+      # 95th percentile latency
+      - record: mooseng:latency_p95_5m
+        expr: histogram_quantile(0.95, sum(rate(mooseng_request_duration_seconds_bucket[5m])) by (region, operation, le))
+        labels:
+          metric_type: "latency"
+
+      # Cross-region replication lag
+      - record: mooseng:replication_lag_5m
+        expr: avg(mooseng_replication_lag_seconds) by (source_region, target_region)
+        labels:
+          metric_type: "consistency"
+
+      # Storage utilization
+      - record: mooseng:storage_utilization
+        expr: (mooseng_storage_used_bytes / mooseng_storage_total_bytes) * 100
+        labels:
+          metric_type: "capacity"
+
+      # Network throughput between regions
+      - record: mooseng:network_throughput_5m
+        expr: sum(rate(mooseng_network_bytes_total[5m])) by (source_region, target_region)
+        labels:
+          metric_type: "network"
+
+# Alerting rules
+alerting_rules:
+  - name: mooseng_alerts
+    rules:
+      # High error rate alert
+      - alert: HighErrorRate
+        expr: mooseng:error_rate_5m > 0.1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High error rate detected in {{ $labels.region }}"
+          description: "Error rate is {{ $value }}% for {{ $labels.operation }} in {{ $labels.region }}"
+
+      # High latency alert
+      - alert: HighLatency
+        expr: mooseng:latency_p95_5m > 1.0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High latency detected in {{ $labels.region }}"
+          description: "95th percentile latency is {{ $value }}s for {{ $labels.operation }} in {{ $labels.region }}"
+
+      # Replication lag alert
+      - alert: HighReplicationLag
+        expr: mooseng:replication_lag_5m > 10
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High replication lag between regions"
+          description: "Replication lag from {{ $labels.source_region }} to {{ $labels.target_region }} is {{ $value }}s"
+
+      # Storage space alert
+      - alert: LowStorageSpace
+        expr: mooseng:storage_utilization > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low storage space in {{ $labels.region }}"
+          description: "Storage utilization is {{ $value }}% in {{ $labels.region }}"
+
+      # Service down alert
+      - alert: ServiceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Service {{ $labels.job }} is down"
+          description: "Service {{ $labels.job }} has been down for more than 1 minute"

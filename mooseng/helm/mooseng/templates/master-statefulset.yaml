@@ -1,0 +1,262 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "mooseng.master.serviceName" . }}
+  namespace: {{ .Values.namespace | default "mooseng" }}
+  labels:
+    {{- include "mooseng.labels" . | nindent 4 }}
+    app.kubernetes.io/component: master
+spec:
+  type: ClusterIP
+  clusterIP: None
+  selector:
+    {{- include "mooseng.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: master
+  ports:
+  - name: server
+    port: {{ .Values.master.ports.server }}
+    protocol: TCP
+  - name: raft
+    port: {{ .Values.master.ports.raft }}
+    protocol: TCP
+  - name: metrics
+    port: {{ .Values.master.ports.metrics }}
+    protocol: TCP
+---
+{{- if .Values.master.service.loadBalancer.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "mooseng.master.serviceName" . }}-lb
+  namespace: {{ .Values.namespace | default "mooseng" }}
+  labels:
+    {{- include "mooseng.labels" . | nindent 4 }}
+    app.kubernetes.io/component: master-loadbalancer
+spec:
+  type: LoadBalancer
+  selector:
+    {{- include "mooseng.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: master
+  ports:
+  - name: server
+    port: {{ .Values.master.ports.server }}
+    targetPort: {{ .Values.master.ports.server }}
+    protocol: TCP
+  - name: metrics
+    port: {{ .Values.master.ports.metrics }}
+    targetPort: {{ .Values.master.ports.metrics }}
+    protocol: TCP
+{{- end }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "mooseng.fullname" . }}-master-config
+  namespace: {{ .Values.namespace | default "mooseng" }}
+  labels:
+    {{- include "mooseng.labels" . | nindent 4 }}
+    app.kubernetes.io/component: config
+data:
+  master.toml: |
+    [server]
+    listen_addr = "{{ .Values.master.config.server.listenAddr }}"
+    listen_port = {{ .Values.master.ports.server }}
+    grpc_port = {{ .Values.master.ports.raft }}
+    metrics_port = {{ .Values.master.ports.metrics }}
+    workers = {{ .Values.master.config.server.workers }}
+
+    [data]
+    data_dir = "{{ .Values.master.config.data.dataDir }}"
+    metadata_backup_interval = {{ .Values.master.config.data.metadataBackupInterval }}
+    metadata_checksum = {{ .Values.master.config.data.metadataChecksum }}
+
+    [raft]
+    node_id = "${MOOSENG_NODE_ID}"
+    cluster_id = "{{ .Values.master.config.raft.clusterId }}"
+    peers = "{{ include "mooseng.master.serviceName" . }}-0.{{ include "mooseng.master.serviceName" . }}.{{ .Values.namespace | default "mooseng" }}.svc.cluster.local:{{ .Values.master.ports.raft }}{{ range $i := until (int .Values.master.replicaCount) }}{{ if gt $i 0 }},{{ include "mooseng.master.serviceName" $ }}-{{ $i }}.{{ include "mooseng.master.serviceName" $ }}.{{ $.Values.namespace | default "mooseng" }}.svc.cluster.local:{{ $.Values.master.ports.raft }}{{ end }}{{ end }}"
+    election_timeout_ms = {{ .Values.master.config.raft.electionTimeoutMs }}
+    heartbeat_interval_ms = {{ .Values.master.config.raft.heartbeatIntervalMs }}
+    log_compaction_threshold = {{ .Values.master.config.raft.logCompactionThreshold }}
+
+    [cache]
+    enable = {{ .Values.master.config.cache.enable }}
+    size_mb = {{ .Values.master.config.cache.sizeMb }}
+    ttl_seconds = {{ .Values.master.config.cache.ttlSeconds }}
+    hot_threshold = {{ .Values.master.config.cache.hotThreshold }}
+
+    [logging]
+    level = "{{ .Values.master.config.logging.level }}"
+    log_dir = "{{ .Values.master.config.logging.logDir }}"
+    file_rotation = {{ .Values.master.config.logging.fileRotation }}
+    max_file_size_mb = {{ .Values.master.config.logging.maxFileSizeMb }}
+    max_files = {{ .Values.master.config.logging.maxFiles }}
+
+    [monitoring]
+    metrics_enabled = {{ .Values.master.config.monitoring.metricsEnabled }}
+    health_check_interval = {{ .Values.master.config.monitoring.healthCheckInterval }}
+    prometheus_metrics = {{ .Values.master.config.monitoring.prometheusMetrics }}
+
+    {{- range .Values.master.config.storageClasses }}
+    [[storage_classes.class]]
+    id = {{ .id }}
+    name = "{{ .name }}"
+    copies = {{ .copies }}
+    {{- if .erasureScheme }}
+    erasure_scheme = "{{ .erasureScheme }}"
+    {{- end }}
+    tier = "{{ .tier }}"
+    {{- end }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "mooseng.fullname" . }}-master
+  namespace: {{ .Values.namespace | default "mooseng" }}
+  labels:
+    {{- include "mooseng.labels" . | nindent 4 }}
+    app.kubernetes.io/component: master
+spec:
+  serviceName: {{ include "mooseng.master.serviceName" . }}
+  replicas: {{ .Values.master.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "mooseng.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: master
+  template:
+    metadata:
+      labels:
+        {{- include "mooseng.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: master
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "{{ .Values.master.ports.metrics }}"
+        prometheus.io/path: "/metrics"
+        {{- with .Values.master.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- if .Values.serviceAccount.create }}
+      serviceAccountName: {{ include "mooseng.serviceAccountName" . }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.master.podSecurityContext | nindent 8 }}
+      initContainers:
+      - name: config-setup
+        image: busybox:1.36
+        command:
+        - sh
+        - -c
+        - |
+          export MOOSENG_NODE_ID="master-${HOSTNAME##*-}"
+          envsubst < /etc/mooseng/master.toml > /shared/master.toml
+          cat /shared/master.toml
+        env:
+        - name: HOSTNAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        volumeMounts:
+        - name: config
+          mountPath: /etc/mooseng
+        - name: shared-config
+          mountPath: /shared
+        securityContext:
+          {{- toYaml .Values.master.securityContext | nindent 10 }}
+      containers:
+      - name: master
+        image: "{{ .Values.master.image.repository }}:{{ .Values.master.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.master.image.pullPolicy }}
+        command:
+        - /usr/local/bin/mooseng-master
+        - --config
+        - /shared/master.toml
+        env:
+        - name: RUST_LOG
+          value: "{{ .Values.master.config.logging.level }}"
+        - name: MOOSENG_NODE_ID
+          value: "master-$(HOSTNAME##*-)"
+        - name: HOSTNAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        {{- with .Values.master.extraEnv }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        ports:
+        - name: server
+          containerPort: {{ .Values.master.ports.server }}
+          protocol: TCP
+        - name: raft
+          containerPort: {{ .Values.master.ports.raft }}
+          protocol: TCP
+        - name: metrics
+          containerPort: {{ .Values.master.ports.metrics }}
+          protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: {{ .Values.master.ports.metrics }}
+          initialDelaySeconds: {{ .Values.master.livenessProbe.initialDelaySeconds }}
+          periodSeconds: {{ .Values.master.livenessProbe.periodSeconds }}
+          timeoutSeconds: {{ .Values.master.livenessProbe.timeoutSeconds }}
+          failureThreshold: {{ .Values.master.livenessProbe.failureThreshold }}
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: {{ .Values.master.ports.metrics }}
+          initialDelaySeconds: {{ .Values.master.readinessProbe.initialDelaySeconds }}
+          periodSeconds: {{ .Values.master.readinessProbe.periodSeconds }}
+          timeoutSeconds: {{ .Values.master.readinessProbe.timeoutSeconds }}
+          failureThreshold: {{ .Values.master.readinessProbe.failureThreshold }}
+        resources:
+          {{- toYaml .Values.master.resources | nindent 10 }}
+        volumeMounts:
+        - name: data
+          mountPath: {{ .Values.master.config.data.dataDir }}
+        - name: logs
+          mountPath: {{ .Values.master.config.logging.logDir }}
+        - name: shared-config
+          mountPath: /shared
+        {{- with .Values.master.extraVolumeMounts }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        securityContext:
+          {{- toYaml .Values.master.securityContext | nindent 10 }}
+      volumes:
+      - name: config
+        configMap:
+          name: {{ include "mooseng.fullname" . }}-master-config
+      - name: shared-config
+        emptyDir: {}
+      - name: logs
+        emptyDir: {}
+      {{- with .Values.master.extraVolumes }}
+      {{- toYaml . | nindent 6 }}
+      {{- end }}
+      {{- with .Values.master.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.master.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.master.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+      labels:
+        {{- include "mooseng.labels" . | nindent 8 }}
+        app.kubernetes.io/component: master-data
+    spec:
+      accessModes: 
+      {{- range .Values.master.persistence.accessModes }}
+      - {{ . | quote }}
+      {{- end }}
+      storageClassName: {{ .Values.master.persistence.storageClass }}
+      resources:
+        requests:
+          storage: {{ .Values.master.persistence.size }}

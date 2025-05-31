@@ -1,0 +1,239 @@
+groups:
+  - name: mooseng.rules
+    interval: 30s
+    rules:
+      # Performance Alerts
+      - alert: MooseNG_High_Error_Rate
+        expr: rate(mooseng_requests_failed_total[5m]) / rate(mooseng_requests_total[5m]) * 100 > 5
+        for: 2m
+        labels:
+          severity: warning
+          service: mooseng
+        annotations:
+          summary: "High error rate detected on {{ $labels.instance }}"
+          description: "Error rate is {{ $value }}% which is above the 5% threshold"
+
+      - alert: MooseNG_Critical_Error_Rate
+        expr: rate(mooseng_requests_failed_total[5m]) / rate(mooseng_requests_total[5m]) * 100 > 10
+        for: 1m
+        labels:
+          severity: critical
+          service: mooseng
+        annotations:
+          summary: "Critical error rate detected on {{ $labels.instance }}"
+          description: "Error rate is {{ $value }}% which is above the 10% critical threshold"
+
+      - alert: MooseNG_High_Latency
+        expr: histogram_quantile(0.95, rate(mooseng_request_duration_seconds_bucket[5m])) * 1000 > 500
+        for: 5m
+        labels:
+          severity: warning
+          service: mooseng
+        annotations:
+          summary: "High latency detected on {{ $labels.instance }}"
+          description: "95th percentile latency is {{ $value }}ms which is above the 500ms threshold"
+
+      - alert: MooseNG_Critical_Latency
+        expr: histogram_quantile(0.95, rate(mooseng_request_duration_seconds_bucket[5m])) * 1000 > 1000
+        for: 2m
+        labels:
+          severity: critical
+          service: mooseng
+        annotations:
+          summary: "Critical latency detected on {{ $labels.instance }}"
+          description: "95th percentile latency is {{ $value }}ms which is above the 1000ms critical threshold"
+
+      # Storage Alerts
+      - alert: MooseNG_Storage_Tier_High_Utilization
+        expr: mooseng_storage_tier_used_bytes / mooseng_storage_tier_capacity_bytes * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+          service: mooseng
+        annotations:
+          summary: "High storage utilization in {{ $labels.tier }} tier on {{ $labels.instance }}"
+          description: "{{ $labels.tier }} tier utilization is {{ $value }}% which is above the 80% threshold"
+
+      - alert: MooseNG_Storage_Tier_Critical_Utilization
+        expr: mooseng_storage_tier_used_bytes / mooseng_storage_tier_capacity_bytes * 100 > 90
+        for: 2m
+        labels:
+          severity: critical
+          service: mooseng
+        annotations:
+          summary: "Critical storage utilization in {{ $labels.tier }} tier on {{ $labels.instance }}"
+          description: "{{ $labels.tier }} tier utilization is {{ $value }}% which is above the 90% critical threshold"
+
+      - alert: MooseNG_Tier_Movement_Queue_Buildup
+        expr: mooseng_tier_movement_queue_size > 1000
+        for: 10m
+        labels:
+          severity: warning
+          service: mooseng
+        annotations:
+          summary: "Tier movement queue buildup detected on {{ $labels.instance }}"
+          description: "Movement queue size is {{ $value }} which indicates possible processing issues"
+
+      - alert: MooseNG_High_Movement_Failure_Rate
+        expr: rate(mooseng_tier_movements_failed_total[5m]) / rate(mooseng_tier_movements_total[5m]) * 100 > 10
+        for: 5m
+        labels:
+          severity: warning
+          service: mooseng
+        annotations:
+          summary: "High tier movement failure rate on {{ $labels.instance }}"
+          description: "Movement failure rate is {{ $value }}% which is above the 10% threshold"
+
+      # Health and Consistency Alerts
+      - alert: MooseNG_Health_Check_Failed
+        expr: mooseng_health_check_status < 2
+        for: 1m
+        labels:
+          severity: warning
+          service: mooseng
+        annotations:
+          summary: "Health check failed for {{ $labels.check_name }} on {{ $labels.instance }}"
+          description: "Health check status is {{ $value }} (2=healthy, 1=warning, 0=critical)"
+
+      - alert: MooseNG_Critical_Health_Check_Failed
+        expr: mooseng_health_check_status == 0
+        for: 30s
+        labels:
+          severity: critical
+          service: mooseng
+        annotations:
+          summary: "Critical health check failed for {{ $labels.check_name }} on {{ $labels.instance }}"
+          description: "Health check is in critical state"
+
+      - alert: MooseNG_Data_Consistency_Issues
+        expr: mooseng_consistency_inconsistent_chunks > 0
+        for: 5m
+        labels:
+          severity: warning
+          service: mooseng
+        annotations:
+          summary: "Data consistency issues detected on {{ $labels.instance }}"
+          description: "{{ $value }} inconsistent chunks detected"
+
+      - alert: MooseNG_Corrupted_Chunks
+        expr: mooseng_consistency_corrupted_chunks > 0
+        for: 1m
+        labels:
+          severity: critical
+          service: mooseng
+        annotations:
+          summary: "Corrupted chunks detected on {{ $labels.instance }}"
+          description: "{{ $value }} corrupted chunks detected - immediate attention required"
+
+      - alert: MooseNG_Missing_Replicas
+        expr: mooseng_consistency_missing_replicas > 0
+        for: 5m
+        labels:
+          severity: warning
+          service: mooseng
+        annotations:
+          summary: "Missing replicas detected on {{ $labels.instance }}"
+          description: "{{ $value }} missing replicas detected"
+
+      # System Resource Alerts
+      - alert: MooseNG_High_CPU_Usage
+        expr: mooseng_system_cpu_percent > 80
+        for: 10m
+        labels:
+          severity: warning
+          service: mooseng
+        annotations:
+          summary: "High CPU usage on {{ $labels.instance }}"
+          description: "CPU usage is {{ $value }}% which is above the 80% threshold"
+
+      - alert: MooseNG_Critical_CPU_Usage
+        expr: mooseng_system_cpu_percent > 95
+        for: 2m
+        labels:
+          severity: critical
+          service: mooseng
+        annotations:
+          summary: "Critical CPU usage on {{ $labels.instance }}"
+          description: "CPU usage is {{ $value }}% which is above the 95% critical threshold"
+
+      - alert: MooseNG_High_Memory_Usage
+        expr: mooseng_system_memory_percent > 85
+        for: 10m
+        labels:
+          severity: warning
+          service: mooseng
+        annotations:
+          summary: "High memory usage on {{ $labels.instance }}"
+          description: "Memory usage is {{ $value }}% which is above the 85% threshold"
+
+      - alert: MooseNG_Critical_Memory_Usage
+        expr: mooseng_system_memory_percent > 95
+        for: 2m
+        labels:
+          severity: critical
+          service: mooseng
+        annotations:
+          summary: "Critical memory usage on {{ $labels.instance }}"
+          description: "Memory usage is {{ $value }}% which is above the 95% critical threshold"
+
+      - alert: MooseNG_High_Disk_Usage
+        expr: mooseng_disk_usage_percent > 85
+        for: 10m
+        labels:
+          severity: warning
+          service: mooseng
+        annotations:
+          summary: "High disk usage on {{ $labels.instance }}"
+          description: "Disk usage is {{ $value }}% which is above the 85% threshold"
+
+      - alert: MooseNG_Critical_Disk_Usage
+        expr: mooseng_disk_usage_percent > 95
+        for: 2m
+        labels:
+          severity: critical
+          service: mooseng
+        annotations:
+          summary: "Critical disk usage on {{ $labels.instance }}"
+          description: "Disk usage is {{ $value }}% which is above the 95% critical threshold"
+
+      # Cache Performance Alerts
+      - alert: MooseNG_Low_Cache_Hit_Rate
+        expr: mooseng_cache_hit_ratio < 0.7
+        for: 15m
+        labels:
+          severity: warning
+          service: mooseng
+        annotations:
+          summary: "Low cache hit rate on {{ $labels.instance }}"
+          description: "Cache hit rate is {{ $value }}% which is below the 70% threshold"
+
+      - alert: MooseNG_Critical_Cache_Hit_Rate
+        expr: mooseng_cache_hit_ratio < 0.5
+        for: 5m
+        labels:
+          severity: critical
+          service: mooseng
+        annotations:
+          summary: "Critical cache hit rate on {{ $labels.instance }}"
+          description: "Cache hit rate is {{ $value }}% which is below the 50% critical threshold"
+
+      # Network and Connectivity Alerts
+      - alert: MooseNG_High_Network_Errors
+        expr: rate(mooseng_network_errors_total[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+          service: mooseng
+        annotations:
+          summary: "High network errors on {{ $labels.instance }}"
+          description: "Network error rate is {{ $value }} errors/sec"
+
+      - alert: MooseNG_Instance_Down
+        expr: up{job="mooseng"} == 0
+        for: 30s
+        labels:
+          severity: critical
+          service: mooseng
+        annotations:
+          summary: "MooseNG instance down"
+          description: "MooseNG instance {{ $labels.instance }} has been down for more than 30 seconds"

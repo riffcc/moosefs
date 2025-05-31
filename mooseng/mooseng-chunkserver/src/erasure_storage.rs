@@ -11,7 +11,7 @@ use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
 
 use crate::{
-    chunk::{Chunk, ChunkMetadata},
+    chunk::{Chunk, ChunkMetadata, ChecksumType},
     config::ChunkServerConfig,
     error::{ChunkServerError, Result as ChunkResult},
     erasure::{ErasureCodedChunk, ErasureConfig, ErasureCoder, ErasureShard, ShardPlacement},
@@ -378,6 +378,38 @@ impl ChunkStorage for ErasureCodedStorage {
         stats.total_bytes = (stats.total_bytes as f64 * overhead_factor) as u64;
         
         Ok(stats)
+    }
+    
+    async fn store_chunks_batch(&self, chunks: &[&Chunk]) -> ChunkResult<Vec<ChunkResult<()>>> {
+        // For now, delegate to base storage batch operation
+        // TODO: Optimize for erasure coding batches
+        self.base_storage.store_chunks_batch(chunks).await
+    }
+    
+    async fn get_chunks_batch(&self, chunk_ids: &[(ChunkId, ChunkVersion)]) -> ChunkResult<Vec<ChunkResult<Chunk>>> {
+        // For now, delegate to individual gets
+        // TODO: Optimize for erasure coding batches
+        let mut results = Vec::with_capacity(chunk_ids.len());
+        for (chunk_id, version) in chunk_ids {
+            results.push(self.get_chunk(*chunk_id, *version).await);
+        }
+        Ok(results)
+    }
+    
+    async fn verify_chunk_fast(&self, chunk_id: ChunkId, version: ChunkVersion) -> ChunkResult<bool> {
+        // Delegate to base storage fast verification
+        self.base_storage.verify_chunk_fast(chunk_id, version).await
+    }
+    
+    async fn read_chunk_slice(&self, chunk_id: ChunkId, version: ChunkVersion, offset: u64, length: u64) -> ChunkResult<Bytes> {
+        // For erasure coded chunks, we need to read the whole chunk and slice it
+        let chunk = self.get_chunk(chunk_id, version).await?;
+        chunk.slice(offset, length)
+    }
+    
+    async fn preload_chunks(&self, chunk_ids: &[(ChunkId, ChunkVersion)]) -> ChunkResult<()> {
+        // Delegate to base storage preloading
+        self.base_storage.preload_chunks(chunk_ids).await
     }
 }
 

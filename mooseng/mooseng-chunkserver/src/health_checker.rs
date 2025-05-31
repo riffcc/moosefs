@@ -12,13 +12,13 @@ use mooseng_common::health::{HealthChecker, HealthCheckResult, HealthStatus, Sel
 use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
 
-use crate::storage::StorageEngine;
+use crate::storage::StorageManager;
 use crate::cache::ChunkCache;
 use crate::server::ChunkServer;
 
 /// Chunk server health checker
 pub struct ChunkServerHealthChecker {
-    storage: Arc<StorageEngine>,
+    storage: Arc<StorageManager>,
     cache: Arc<ChunkCache>,
     server: Arc<ChunkServer>,
     metrics: Arc<RwLock<ChunkServerMetrics>>,
@@ -41,7 +41,7 @@ pub struct ChunkServerMetrics {
 
 impl ChunkServerHealthChecker {
     pub fn new(
-        storage: Arc<StorageEngine>,
+        storage: Arc<StorageManager>,
         cache: Arc<ChunkCache>,
         server: Arc<ChunkServer>,
     ) -> Self {
@@ -61,21 +61,46 @@ impl ChunkServerHealthChecker {
         metrics.memory_usage_percent = Self::get_memory_usage().await?;
         
         // Storage metrics
-        let storage_stats = self.storage.get_stats().await;
-        metrics.disk_usage_percent = storage_stats.disk_usage_percent;
-        metrics.disk_io_ops_per_sec = storage_stats.io_ops_per_second;
-        metrics.active_chunks = storage_stats.chunk_count;
-        metrics.storage_errors_per_hour = storage_stats.errors_per_hour;
-        metrics.disk_health_score = storage_stats.health_score;
+        match self.storage.get_stats().await {
+            Ok(storage_stats) => {
+                let total_space = storage_stats.free_space_bytes + storage_stats.total_bytes;
+                if total_space > 0 {
+                    metrics.disk_usage_percent = (storage_stats.total_bytes as f64 / total_space as f64) * 100.0;
+                } else {
+                    metrics.disk_usage_percent = 0.0;
+                }
+                metrics.disk_io_ops_per_sec = 0.0; // TODO: Track I/O operations
+                metrics.active_chunks = storage_stats.total_chunks;
+                metrics.storage_errors_per_hour = storage_stats.corrupted_chunks as f64; // Using corrupted chunks as proxy
+                metrics.disk_health_score = if storage_stats.corrupted_chunks == 0 { 100.0 } else { 50.0 };
+            }
+            Err(e) => {
+                tracing::warn!("Failed to get storage stats: {}", e);
+                metrics.disk_usage_percent = 0.0;
+                metrics.disk_io_ops_per_sec = 0.0;
+                metrics.active_chunks = 0;
+                metrics.storage_errors_per_hour = 0.0;
+                metrics.disk_health_score = 0.0;
+            }
+        }
         
         // Cache metrics
         let cache_stats = self.cache.get_stats().await;
-        metrics.cache_hit_rate = cache_stats.hit_rate;
+        metrics.cache_hit_rate = cache_stats.hit_ratio();
         
         // Server metrics
-        let server_stats = self.server.get_stats().await;
-        metrics.network_io_mbps = server_stats.network_throughput_mbps;
-        metrics.replication_lag_ms = server_stats.replication_lag.as_millis() as f64;
+        match self.server.get_stats().await {
+            Ok(server_stats) => {
+                // TODO: Add network throughput and replication lag tracking
+                metrics.network_io_mbps = 0.0; // Placeholder
+                metrics.replication_lag_ms = 0.0; // Placeholder
+            }
+            Err(e) => {
+                tracing::warn!("Failed to get server stats: {}", e);
+                metrics.network_io_mbps = 0.0;
+                metrics.replication_lag_ms = 0.0;
+            }
+        }
         
         // Chunk verification metrics
         metrics.chunk_verification_rate = self.get_chunk_verification_rate().await;
@@ -226,7 +251,7 @@ impl ChunkServerHealthChecker {
         
         // Verify cache is responding
         let cache_stats = self.cache.get_stats().await;
-        Ok(cache_stats.entry_count == 0)
+        Ok(cache_stats.current_size == 0)
     }
     
     async fn perform_chunk_verification(&self) -> Result<bool> {
@@ -371,7 +396,7 @@ impl HealthChecker for ChunkServerHealthChecker {
 }
 
 // Mock implementations for missing methods - these would be implemented in the actual components
-impl StorageEngine {
+impl StorageManager {
     pub async fn verify_all_chunks(&self) -> Result<ChunkVerificationResult> {
         info!("Verifying all chunks");
         Ok(ChunkVerificationResult {
@@ -391,11 +416,6 @@ impl StorageEngine {
     }
 }
 
-impl ChunkCache {
-    pub async fn clear(&self) {
-        info!("Cache cleared");
-    }
-}
 
 impl ChunkServer {
     pub async fn reconnect_to_master(&self) -> Result<()> {

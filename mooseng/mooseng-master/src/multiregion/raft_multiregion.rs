@@ -67,6 +67,25 @@ struct LeaderLease {
     last_heartbeat_success: Instant,
 }
 
+impl LeaderLease {
+    fn new(lease_duration: Duration) -> Self {
+        Self {
+            lease_holder: None,
+            lease_expires: None,
+            lease_duration,
+            last_heartbeat_success: Instant::now(),
+        }
+    }
+    
+    fn is_valid(&self) -> bool {
+        if let Some(expires) = self.lease_expires {
+            expires > Instant::now()
+        } else {
+            false
+        }
+    }
+}
+
 impl MultiRegionRaft {
     pub async fn new(
         local_raft: Arc<RaftConsensus>,
@@ -76,12 +95,7 @@ impl MultiRegionRaft {
         let region_peers = Arc::new(RwLock::new(HashMap::new()));
         let (shutdown_tx, _) = broadcast::channel(1);
         
-        let leader_lease = Arc::new(Mutex::new(LeaderLease {
-            lease_holder: None,
-            lease_expires: None,
-            lease_duration: config.leader_lease_duration,
-            last_heartbeat_success: Instant::now(),
-        }));
+        let leader_lease = Arc::new(Mutex::new(LeaderLease::new(config.leader_lease_duration)));
         
         // Initialize peer states
         {
@@ -350,6 +364,37 @@ impl MultiRegionRaft {
                 // Eventual consistency allows reading from any node
                 // TODO: Implement actual read from state machine
                 Ok(None)
+            }
+            ConsistencyLevel::Session => {
+                // Session consistency requires tracking session state
+                // For now, treat similar to bounded staleness with 1 second max
+                let max_staleness = Duration::from_secs(1);
+                let lease = self.leader_lease.lock().await;
+                
+                if lease.is_valid() {
+                    // We have a valid lease
+                    if lease.lease_holder.is_some() {
+                        // We have a valid lease
+                        // TODO: Check session state and implement actual read
+                        Ok(None)
+                    } else {
+                        // Lease expired, need to contact leader
+                        if let Some(leader_id) = self.local_raft.get_leader_id().await {
+                            // TODO: Forward read to leader
+                            Ok(None)
+                        } else {
+                            Err(anyhow!("No leader available for session consistency read"))
+                        }
+                    }
+                } else {
+                    // No lease, forward to leader
+                    if let Some(leader_id) = self.local_raft.get_leader_id().await {
+                        // TODO: Forward read to leader
+                        Ok(None)
+                    } else {
+                        Err(anyhow!("No leader available for session consistency read"))
+                    }
+                }
             }
         }
     }

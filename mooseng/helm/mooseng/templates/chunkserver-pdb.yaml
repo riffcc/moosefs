@@ -1,0 +1,16 @@
+{{- if .Values.podDisruptionBudget.chunkserver.enabled -}}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "mooseng.fullname" . }}-chunkserver
+  namespace: {{ .Values.namespace | default "mooseng" }}
+  labels:
+    {{- include "mooseng.labels" . | nindent 4 }}
+    app.kubernetes.io/component: chunkserver
+spec:
+  maxUnavailable: {{ .Values.podDisruptionBudget.chunkserver.maxUnavailable }}
+  selector:
+    matchLabels:
+      {{- include "mooseng.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: chunkserver
+{{- end -}}

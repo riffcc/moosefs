@@ -1,16 +1,21 @@
 use crate::{
-    chunk::{Chunk, ChunkMetadata, ChunkChecksum, ChecksumType},
+    chunk::{Chunk, ChunkMetadata, ChecksumType},
     config::ChunkServerConfig,
     error::{ChunkServerError, Result},
 };
+// TODO: Fix zero_copy module import
+// use crate::zero_copy::ZeroCopyTransfer;
 use mooseng_common::types::{ChunkId, ChunkVersion};
 use bytes::Bytes;
-use std::path::PathBuf;
 use tokio::fs;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::AsyncWriteExt;
 use std::sync::Arc;
 use dashmap::DashMap;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
+use std::time::Instant;
+use tokio::sync::{RwLock, Semaphore};
+use lru::LruCache;
+use std::num::NonZeroUsize;
 
 /// Trait for chunk storage operations
 #[async_trait::async_trait]
@@ -41,6 +46,23 @@ pub trait ChunkStorage: Send + Sync {
     
     /// Get storage statistics
     async fn get_stats(&self) -> Result<StorageStats>;
+    
+    // New performance-optimized methods
+    
+    /// Store multiple chunks in a batch operation
+    async fn store_chunks_batch(&self, chunks: &[&Chunk]) -> Result<Vec<Result<()>>>;
+    
+    /// Retrieve multiple chunks in a batch operation
+    async fn get_chunks_batch(&self, chunk_ids: &[(ChunkId, ChunkVersion)]) -> Result<Vec<Result<Chunk>>>;
+    
+    /// Fast integrity verification using quick checksums
+    async fn verify_chunk_fast(&self, chunk_id: ChunkId, version: ChunkVersion) -> Result<bool>;
+    
+    /// Read a chunk slice without loading the entire chunk
+    async fn read_chunk_slice(&self, chunk_id: ChunkId, version: ChunkVersion, offset: u64, length: u64) -> Result<Bytes>;
+    
+    /// Preload chunks into cache
+    async fn preload_chunks(&self, chunk_ids: &[(ChunkId, ChunkVersion)]) -> Result<()>;
 }
 
 /// Storage statistics
@@ -52,26 +74,81 @@ pub struct StorageStats {
     pub corrupted_chunks: u64,
 }
 
-/// File-based chunk storage implementation
+/// File-based chunk storage implementation with performance optimizations
 pub struct FileStorage {
     config: Arc<ChunkServerConfig>,
-    chunk_locks: DashMap<(ChunkId, ChunkVersion), tokio::sync::Mutex<()>>,
+    chunk_locks: Arc<DashMap<(ChunkId, ChunkVersion), Arc<tokio::sync::Mutex<()>>>>,
+    // Performance components
+    // TODO: Re-enable zero_copy when module is fixed
+    // zero_copy: Arc<ZeroCopyTransfer>,
+    metadata_cache: Arc<RwLock<LruCache<(ChunkId, ChunkVersion), ChunkMetadata>>>,
+    io_semaphore: Arc<Semaphore>,
+    batch_size_limit: usize,
+    // Performance metrics
+    metrics: Arc<StorageMetrics>,
+}
+
+/// Performance metrics for storage operations
+#[derive(Debug, Default)]
+pub struct StorageMetrics {
+    pub read_count: std::sync::atomic::AtomicU64,
+    pub write_count: std::sync::atomic::AtomicU64,
+    pub cache_hits: std::sync::atomic::AtomicU64,
+    pub cache_misses: std::sync::atomic::AtomicU64,
+    pub fast_verifications: std::sync::atomic::AtomicU64,
+    pub batch_operations: std::sync::atomic::AtomicU64,
+    pub total_read_time_micros: std::sync::atomic::AtomicU64,
+    pub total_write_time_micros: std::sync::atomic::AtomicU64,
 }
 
 impl FileStorage {
     /// Create a new file storage instance
     pub fn new(config: Arc<ChunkServerConfig>) -> Self {
+        // TODO: Re-enable zero_copy when module is fixed
+        // let mmap_manager = Arc::new(MmapManager::new(Default::default()));
+        // let zero_copy = Arc::new(ZeroCopyTransfer::new(mmap_manager));
+        
         Self {
             config,
-            chunk_locks: DashMap::new(),
+            chunk_locks: Arc::new(DashMap::new()),
+            // zero_copy,
+            metadata_cache: Arc::new(RwLock::new(LruCache::new(NonZeroUsize::new(1000).unwrap()))), // Cache last 1000 metadata entries
+            io_semaphore: Arc::new(Semaphore::new(64)), // Limit concurrent I/O operations
+            batch_size_limit: 32, // Maximum chunks per batch operation
+            metrics: Arc::new(StorageMetrics::default()),
+        }
+    }
+    
+    /// Create a new file storage instance with custom limits
+    pub fn new_with_limits(
+        config: Arc<ChunkServerConfig>, 
+        cache_size: usize, 
+        concurrent_io: usize,
+        batch_limit: usize
+    ) -> Self {
+        // TODO: Re-enable zero_copy when module is fixed
+        // let mmap_manager = Arc::new(MmapManager::new(Default::default()));
+        // let zero_copy = Arc::new(ZeroCopyTransfer::new(mmap_manager));
+        
+        Self {
+            config,
+            chunk_locks: Arc::new(DashMap::new()),
+            // zero_copy,
+            metadata_cache: Arc::new(RwLock::new(LruCache::new(NonZeroUsize::new(cache_size).unwrap()))),
+            io_semaphore: Arc::new(Semaphore::new(concurrent_io)),
+            batch_size_limit: batch_limit,
+            metrics: Arc::new(StorageMetrics::default()),
         }
     }
     
     /// Get a lock for a specific chunk to prevent concurrent access
-    async fn get_chunk_lock(&self, chunk_id: ChunkId, version: ChunkVersion) -> tokio::sync::MutexGuard<'_, ()> {
+    async fn get_chunk_lock(&self, chunk_id: ChunkId, version: ChunkVersion) -> Arc<tokio::sync::Mutex<()>> {
         let key = (chunk_id, version);
-        let mutex = self.chunk_locks.entry(key).or_insert_with(|| tokio::sync::Mutex::new(()));
-        mutex.value().lock().await
+        // Get or create mutex and return Arc to it
+        self.chunk_locks
+            .entry(key)
+            .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
+            .clone()
     }
     
     /// Ensure the directory structure exists for a chunk
@@ -146,27 +223,90 @@ impl FileStorage {
         Ok(())
     }
     
-    /// Read chunk data from file
+    /// Read chunk data from file using optimized I/O
     async fn read_chunk_data(&self, chunk_id: ChunkId, version: ChunkVersion) -> Result<Bytes> {
+        let start_time = Instant::now();
+        let _permit = self.io_semaphore.acquire().await.map_err(|_| 
+            ChunkServerError::InvalidOperation("Failed to acquire I/O semaphore".to_string()))?;
+        
         let chunk_path = self.config.chunk_file_path(chunk_id, version);
         
         if !chunk_path.exists() {
             return Err(ChunkServerError::ChunkNotFound { chunk_id });
         }
         
+        // Read chunk data (TODO: Re-enable zero-copy optimization)
         let data = fs::read(&chunk_path).await.map_err(|e| {
             error!("Failed to read chunk {} v{} from {}: {}", 
                    chunk_id, version, chunk_path.display(), e);
             ChunkServerError::Io(e)
         })?;
+        let data = Bytes::from(data);
         
-        debug!("Read {} bytes for chunk {} v{} from {}", 
-               data.len(), chunk_id, version, chunk_path.display());
-        Ok(Bytes::from(data))
+        // Update metrics
+        let duration = start_time.elapsed();
+        self.metrics.read_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.metrics.total_read_time_micros.fetch_add(
+            duration.as_micros() as u64, 
+            std::sync::atomic::Ordering::Relaxed
+        );
+        
+        debug!("Read {} bytes for chunk {} v{} from {} in {:?}", 
+               data.len(), chunk_id, version, chunk_path.display(), duration);
+        Ok(data)
     }
     
-    /// Read chunk metadata from file
+    /// Read a slice of chunk data without loading the entire chunk
+    async fn read_chunk_data_slice(&self, chunk_id: ChunkId, version: ChunkVersion, offset: u64, length: u64) -> Result<Bytes> {
+        let start_time = Instant::now();
+        let _permit = self.io_semaphore.acquire().await.map_err(|_| 
+            ChunkServerError::InvalidOperation("Failed to acquire I/O semaphore".to_string()))?;
+        
+        let chunk_path = self.config.chunk_file_path(chunk_id, version);
+        
+        if !chunk_path.exists() {
+            return Err(ChunkServerError::ChunkNotFound { chunk_id });
+        }
+        
+        // Read chunk slice (TODO: Re-enable zero-copy optimization)
+        use tokio::io::{AsyncReadExt, AsyncSeekExt};
+        let mut file = tokio::fs::File::open(&chunk_path).await.map_err(|e| ChunkServerError::Io(e))?;
+        file.seek(tokio::io::SeekFrom::Start(offset)).await.map_err(|e| ChunkServerError::Io(e))?;
+        
+        let mut buffer = vec![0u8; length as usize];
+        file.read_exact(&mut buffer).await.map_err(|e| ChunkServerError::Io(e))?;
+        let data = Bytes::from(buffer);
+        
+        // Update metrics
+        let duration = start_time.elapsed();
+        self.metrics.read_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.metrics.total_read_time_micros.fetch_add(
+            duration.as_micros() as u64, 
+            std::sync::atomic::Ordering::Relaxed
+        );
+        
+        debug!("Read slice {} bytes (offset {}) for chunk {} v{} in {:?}", 
+               data.len(), offset, chunk_id, version, duration);
+        Ok(data)
+    }
+    
+    /// Read chunk metadata from file with caching
     async fn read_chunk_metadata(&self, chunk_id: ChunkId, version: ChunkVersion) -> Result<ChunkMetadata> {
+        let key = (chunk_id, version);
+        
+        // Check cache first
+        {
+            let cache = self.metadata_cache.read().await;
+            if let Some(metadata) = cache.peek(&key) {
+                self.metrics.cache_hits.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                debug!("Cache hit for metadata chunk {} v{}", chunk_id, version);
+                return Ok(metadata.clone());
+            }
+        }
+        
+        // Cache miss, read from disk
+        self.metrics.cache_misses.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        
         let metadata_path = self.config.chunk_metadata_path(chunk_id, version);
         
         if !metadata_path.exists() {
@@ -181,7 +321,13 @@ impl FileStorage {
         
         let metadata: ChunkMetadata = bincode::deserialize(&data)?;
         
-        debug!("Read metadata for chunk {} v{} from {}", 
+        // Update cache
+        {
+            let mut cache = self.metadata_cache.write().await;
+            cache.put(key, metadata.clone());
+        }
+        
+        debug!("Read metadata for chunk {} v{} from {} (cached)", 
                chunk_id, version, metadata_path.display());
         Ok(metadata)
     }
@@ -229,12 +375,30 @@ impl FileStorage {
         let free_bytes = stats.blocks_available() * stats.block_size();
         Ok(free_bytes)
     }
+    
+    /// Get storage performance metrics
+    pub fn get_metrics(&self) -> Arc<StorageMetrics> {
+        self.metrics.clone()
+    }
+    
+    /// Clear metadata cache
+    pub async fn clear_cache(&self) {
+        let mut cache = self.metadata_cache.write().await;
+        cache.clear();
+    }
+    
+    /// Get cache statistics
+    pub async fn get_cache_stats(&self) -> (usize, usize) {
+        let cache = self.metadata_cache.read().await;
+        (cache.len(), cache.cap().get())
+    }
 }
 
 #[async_trait::async_trait]
 impl ChunkStorage for FileStorage {
     async fn store_chunk(&self, chunk: &Chunk) -> Result<()> {
-        let _lock = self.get_chunk_lock(chunk.id(), chunk.version()).await;
+        let lock = self.get_chunk_lock(chunk.id(), chunk.version()).await;
+        let _guard = lock.lock().await;
         
         // Check if chunk already exists
         if self.chunk_exists(chunk.id(), chunk.version()).await? {
@@ -265,7 +429,8 @@ impl ChunkStorage for FileStorage {
     }
     
     async fn get_chunk(&self, chunk_id: ChunkId, version: ChunkVersion) -> Result<Chunk> {
-        let _lock = self.get_chunk_lock(chunk_id, version).await;
+        let lock = self.get_chunk_lock(chunk_id, version).await;
+        let _guard = lock.lock().await;
         
         // Read metadata first
         let mut metadata = self.read_chunk_metadata(chunk_id, version).await?;
@@ -311,7 +476,8 @@ impl ChunkStorage for FileStorage {
     }
     
     async fn delete_chunk(&self, chunk_id: ChunkId, version: ChunkVersion) -> Result<()> {
-        let _lock = self.get_chunk_lock(chunk_id, version).await;
+        let lock = self.get_chunk_lock(chunk_id, version).await;
+        let _guard = lock.lock().await;
         
         if !self.chunk_exists(chunk_id, version).await? {
             return Err(ChunkServerError::ChunkNotFound { chunk_id });
@@ -360,7 +526,8 @@ impl ChunkStorage for FileStorage {
     }
     
     async fn update_chunk_metadata(&self, metadata: &ChunkMetadata) -> Result<()> {
-        let _lock = self.get_chunk_lock(metadata.chunk_id, metadata.version).await;
+        let lock = self.get_chunk_lock(metadata.chunk_id, metadata.version).await;
+        let _guard = lock.lock().await;
         self.write_chunk_metadata(metadata).await
     }
     
@@ -403,6 +570,100 @@ impl ChunkStorage for FileStorage {
             corrupted_chunks,
         })
     }
+    
+    // New performance-optimized methods implementation
+    
+    async fn store_chunks_batch(&self, chunks: &[&Chunk]) -> Result<Vec<Result<()>>> {
+        let start_time = Instant::now();
+        self.metrics.batch_operations.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        
+        let mut results = Vec::with_capacity(chunks.len());
+        let batch_size = self.batch_size_limit.min(chunks.len());
+        
+        for chunk_batch in chunks.chunks(batch_size) {
+            let mut batch_futures = Vec::with_capacity(chunk_batch.len());
+            
+            for chunk in chunk_batch {
+                let future = self.store_chunk(chunk);
+                batch_futures.push(future);
+            }
+            
+            let batch_results = futures::future::join_all(batch_futures).await;
+            results.extend(batch_results);
+        }
+        
+        let duration = start_time.elapsed();
+        debug!("Stored {} chunks in batch in {:?}", chunks.len(), duration);
+        
+        Ok(results)
+    }
+    
+    async fn get_chunks_batch(&self, chunk_ids: &[(ChunkId, ChunkVersion)]) -> Result<Vec<Result<Chunk>>> {
+        let start_time = Instant::now();
+        self.metrics.batch_operations.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        
+        let mut results = Vec::with_capacity(chunk_ids.len());
+        let batch_size = self.batch_size_limit.min(chunk_ids.len());
+        
+        for batch in chunk_ids.chunks(batch_size) {
+            let mut batch_futures = Vec::with_capacity(batch.len());
+            
+            for (chunk_id, version) in batch {
+                let future = self.get_chunk(*chunk_id, *version);
+                batch_futures.push(future);
+            }
+            
+            let batch_results = futures::future::join_all(batch_futures).await;
+            results.extend(batch_results);
+        }
+        
+        let duration = start_time.elapsed();
+        debug!("Retrieved {} chunks in batch in {:?}", chunk_ids.len(), duration);
+        
+        Ok(results)
+    }
+    
+    async fn verify_chunk_fast(&self, chunk_id: ChunkId, version: ChunkVersion) -> Result<bool> {
+        self.metrics.fast_verifications.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        
+        // Read metadata first to get checksum type
+        let metadata = self.read_chunk_metadata(chunk_id, version).await?;
+        
+        // For hybrid checksums, use fast verification
+        match metadata.checksum.checksum_type {
+            ChecksumType::HybridFast | ChecksumType::HybridSecure => {
+                let data = self.read_chunk_data(chunk_id, version).await?;
+                Ok(metadata.checksum.verify_fast(&data))
+            }
+            _ => {
+                // Fall back to full verification for other types
+                self.verify_chunk(chunk_id, version).await
+            }
+        }
+    }
+    
+    async fn read_chunk_slice(&self, chunk_id: ChunkId, version: ChunkVersion, offset: u64, length: u64) -> Result<Bytes> {
+        self.read_chunk_data_slice(chunk_id, version, offset, length).await
+    }
+    
+    async fn preload_chunks(&self, chunk_ids: &[(ChunkId, ChunkVersion)]) -> Result<()> {
+        let start_time = Instant::now();
+        
+        // Preload metadata into cache
+        let mut preload_futures = Vec::with_capacity(chunk_ids.len());
+        
+        for (chunk_id, version) in chunk_ids {
+            let future = self.read_chunk_metadata(*chunk_id, *version);
+            preload_futures.push(future);
+        }
+        
+        let _results = futures::future::join_all(preload_futures).await;
+        
+        let duration = start_time.elapsed();
+        debug!("Preloaded {} chunk metadata entries in {:?}", chunk_ids.len(), duration);
+        
+        Ok(())
+    }
 }
 
 /// Parse chunk filename to extract chunk ID and version
@@ -441,6 +702,11 @@ impl StorageManager {
     pub fn primary(&self) -> &Arc<dyn ChunkStorage> {
         &self.primary_storage
     }
+    
+    /// Get storage statistics
+    pub async fn get_stats(&self) -> Result<StorageStats> {
+        self.primary_storage.get_stats().await
+    }
 }
 
 #[cfg(test)]
@@ -457,7 +723,12 @@ mod tests {
     
     fn create_test_chunk() -> Chunk {
         let data = Bytes::from("Hello, World!");
-        Chunk::new(12345, 1, data, ChecksumType::Blake3, 1)
+        Chunk::new(12345, 1, data, ChecksumType::HybridSecure, 1)
+    }
+    
+    fn create_test_chunk_with_checksum(checksum_type: ChecksumType) -> Chunk {
+        let data = Bytes::from("Hello, World! This is test data.");
+        Chunk::new(12345, 1, data, checksum_type, 1)
     }
     
     #[tokio::test]
@@ -507,5 +778,98 @@ mod tests {
         
         assert_eq!(parse_chunk_filename("invalid.dat"), None);
         assert_eq!(parse_chunk_filename("chunk_invalid_v1.dat"), None);
+    }
+    
+    #[tokio::test]
+    async fn test_new_checksum_types() {
+        let chunk_xxhash3 = create_test_chunk_with_checksum(ChecksumType::XxHash3);
+        let chunk_hybrid_fast = create_test_chunk_with_checksum(ChecksumType::HybridFast);
+        let chunk_hybrid_secure = create_test_chunk_with_checksum(ChecksumType::HybridSecure);
+        
+        // Verify all chunks have proper integrity
+        assert!(chunk_xxhash3.verify_integrity());
+        assert!(chunk_hybrid_fast.verify_integrity());
+        assert!(chunk_hybrid_secure.verify_integrity());
+        
+        // Test fast verification on hybrid types
+        assert!(chunk_hybrid_fast.metadata.checksum.verify_fast(&chunk_hybrid_fast.data));
+        assert!(chunk_hybrid_secure.metadata.checksum.verify_fast(&chunk_hybrid_secure.data));
+    }
+    
+    #[tokio::test]
+    async fn test_batch_operations() {
+        let (config, _temp_dir) = create_test_config();
+        let storage = FileStorage::new(Arc::new(config));
+        
+        // Create multiple test chunks
+        let chunks: Vec<Chunk> = (0..5).map(|i| {
+            let data = Bytes::from(format!("Test data {}", i));
+            Chunk::new(i as u64, 1, data, ChecksumType::HybridFast, 1)
+        }).collect();
+        
+        let chunk_refs: Vec<&Chunk> = chunks.iter().collect();
+        
+        // Store chunks in batch
+        let store_results = storage.store_chunks_batch(&chunk_refs).await.unwrap();
+        assert_eq!(store_results.len(), 5);
+        assert!(store_results.iter().all(|r| r.is_ok()));
+        
+        // Retrieve chunks in batch
+        let chunk_ids: Vec<(ChunkId, ChunkVersion)> = chunks.iter()
+            .map(|c| (c.id(), c.version()))
+            .collect();
+        
+        let retrieve_results = storage.get_chunks_batch(&chunk_ids).await.unwrap();
+        assert_eq!(retrieve_results.len(), 5);
+        assert!(retrieve_results.iter().all(|r| r.is_ok()));
+        
+        // Verify retrieved data matches original
+        for (original, retrieved_result) in chunks.iter().zip(retrieve_results.iter()) {
+            let retrieved = retrieved_result.as_ref().unwrap();
+            assert_eq!(original.data, retrieved.data);
+            assert_eq!(original.metadata.chunk_id, retrieved.metadata.chunk_id);
+        }
+    }
+    
+    #[tokio::test]
+    async fn test_fast_verification() {
+        let (config, _temp_dir) = create_test_config();
+        let storage = FileStorage::new(Arc::new(config));
+        let chunk = create_test_chunk_with_checksum(ChecksumType::HybridSecure);
+        
+        // Store chunk
+        storage.store_chunk(&chunk).await.unwrap();
+        
+        // Test fast verification
+        let is_valid = storage.verify_chunk_fast(chunk.id(), chunk.version()).await.unwrap();
+        assert!(is_valid);
+        
+        // Check metrics
+        let metrics = storage.get_metrics();
+        assert_eq!(metrics.fast_verifications.load(std::sync::atomic::Ordering::Relaxed), 1);
+    }
+    
+    #[tokio::test]
+    async fn test_chunk_slice_reading() {
+        let (config, _temp_dir) = create_test_config();
+        let storage = FileStorage::new(Arc::new(config));
+        
+        let data = Bytes::from("0123456789ABCDEF"); // 16 bytes
+        let chunk = Chunk::new(999, 1, data, ChecksumType::HybridFast, 1);
+        
+        // Store chunk
+        storage.store_chunk(&chunk).await.unwrap();
+        
+        // Read slice
+        let slice = storage.read_chunk_slice(999, 1, 4, 8).await.unwrap();
+        assert_eq!(slice, "456789AB");
+        
+        // Read from beginning
+        let beginning = storage.read_chunk_slice(999, 1, 0, 4).await.unwrap();
+        assert_eq!(beginning, "0123");
+        
+        // Read to end
+        let end = storage.read_chunk_slice(999, 1, 12, 4).await.unwrap();
+        assert_eq!(end, "CDEF");
     }
 }

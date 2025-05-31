@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="MooseNG Performance Dashboard - Advanced HTML visualization framework for distributed file system benchmarks">
+    <title>MooseNG Dashboard - Core Visualization Framework</title>
+    
+    <!-- Core Styles -->
+    <link rel="stylesheet" href="assets/css/framework.css">
+    <link rel="stylesheet" href="assets/css/components.css">
+    <link rel="stylesheet" href="assets/css/themes.css">
+    
+    <!-- External Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
+    <script src="https://unpkg.com/d3@7.8.5/dist/d3.min.js"></script>
+    
+    <!-- Core Framework -->
+    <script src="src/core/Framework.js" defer></script>
+    <script src="src/core/EventSystem.js" defer></script>
+    <script src="src/core/ComponentRegistry.js" defer></script>
+    
+    <!-- API Layer -->
+    <script src="src/api/DataConnector.js" defer></script>
+    <script src="src/api/RealtimeClient.js" defer></script>
+    <script src="src/api/CacheManager.js" defer></script>
+    
+    <!-- Layout System -->
+    <script src="components/layout/GridSystem.js" defer></script>
+    <script src="components/layout/ResponsiveManager.js" defer></script>
+    <script src="components/layout/LayoutEngine.js" defer></script>
+    
+    <!-- Chart Components -->
+    <script src="components/charts/ChartBase.js" defer></script>
+    <script src="components/charts/TimeSeriesChart.js" defer></script>
+    <script src="components/charts/PerformanceChart.js" defer></script>
+    <script src="components/charts/TopologyChart.js" defer></script>
+    
+    <!-- Widget Components -->
+    <script src="components/widgets/MetricCard.js" defer></script>
+    <script src="components/widgets/StatusPanel.js" defer></script>
+    <script src="components/widgets/AlertWidget.js" defer></script>
+    
+    <!-- Main Application -->
+    <script src="src/core/Application.js" defer></script>
+</head>
+<body class="mooseng-dashboard">
+    
+    <!-- Dashboard Header -->
+    <header class="dashboard-header">
+        <div class="header-content">
+            <div class="brand">
+                <img src="assets/images/mooseng-logo.svg" alt="MooseNG" class="logo">
+                <h1>MooseNG Dashboard Framework</h1>
+            </div>
+            <div class="header-controls">
+                <div class="connection-status" id="connectionStatus">
+                    <span class="status-indicator"></span>
+                    <span class="status-text">Connecting...</span>
+                </div>
+                <button class="btn-icon refresh-btn" id="refreshBtn" title="Refresh Data">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M17.65 6.35A7.958 7.958 0 0012 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0112 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+                    </svg>
+                </button>
+                <button class="btn-icon settings-btn" id="settingsBtn" title="Settings">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.07-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61 l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41 h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.74,8.87 C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.82,11.69,4.82,12s0.02,0.64,0.07,0.94l-2.03,1.58 c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54 c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.43-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96 c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.47-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6 s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Dashboard Container -->
+    <main class="dashboard-main" id="dashboardMain">
+        
+        <!-- Loading State -->
+        <div class="loading-overlay" id="loadingOverlay">
+            <div class="loading-spinner"></div>
+            <p>Loading MooseNG Dashboard Framework...</p>
+        </div>
+        
+        <!-- Dashboard Content Area -->
+        <div class="dashboard-content" id="dashboardContent">
+            
+            <!-- Framework Demo Section -->
+            <section class="framework-demo">
+                <div class="section-header">
+                    <h2>Core Visualization Framework</h2>
+                    <p>Advanced HTML components for MooseNG performance visualization</p>
+                </div>
+                
+                <!-- Metric Cards Demo -->
+                <div class="demo-section">
+                    <h3>Metric Cards</h3>
+                    <div class="metrics-grid" id="metricsGrid">
+                        <!-- Metric cards will be dynamically populated -->
+                    </div>
+                </div>
+                
+                <!-- Charts Demo -->
+                <div class="demo-section">
+                    <h3>Performance Charts</h3>
+                    <div class="charts-grid" id="chartsGrid">
+                        <div class="chart-container">
+                            <div class="chart-header">
+                                <h4>Throughput vs Latency</h4>
+                                <div class="chart-controls">
+                                    <select class="chart-timerange">
+                                        <option value="1h">Last Hour</option>
+                                        <option value="24h" selected>Last 24 Hours</option>
+                                        <option value="7d">Last Week</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="chart-content">
+                                <canvas id="performanceChart"></canvas>
+                            </div>
+                        </div>
+                        
+                        <div class="chart-container">
+                            <div class="chart-header">
+                                <h4>System Health Distribution</h4>
+                            </div>
+                            <div class="chart-content">
+                                <canvas id="healthChart"></canvas>
+                            </div>
+                        </div>
+                        
+                        <div class="chart-container chart-full-width">
+                            <div class="chart-header">
+                                <h4>Multi-Region Network Topology</h4>
+                            </div>
+                            <div class="chart-content">
+                                <div id="topologyChart"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Status Panels Demo -->
+                <div class="demo-section">
+                    <h3>Status Panels</h3>
+                    <div class="status-grid" id="statusGrid">
+                        <!-- Status panels will be dynamically populated -->
+                    </div>
+                </div>
+                
+            </section>
+            
+        </div>
+        
+    </main>
+
+    <!-- Footer -->
+    <footer class="dashboard-footer">
+        <div class="footer-content">
+            <p>&copy; 2025 MooseNG Dashboard Framework. Built for high-performance distributed systems visualization.</p>
+            <div class="footer-links">
+                <a href="docs/api/">API Documentation</a>
+                <a href="docs/guides/">Developer Guide</a>
+                <a href="#" onclick="window.Framework.exportData()">Export Data</a>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Modals and Overlays -->
+    <div class="modal-overlay" id="modalOverlay">
+        <div class="modal-container" id="modalContainer">
+            <!-- Modal content will be dynamically inserted -->
+        </div>
+    </div>
+
+    <!-- Settings Panel -->
+    <div class="settings-panel" id="settingsPanel">
+        <div class="settings-header">
+            <h3>Dashboard Settings</h3>
+            <button class="btn-close" onclick="window.Framework.closeSettings()">×</button>
+        </div>
+        <div class="settings-content">
+            <div class="setting-group">
+                <label>Theme</label>
+                <select id="themeSelector">
+                    <option value="light">Light</option>
+                    <option value="dark">Dark</option>
+                    <option value="auto">Auto</option>
+                </select>
+            </div>
+            <div class="setting-group">
+                <label>Refresh Interval</label>
+                <select id="refreshInterval">
+                    <option value="5000">5 seconds</option>
+                    <option value="10000">10 seconds</option>
+                    <option value="30000" selected>30 seconds</option>
+                    <option value="60000">1 minute</option>
+                </select>
+            </div>
+            <div class="setting-group">
+                <label>Data Retention</label>
+                <select id="dataRetention">
+                    <option value="1h">1 Hour</option>
+                    <option value="24h" selected>24 Hours</option>
+                    <option value="7d">7 Days</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div class="toast-container" id="toastContainer">
+        <!-- Toast notifications will be dynamically added -->
+    </div>
+
+</body>
+</html>

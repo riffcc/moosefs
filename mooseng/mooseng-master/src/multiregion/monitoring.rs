@@ -19,8 +19,7 @@ use crate::multiregion::{
     replication::RegionReplicationStatus,
 };
 use crate::raft::{
-    log::{LogEntry, LogIndex},
-    state::{NodeId, Term},
+    LogEntry, LogIndex, NodeId, Term,
 };
 
 /// Comprehensive monitoring system for multiregion operations
@@ -604,7 +603,7 @@ pub struct VariableWatch {
     pub last_updated: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub enum DebugExecutionState {
     Running,
     Paused { reason: String },

@@ -1,0 +1,65 @@
+[package]
+name = "mooseng-benchmarks"
+version = "0.1.0"
+edition = "2021"
+authors = ["MooseNG Team"]
+description = "Comprehensive benchmarking suite for MooseNG distributed file system"
+
+[dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+tokio = { version = "1.28", features = ["full"] }
+tonic = "0.9"
+prost = "0.11"
+futures = "0.3"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+clap = { version = "4.3", features = ["derive"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+rand = "0.8"
+bytes = "1.4"
+csv = "1.2"
+chrono = { version = "0.4", features = ["serde"] }
+toml = "0.8"
+serde_yaml = "0.9"
+num_cpus = "1.16"
+
+# Dashboard dependencies
+axum = { version = "0.7", features = ["ws"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["fs", "cors"] }
+tokio-tungstenite = "0.24"
+askama = { version = "0.12", features = ["with-axum"] }
+sqlx = { version = "0.8", features = ["runtime-tokio-native-tls", "sqlite", "postgres", "chrono"] }
+prometheus = "0.13"
+once_cell = "1.20"
+anyhow = "1.0"
+uuid = { version = "1.0", features = ["v4", "serde"] }
+
+# Internal dependencies
+mooseng-protocol = { path = "../mooseng-protocol" }
+mooseng-client = { path = "../mooseng-client" }
+mooseng-common = { path = "../mooseng-common" }
+
+[dev-dependencies]
+tempfile = "3.8"
+
+[[bin]]
+name = "simple_benchmark"
+path = "src/bin/simple_benchmark.rs"
+
+[[bin]]
+name = "mooseng-bench"
+path = "src/bin/unified_runner.rs"
+
+[[bin]]
+name = "mooseng-dashboard"
+path = "src/bin/dashboard_server.rs"
+
+[[bin]]
+name = "unified-benchmark"
+path = "src/bin/unified-benchmark.rs"
+
+[profile.release]
+opt-level = 3
+lto = true

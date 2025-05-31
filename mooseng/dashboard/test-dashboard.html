@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MooseNG Dashboard Test</title>
+    <link rel="stylesheet" href="assets/css/dashboard.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/d3@7"></script>
+    <style>
+        .test-section {
+            margin: 2rem 0;
+            padding: 1rem;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+        }
+        .test-title {
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: var(--primary-color);
+        }
+    </style>
+</head>
+<body class="dashboard-body">
+    <div class="dashboard-container">
+        <header class="dashboard-header">
+            <div class="header-content">
+                <h1 class="dashboard-title">
+                    <img src="assets/images/mooseng-logo.svg" alt="MooseNG" class="logo">
+                    MooseNG Dashboard Framework Test
+                </h1>
+                <div class="header-controls">
+                    <div class="status-indicator">
+                        <span class="status-dot"></span>
+                        <span class="status-text">Test Mode</span>
+                    </div>
+                    <button class="refresh-btn" onclick="runTests()">
+                        <span class="refresh-icon">⟳</span>
+                        Run Tests
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <main class="dashboard-main">
+            <div class="test-section">
+                <h2 class="test-title">1. Responsive Layout Test</h2>
+                <div class="grid grid-cols-4 mb-4">
+                    <div class="metric-card">
+                        <div class="metric-value">42</div>
+                        <div class="metric-label">Test Metric 1</div>
+                        <div class="metric-change positive">+12%</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value">128</div>
+                        <div class="metric-label">Test Metric 2</div>
+                        <div class="metric-change negative">-5%</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value">89%</div>
+                        <div class="metric-label">Test Metric 3</div>
+                        <div class="metric-change neutral">0%</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value">3.2s</div>
+                        <div class="metric-label">Test Metric 4</div>
+                        <div class="metric-change positive">+8%</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="test-section">
+                <h2 class="test-title">2. Chart Factory Test</h2>
+                <div class="grid grid-cols-2">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">Test Line Chart</h3>
+                        </div>
+                        <div class="chart-container" id="test-line-chart"></div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">Test Doughnut Chart</h3>
+                        </div>
+                        <div class="chart-container" id="test-doughnut-chart"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="test-section">
+                <h2 class="test-title">3. Data Service Test</h2>
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">Mock Data Test</h3>
+                    </div>
+                    <div id="data-test-result">
+                        Click "Run Tests" to test data service functionality.
+                    </div>
+                </div>
+            </div>
+
+            <div class="test-section">
+                <h2 class="test-title">4. Responsive Layout Test</h2>
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">Current Breakpoint</h3>
+                    </div>
+                    <div id="breakpoint-test">
+                        <p>Current breakpoint: <span id="current-breakpoint">Loading...</span></p>
+                        <p>Window size: <span id="window-size">Loading...</span></p>
+                        <p>Is mobile: <span id="is-mobile">Loading...</span></p>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <footer class="dashboard-footer">
+            <p>MooseNG Dashboard Framework Test Page - Core Infrastructure Validation</p>
+        </footer>
+    </div>
+
+    <!-- Load framework components -->
+    <script src="components/charts/ChartFactory.js"></script>
+    <script src="components/common/DataService.js"></script>
+    <script src="components/layout/ResponsiveLayout.js"></script>
+
+    <script>
+        // Test script
+        function runTests() {
+            console.log('Running MooseNG Dashboard Framework Tests...');
+            
+            // Test 1: Chart Factory
+            testChartFactory();
+            
+            // Test 2: Data Service
+            testDataService();
+            
+            // Test 3: Responsive Layout
+            testResponsiveLayout();
+            
+            console.log('All tests completed!');
+        }
+
+        function testChartFactory() {
+            if (!window.ChartFactory) {
+                console.error('ChartFactory not loaded');
+                return;
+            }
+
+            console.log('Testing ChartFactory...');
+
+            // Test line chart
+            const lineData = {
+                labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+                datasets: [{
+                    label: 'Test Data',
+                    data: [12, 19, 3, 5, 2, 3],
+                    borderColor: '#2563eb',
+                    backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                    tension: 0.4
+                }]
+            };
+
+            ChartFactory.createChart('line', 'test-line-chart', lineData);
+
+            // Test doughnut chart
+            const doughnutData = {
+                labels: ['Red', 'Blue', 'Yellow', 'Green'],
+                datasets: [{
+                    data: [300, 50, 100, 75],
+                    backgroundColor: ['#ef4444', '#2563eb', '#f59e0b', '#10b981']
+                }]
+            };
+
+            ChartFactory.createChart('doughnut', 'test-doughnut-chart', doughnutData);
+
+            console.log('✓ ChartFactory tests passed');
+        }
+
+        function testDataService() {
+            if (!window.DataService) {
+                console.error('DataService not loaded');
+                return;
+            }
+
+            console.log('Testing DataService...');
+
+            // Test mock data generation
+            const mockOverview = DataService.getDefaultOverviewData();
+            const mockMaster = DataService.getDefaultMasterServerData();
+
+            const resultElement = document.getElementById('data-test-result');
+            resultElement.innerHTML = `
+                <h4>Mock Data Generated:</h4>
+                <ul>
+                    <li>Overview data: ${Object.keys(mockOverview).length} properties</li>
+                    <li>Master server data: ${Object.keys(mockMaster).length} properties</li>
+                    <li>Cache functionality: ${DataService.cache ? 'Available' : 'Not available'}</li>
+                    <li>WebSocket support: ${DataService.websocket !== null ? 'Initialized' : 'Not initialized'}</li>
+                </ul>
+            `;
+
+            console.log('✓ DataService tests passed');
+        }
+
+        function testResponsiveLayout() {
+            if (!window.ResponsiveLayout) {
+                console.error('ResponsiveLayout not loaded');
+                return;
+            }
+
+            console.log('Testing ResponsiveLayout...');
+
+            const breakpoint = ResponsiveLayout.getBreakpoint();
+            const isMobile = ResponsiveLayout.isMobile();
+            const windowSize = `${window.innerWidth}x${window.innerHeight}`;
+
+            document.getElementById('current-breakpoint').textContent = breakpoint;
+            document.getElementById('window-size').textContent = windowSize;
+            document.getElementById('is-mobile').textContent = isMobile ? 'Yes' : 'No';
+
+            console.log('✓ ResponsiveLayout tests passed');
+        }
+
+        function updateBreakpointInfo() {
+            if (window.ResponsiveLayout) {
+                testResponsiveLayout();
+            }
+        }
+
+        // Initialize tests when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('MooseNG Dashboard Framework Test Page Loaded');
+            
+            // Initial breakpoint test
+            setTimeout(() => {
+                updateBreakpointInfo();
+            }, 1000);
+
+            // Update breakpoint info on resize
+            window.addEventListener('resize', updateBreakpointInfo);
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MooseNG Dashboard Test</title>
+    <link rel="stylesheet" href="assets/css/dashboard.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="assets/js/dashboard.js" defer></script>
+    <script src="src/ApiClient.js" defer></script>
+    <script src="src/DataService.js" defer></script>
+    <script src="components/charts/ChartComponent.js" defer></script>
+    <script src="components/common/MetricsComponent.js" defer></script>
+    <script src="components/layout/DashboardLayout.js" defer></script>
+    <script src="pages/overview/OverviewPage.js" defer></script>
+</head>
+<body class="dashboard-body">
+    <div id="dashboardContainer"></div>
+
+    <script>
+        // Test script to initialize and test the dashboard
+        document.addEventListener('DOMContentLoaded', async () => {
+            console.log('Starting MooseNG Dashboard Test...');
+            
+            try {
+                // Initialize layout
+                const layout = new DashboardLayout('dashboardContainer');
+                
+                // Register pages
+                layout.registerPage('overview', {
+                    title: 'Overview',
+                    icon: '📊',
+                    component: OverviewPage,
+                    active: true,
+                    order: 1
+                });
+                
+                layout.registerPage('master-server', {
+                    title: 'Master Server',
+                    icon: '🖥️',
+                    order: 2
+                });
+                
+                layout.registerPage('chunk-server', {
+                    title: 'Chunk Server',
+                    icon: '💾',
+                    order: 3
+                });
+                
+                layout.registerPage('client', {
+                    title: 'Client',
+                    icon: '💻',
+                    order: 4
+                });
+                
+                layout.registerPage('multiregion', {
+                    title: 'Multi-Region',
+                    icon: '🌍',
+                    order: 5
+                });
+
+                // Add header controls
+                const statusIndicator = layout.createStatusIndicator();
+                layout.addHeaderControl('status', statusIndicator);
+                
+                const refreshButton = layout.createRefreshButton(() => {
+                    console.log('Refresh clicked');
+                    if (window.currentOverviewPage) {
+                        window.currentOverviewPage.refresh();
+                    }
+                });
+                layout.addHeaderControl('refresh', refreshButton);
+
+                // Test data service
+                const dataService = new DataService();
+                const testData = await dataService.getAllData();
+                console.log('Test data loaded:', testData);
+
+                // Test metrics component
+                const metricsContainer = document.createElement('div');
+                metricsContainer.id = 'testMetrics';
+                metricsContainer.style.position = 'fixed';
+                metricsContainer.style.top = '10px';
+                metricsContainer.style.right = '10px';
+                metricsContainer.style.background = 'white';
+                metricsContainer.style.padding = '10px';
+                metricsContainer.style.border = '1px solid #ccc';
+                metricsContainer.style.borderRadius = '5px';
+                metricsContainer.style.fontSize = '12px';
+                metricsContainer.style.zIndex = '1000';
+                document.body.appendChild(metricsContainer);
+
+                const metrics = new MetricsComponent('testMetrics');
+                metrics.registerMetric('test_throughput', {
+                    displayName: 'Test Throughput',
+                    unit: 'MB/s',
+                    color: '#2563eb'
+                });
+                
+                // Add some test data
+                metrics.addDataPoint('test_throughput', testData.overview.totalThroughputMBps);
+                metrics.render();
+
+                console.log('Dashboard test completed successfully!');
+                
+                // Store reference for testing
+                window.testLayout = layout;
+                window.testDataService = dataService;
+                window.testMetrics = metrics;
+
+            } catch (error) {
+                console.error('Dashboard test failed:', error);
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,26 @@
+MooseNG Multi-Region Benchmark Results
+======================================
+
+Operation: cross_region_replication_4KB
+  Mean time: 200ms
+  Min/Max: 200ms / 200ms
+  Throughput: 0.02 MB/s
+  Samples: 10
+
+Operation: cross_region_replication_64KB
+  Mean time: 201ms
+  Min/Max: 201ms / 201ms
+  Throughput: 0.31 MB/s
+  Samples: 10
+
+Operation: cross_region_replication_1024KB
+  Mean time: 220ms
+  Min/Max: 220ms / 220ms
+  Throughput: 4.55 MB/s
+  Samples: 10
+
+Operation: consistency_convergence
+  Mean time: 110ms
+  Min/Max: 110ms / 110ms
+  Samples: 10
+

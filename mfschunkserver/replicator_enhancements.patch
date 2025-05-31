@@ -1,0 +1,209 @@
+--- replicator.c.orig	2025-01-01 00:00:00.000000000 +0000
++++ replicator.c	2025-01-01 00:00:00.000000000 +0000
+@@ -48,10 +48,15 @@
+ #define MAX_REP_TIME_SEC 150
+ #define PROGRESS_CHECK 30
+ 
+-#define SENDMSECTO 10000
+-#define RECVMSECTO 10000
++// Adaptive timeouts based on network conditions
++#define SENDMSECTO_MIN 5000
++#define SENDMSECTO_MAX 30000
++#define RECVMSECTO_MIN 5000
++#define RECVMSECTO_MAX 30000
+ #define CONNMAXTRY 10
+ 
++#define PARALLEL_CONNECTIONS 4
++
+ #define REP_RETRY_CNT 5
+ #define REP_RETRY_TO 60
+ 
+@@ -97,10 +102,43 @@
+ 
+ static uint32_t stats_repl = 0;
+ static uint64_t stats_bytesin = 0;
+ static uint64_t stats_bytesout = 0;
++static uint64_t stats_failed_repl = 0;
++static uint64_t stats_retry_count = 0;
++static double stats_avg_repl_time = 0.0;
++static uint32_t stats_repl_count = 0;
+ static pthread_mutex_t statslock = PTHREAD_MUTEX_INITIALIZER;
+ 
++// Network condition tracking
++typedef struct _network_stats {
++	uint32_t ip;
++	uint16_t port;
++	double avg_latency;
++	uint32_t success_count;
++	uint32_t failure_count;
++	double last_update;
++} network_stats;
++
++#define NETWORK_STATS_SIZE 1024
++static network_stats net_stats[NETWORK_STATS_SIZE];
++static pthread_mutex_t netstatsmutex = PTHREAD_MUTEX_INITIALIZER;
++
++static uint32_t calculate_adaptive_timeout(uint32_t ip, uint16_t port, uint32_t base_timeout, uint32_t min_timeout, uint32_t max_timeout) {
++	uint32_t hash = ((ip >> 16) ^ (ip & 0xFFFF) ^ port) % NETWORK_STATS_SIZE;
++	uint32_t timeout = base_timeout;
++	
++	pthread_mutex_lock(&netstatsmutex);
++	if (net_stats[hash].ip == ip && net_stats[hash].port == port) {
++		if (net_stats[hash].failure_count > net_stats[hash].success_count) {
++			timeout = timeout * 2;
++		} else if (net_stats[hash].avg_latency > 0) {
++			timeout = (uint32_t)(net_stats[hash].avg_latency * 3000); // 3x average latency
++		}
++	}
++	pthread_mutex_unlock(&netstatsmutex);
++	
++	return (timeout < min_timeout) ? min_timeout : (timeout > max_timeout) ? max_timeout : timeout;
++}
++
+ void replicator_stats(uint64_t *bin,uint64_t *bout,uint32_t *repl) {
+ 	pthread_mutex_lock(&statslock);
+ 	*bin = stats_bytesin;
+@@ -111,6 +149,17 @@
+ 	pthread_mutex_unlock(&statslock);
+ }
+ 
++void replicator_extended_stats(uint64_t *bin, uint64_t *bout, uint32_t *repl, uint64_t *failed, uint64_t *retries, double *avg_time) {
++	pthread_mutex_lock(&statslock);
++	*bin = stats_bytesin;
++	*bout = stats_bytesout;
++	*repl = stats_repl;
++	*failed = stats_failed_repl;
++	*retries = stats_retry_count;
++	*avg_time = stats_avg_repl_time;
++	pthread_mutex_unlock(&statslock);
++}
++
+ static inline void replicator_bytesin(uint64_t bytes) {
+ 	zassert(pthread_mutex_lock(&statslock));
+ 	stats_bytesin += bytes;
+@@ -396,6 +445,58 @@
+ 	return (status>0)?1:0;
+ }
+ 
++static int rep_parallel_connect(replication *r) {
++	int connection_threads = (r->srccnt < PARALLEL_CONNECTIONS) ? r->srccnt : PARALLEL_CONNECTIONS;
++	pthread_t threads[PARALLEL_CONNECTIONS];
++	struct {
++		replication *r;
++		int start_idx;
++		int end_idx;
++		int result;
++	} thread_data[PARALLEL_CONNECTIONS];
++	
++	void *connect_thread(void *arg) {
++		struct thread_data *data = arg;
++		int i;
++		for (i = data->start_idx; i < data->end_idx; i++) {
++			if (rep_connect(data->r->repsources + i) < 0) {
++				data->result = -1;
++				return NULL;
++			}
++		}
++		data->result = 0;
++		return NULL;
++	}
++	
++	int i, chunk_size = r->srccnt / connection_threads;
++	int remainder = r->srccnt % connection_threads;
++	int current = 0;
++	
++	for (i = 0; i < connection_threads; i++) {
++		thread_data[i].r = r;
++		thread_data[i].start_idx = current;
++		thread_data[i].end_idx = current + chunk_size + (i < remainder ? 1 : 0);
++		thread_data[i].result = 0;
++		current = thread_data[i].end_idx;
++		
++		if (pthread_create(&threads[i], NULL, connect_thread, &thread_data[i]) != 0) {
++			// Fallback to sequential connection
++			return rep_concurrent_connect(r);
++		}
++	}
++	
++	int overall_result = 0;
++	for (i = 0; i < connection_threads; i++) {
++		pthread_join(threads[i], NULL);
++		if (thread_data[i].result < 0) {
++			overall_result = -1;
++		}
++	}
++	
++	return overall_result;
++}
++
++// Add connection pooling for frequently accessed chunk servers
++
+ /* initialize replicator module */
+ 
+ uint8_t replicate(repmodeenum rmode,uint64_t chunkid,uint32_t version,uint8_t partno,uint8_t parts,const uint32_t srcip[MAX_EC_PARTS],const uint16_t srcport[MAX_EC_PARTS],const uint64_t srcchunkid[MAX_EC_PARTS]) {
+@@ -683,7 +784,12 @@
+ 		}
+ 	}
+ // connect
+-	if (rep_concurrent_connect(&r)<0) {
++	// Use parallel connections for better performance with multiple sources
++	int connect_result;
++	if (srccnt > 2) {
++		connect_result = rep_parallel_connect(&r);
++	} else {
++		connect_result = rep_concurrent_connect(&r);
++	}
++	if (connect_result < 0) {
+ 		rep_cleanup(&r);
+ 		return MFS_ERROR_CANTCONNECT;
+ 	}
+@@ -706,7 +812,8 @@
+ 		put32bit(&wptr,r.repsources[i].version);
+ 	}
+ // send packet
+-	if (rep_send_all_packets(&r,SENDMSECTO)<0) {
++	uint32_t send_timeout = calculate_adaptive_timeout(srcip[0], srcport[0], SENDMSECTO_MIN, SENDMSECTO_MIN, SENDMSECTO_MAX);
++	if (rep_send_all_packets(&r, send_timeout) < 0) {
+ 		rep_cleanup(&r);
+ 		return MFS_ERROR_DISCONNECTED;
+ 	}
+@@ -716,7 +823,8 @@
+ 		r.repsources[i].startptr = r.repsources[i].hdrbuff;
+ 		r.repsources[i].bytesleft = 8;
+ 	}
+-	if (rep_receive_all_packets(&r,RECVMSECTO)<0) {
++	uint32_t recv_timeout = calculate_adaptive_timeout(srcip[0], srcport[0], RECVMSECTO_MIN, RECVMSECTO_MIN, RECVMSECTO_MAX);
++	if (rep_receive_all_packets(&r, recv_timeout) < 0) {
+ 		rep_cleanup(&r);
+ 		return MFS_ERROR_DISCONNECTED;
+ 	}
+@@ -896,7 +1004,10 @@
+ 			reptry = 0;
+ 			for (i=0 ; i<readsrccnt ; i++) {
+ 				if (r.repsources[i].datapackets[0]==NULL) {
+-					wptr = rep_create_packet(r.repsources+i,ANTOCS_GET_CHUNK_BLOCKS_DATA,8+4+2+2+4*blockgroup);
++					// Request multiple blocks at once for better throughput
++					uint16_t blocks_to_request = (b + 10 < blocks) ? 10 : (blocks - b);
++					wptr = rep_create_packet(r.repsources+i,ANTOCS_GET_CHUNK_BLOCKS_DATA,
++						8+4+2+2+4*blockgroup*blocks_to_request);
+ 					put64bit(&wptr,r.repsources[i].chunkid);
+ 					put32bit(&wptr,r.repsources[i].version);
+ 					put16bit(&wptr,blocknum);
+@@ -1155,5 +1266,17 @@
+ 	r.opened = 0;
+ 	r.created = 0;
+ 	rep_cleanup(&r);
++	
++	// Update statistics
++	double repl_time = monotonic_seconds() - start;
++	pthread_mutex_lock(&statslock);
++	stats_repl_count++;
++	if (stats_avg_repl_time == 0.0) {
++		stats_avg_repl_time = repl_time;
++	} else {
++		stats_avg_repl_time = (stats_avg_repl_time * (stats_repl_count - 1) + repl_time) / stats_repl_count;
++	}
++	pthread_mutex_unlock(&statslock);
++	
+ 	return MFS_STATUS_OK;
+ }

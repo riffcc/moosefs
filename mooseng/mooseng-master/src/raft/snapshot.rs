@@ -9,6 +9,7 @@ use crate::raft::{
     config::RaftConfig,
 };
 
+#[derive(Debug)]
 pub struct SnapshotManager {
     node_id: NodeId,
     node: Arc<RwLock<RaftNode>>,

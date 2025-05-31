@@ -5,7 +5,87 @@
 # Priority: medium
 # Description: Implement tiered storage with automatic data movement between tiers.
 # Details:
-Define multiple storage tiers (e.g., SSD, HDD, Object Storage). Implement automatic data classification based on access patterns. Develop a background process for moving data between tiers. Integrate with erasure coding to optimize for different tiers. Use the object_store = '0.5.4' crate for supporting object storage backends.
+Define multiple storage tiers (e.g., SSD, HDD, Object Storage). Implement automatic data classification based on access patterns. Develop a background process for moving data between tiers. Integrate with erasure coding to optimize for different tiers. Use the object_store = '0.5.4' crate for supporting object storage backends. This task is assigned to Instance 4 (Tiered Storage & Infrastructure Specialist) who will focus on completing the remaining in-progress subtasks and coordinate with the main instance for integration testing.
 
 # Test Strategy:
 Verify correct data placement based on classification rules. Test data integrity during and after tier transitions. Benchmark performance improvements from tiered storage. Simulate long-term data access patterns and verify optimal data placement.
+
+# Subtasks:
+## 1. Define Storage Tier Architecture [done]
+### Dependencies: None
+### Description: Define the architecture for hot, warm, cold, and archive storage tiers with specific performance characteristics and hardware requirements.
+### Details:
+Create detailed specifications for each tier including IOPS requirements, latency expectations, and capacity planning. Define interfaces between tiers and document the overall architecture. Include SSD for hot tier, HDD for warm tier, and object storage integration for cold/archive tiers. Document the technical requirements for each tier and create a reference architecture diagram.
+
+## 2. Implement Data Classification System [done]
+### Dependencies: 15.1
+### Description: Develop a system to classify data based on access patterns, age, and importance to determine optimal storage tier placement.
+### Details:
+Create algorithms to analyze file metadata and access patterns. Implement classification rules engine that can tag data for appropriate tier placement. Design a metadata store to track classification history and decisions. Include configurable policies for classification thresholds and implement monitoring for classification effectiveness.
+
+## 3. Develop Object Storage Backend Integration [done]
+### Dependencies: 15.1
+### Description: Implement integration with object storage systems using the object_store crate for cold and archive tiers.
+### Details:
+Create adapters for major object storage providers (S3, Azure Blob, etc.). Implement efficient object lifecycle management. Develop caching mechanisms for frequently accessed objects. Include error handling, retry logic, and monitoring capabilities. Ensure the implementation handles large objects efficiently with multipart uploads/downloads.
+
+## 4. Implement Automatic Data Movement Engine [done]
+### Dependencies: 15.1, 15.2
+### Description: Create processes to automatically move data between storage tiers based on classification and policies.
+### Details:
+Develop background processes for data migration that minimize impact on production workloads. Implement throttling mechanisms, scheduling capabilities, and progress tracking. Create APIs for manual tier movement requests. Include verification steps to ensure data integrity after movement and logging for audit purposes.
+
+## 5. Integrate with Erasure Coding [in-progress]
+### Dependencies: 15.1, 15.3
+### Description: Integrate tiered storage with erasure coding to optimize storage efficiency while maintaining data durability.
+### Details:
+Implement different erasure coding schemes optimized for each storage tier. Develop processes to re-encode data when moving between tiers if needed. Create configuration options for erasure coding parameters per tier. Include performance optimizations for encoding/decoding operations and implement recovery mechanisms for corrupted data.
+
+## 6. Develop Configuration Management System [done]
+### Dependencies: 15.1, 15.2, 15.4
+### Description: Create a comprehensive configuration system for managing tiered storage policies, thresholds, and behaviors.
+### Details:
+Implement configuration file format and validation. Create APIs for runtime configuration changes. Develop UI components for configuration management. Include documentation generation from configuration schema. Implement configuration versioning and rollback capabilities.
+
+## 7. Implement Monitoring and Reporting [done]
+### Dependencies: 15.4, 15.5, 15.6
+### Description: Develop monitoring systems to track tier utilization, data movement, and performance metrics.
+### Details:
+Create dashboards showing tier utilization and data movement statistics. Implement alerting for capacity thresholds and performance issues. Develop reporting capabilities for cost analysis and optimization recommendations. Include historical trend analysis and predictive capacity planning tools.
+
+## 8. Conduct Performance Testing and Optimization [in-progress]
+### Dependencies: 15.3, 15.4, 15.5, 15.6, 15.7
+### Description: Perform comprehensive testing of the tiered storage implementation and optimize for performance and reliability.
+### Details:
+Develop benchmark suite for tiered storage performance. Test data movement under various load conditions. Validate durability and recovery capabilities. Perform scale testing with large datasets. Document performance characteristics and limitations. Implement optimizations based on test results and create tuning guidelines for different workloads.
+
+## 9. Coordinate with Task 25 for Efficient Block Allocation [in-progress]
+### Dependencies: 15.1, 15.2, 15.3
+### Description: Ensure tiered storage capabilities work efficiently with the block allocation mechanisms being developed in Task 25.
+### Details:
+Collaborate on interfaces between tiered storage and block allocation systems. Optimize mooseng-chunkserver for efficient data placement across storage tiers. Develop shared metrics and monitoring for storage efficiency. Ensure block allocation strategies are tier-aware and can optimize for different storage characteristics.
+
+## 12. Fix Remaining Compilation Issues in Object Storage Integration [in-progress]
+### Dependencies: 15.3
+### Description: Address and resolve any remaining compilation issues in the object_storage.rs and tiered_storage_integration.rs modules.
+### Details:
+Identify and fix any compilation errors or warnings in the object storage integration code. Ensure proper error handling and type safety throughout the codebase. Refactor any inefficient or problematic code patterns. Verify compatibility with the latest version of the object_store crate. Document any non-obvious implementation details or workarounds.
+
+## 13. Finalize Object Storage Performance Metrics and Monitoring [in-progress]
+### Dependencies: 15.3, 15.7
+### Description: Complete the implementation of performance metrics and monitoring for the object storage backend.
+### Details:
+Ensure all critical metrics for object storage operations are being collected and reported. Integrate object storage metrics with the existing monitoring dashboard. Implement alerting for object storage performance issues or failures. Create documentation for interpreting object storage metrics and troubleshooting common issues. Test monitoring under various failure scenarios.
+
+## 11. System Integration and Final Testing [pending]
+### Dependencies: 15.3, 15.5, 15.8, 15.9, 15.12, 15.13
+### Description: Integrate all tiered storage components and perform final system testing.
+### Details:
+Ensure all tiered_storage.rs, tier_movement.rs, and object_storage.rs modules work together seamlessly. Perform end-to-end testing of the complete tiered storage system with all supported object storage backends (AWS S3, Azure Blob, Google Cloud Storage, local filesystem, and memory). Validate all configuration options and monitoring capabilities. Document the final system architecture and operational procedures. Create user documentation for tiered storage capabilities. Coordinate with the main instance for comprehensive integration testing.
+
+## 14. Coordinate Integration Testing with Main Instance [pending]
+### Dependencies: 15.5, 15.8, 15.9, 15.12, 15.13
+### Description: Work with the main instance to ensure proper integration of tiered storage capabilities into the overall system.
+### Details:
+Schedule regular sync meetings with the main instance to discuss integration progress and challenges. Develop a shared test plan for validating tiered storage functionality within the complete system. Document integration points and dependencies. Create a handover document for the main instance with operational guidelines and troubleshooting procedures.
+

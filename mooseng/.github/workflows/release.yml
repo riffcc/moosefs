@@ -1,0 +1,160 @@
+name: MooseNG Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact_name: mooseng-linux-x86_64
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact_name: mooseng-macos-x86_64
+    
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Install Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        target: ${{ matrix.target }}
+        override: true
+    
+    - name: Install dependencies (Ubuntu)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y protobuf-compiler libssl-dev pkg-config cmake
+    
+    - name: Install dependencies (macOS)
+      if: matrix.os == 'macos-latest'
+      run: |
+        brew install protobuf openssl cmake
+    
+    - name: Cache dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+    
+    - name: Build release binaries
+      run: cargo build --workspace --release --target ${{ matrix.target }}
+    
+    - name: Create artifact directory
+      run: mkdir -p artifacts
+    
+    - name: Copy binaries (Ubuntu)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        cp target/${{ matrix.target }}/release/mooseng-master artifacts/
+        cp target/${{ matrix.target }}/release/mooseng-chunkserver artifacts/
+        cp target/${{ matrix.target }}/release/mooseng-client artifacts/
+        cp target/${{ matrix.target }}/release/mooseng-metalogger artifacts/
+        cp target/${{ matrix.target }}/release/mooseng-cli artifacts/
+        cp target/${{ matrix.target }}/release/mooseng-mount artifacts/
+    
+    - name: Copy binaries (macOS)
+      if: matrix.os == 'macos-latest'
+      run: |
+        cp target/${{ matrix.target }}/release/mooseng-master artifacts/
+        cp target/${{ matrix.target }}/release/mooseng-chunkserver artifacts/
+        cp target/${{ matrix.target }}/release/mooseng-client artifacts/
+        cp target/${{ matrix.target }}/release/mooseng-metalogger artifacts/
+        cp target/${{ matrix.target }}/release/mooseng-cli artifacts/
+        cp target/${{ matrix.target }}/release/mooseng-mount artifacts/
+    
+    - name: Create tarball
+      run: |
+        cd artifacts
+        tar -czf ../${{ matrix.artifact_name }}.tar.gz *
+    
+    - name: Upload artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: ${{ matrix.artifact_name }}
+        path: ${{ matrix.artifact_name }}.tar.gz
+
+  docker-release:
+    runs-on: ubuntu-latest
+    needs: build
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+    
+    - name: Login to Docker Hub
+      uses: docker/login-action@v2
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+    
+    - name: Extract tag
+      id: extract_tag
+      run: echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+    
+    - name: Build and push Docker images
+      run: |
+        cd docker
+        chmod +x build.sh
+        ./build.sh
+        
+        # Tag and push images
+        docker tag mooseng-master:latest mooseng/master:${{ steps.extract_tag.outputs.tag }}
+        docker tag mooseng-chunkserver:latest mooseng/chunkserver:${{ steps.extract_tag.outputs.tag }}
+        docker tag mooseng-client:latest mooseng/client:${{ steps.extract_tag.outputs.tag }}
+        docker tag mooseng-metalogger:latest mooseng/metalogger:${{ steps.extract_tag.outputs.tag }}
+        docker tag mooseng-cli:latest mooseng/cli:${{ steps.extract_tag.outputs.tag }}
+        
+        docker push mooseng/master:${{ steps.extract_tag.outputs.tag }}
+        docker push mooseng/chunkserver:${{ steps.extract_tag.outputs.tag }}
+        docker push mooseng/client:${{ steps.extract_tag.outputs.tag }}
+        docker push mooseng/metalogger:${{ steps.extract_tag.outputs.tag }}
+        docker push mooseng/cli:${{ steps.extract_tag.outputs.tag }}
+
+  create-release:
+    runs-on: ubuntu-latest
+    needs: [build, docker-release]
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Download artifacts
+      uses: actions/download-artifact@v3
+    
+    - name: Create Release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: MooseNG ${{ github.ref }}
+        draft: false
+        prerelease: false
+    
+    - name: Upload Release Assets
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./mooseng-linux-x86_64/mooseng-linux-x86_64.tar.gz
+        asset_name: mooseng-linux-x86_64.tar.gz
+        asset_content_type: application/gzip

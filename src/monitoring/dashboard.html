@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MooseNG Health Monitoring Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #f5f7fa;
+            color: #2d3748;
+            line-height: 1.6;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 1rem 2rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .header h1 {
+            font-size: 1.8rem;
+            font-weight: 600;
+        }
+
+        .header .subtitle {
+            opacity: 0.9;
+            margin-top: 0.25rem;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 1.5rem;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+            border: 1px solid #e2e8f0;
+        }
+
+        .card h3 {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: #2d3748;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 0.5rem;
+        }
+
+        .status-healthy { background-color: #48bb78; }
+        .status-warning { background-color: #ed8936; }
+        .status-critical { background-color: #f56565; }
+        .status-unknown { background-color: #a0aec0; }
+
+        .metric-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid #f7fafc;
+        }
+
+        .metric-row:last-child {
+            border-bottom: none;
+        }
+
+        .metric-label {
+            font-weight: 500;
+        }
+
+        .metric-value {
+            font-weight: 600;
+            color: #4a5568;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background-color: #e2e8f0;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 0.5rem;
+        }
+
+        .progress-fill {
+            height: 100%;
+            transition: width 0.3s ease;
+        }
+
+        .progress-healthy { background-color: #48bb78; }
+        .progress-warning { background-color: #ed8936; }
+        .progress-critical { background-color: #f56565; }
+
+        .chart-container {
+            width: 100%;
+            height: 200px;
+            margin-top: 1rem;
+            background: #f8fafc;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #a0aec0;
+        }
+
+        .alerts-section {
+            margin-top: 2rem;
+        }
+
+        .alert-item {
+            background: white;
+            border-radius: 6px;
+            padding: 1rem;
+            margin-bottom: 0.5rem;
+            border-left: 4px solid;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .alert-info { border-left-color: #4299e1; }
+        .alert-warning { border-left-color: #ed8936; }
+        .alert-error { border-left-color: #f56565; }
+        .alert-critical { border-left-color: #e53e3e; }
+
+        .alert-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+        }
+
+        .alert-component {
+            font-weight: 600;
+            color: #2d3748;
+        }
+
+        .alert-time {
+            font-size: 0.875rem;
+            color: #718096;
+        }
+
+        .refresh-indicator {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            font-size: 0.875rem;
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .refresh-indicator.show {
+            opacity: 1;
+        }
+
+        .controls {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            align-items: center;
+        }
+
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        select, button {
+            padding: 0.5rem 1rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 4px;
+            background: white;
+            font-size: 0.875rem;
+        }
+
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        button:hover {
+            background: #5a67d8;
+        }
+
+        .last-updated {
+            margin-left: auto;
+            font-size: 0.875rem;
+            color: #718096;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+            
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .controls {
+                flex-direction: column;
+                align-items: stretch;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>MooseNG Health Monitoring</h1>
+        <div class="subtitle">Real-time cluster health and performance monitoring</div>
+    </div>
+
+    <div class="container">
+        <div class="controls">
+            <div class="control-group">
+                <label for="refresh-interval">Refresh:</label>
+                <select id="refresh-interval">
+                    <option value="30">30 seconds</option>
+                    <option value="60" selected>1 minute</option>
+                    <option value="300">5 minutes</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label for="time-range">Time Range:</label>
+                <select id="time-range">
+                    <option value="1h">1 hour</option>
+                    <option value="6h">6 hours</option>
+                    <option value="24h" selected>24 hours</option>
+                    <option value="7d">7 days</option>
+                </select>
+            </div>
+            <button onclick="refreshData()">Refresh Now</button>
+            <div class="last-updated" id="last-updated">Never updated</div>
+        </div>
+
+        <div class="dashboard-grid">
+            <!-- Overall Health Status -->
+            <div class="card">
+                <h3>Overall Health Status</h3>
+                <div class="metric-row">
+                    <span class="metric-label">
+                        <span class="status-indicator" id="overall-status"></span>
+                        System Health
+                    </span>
+                    <span class="metric-value" id="overall-health">Unknown</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">
+                        <span class="status-indicator" id="disk-status"></span>
+                        Disk Health
+                    </span>
+                    <span class="metric-value" id="disk-health">Unknown</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">
+                        <span class="status-indicator" id="system-status"></span>
+                        System Load
+                    </span>
+                    <span class="metric-value" id="system-health">Unknown</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">
+                        <span class="status-indicator" id="consistency-status"></span>
+                        Data Consistency
+                    </span>
+                    <span class="metric-value" id="consistency-health">Unknown</span>
+                </div>
+            </div>
+
+            <!-- Disk Utilization -->
+            <div class="card">
+                <h3>Disk Utilization</h3>
+                <div class="metric-row">
+                    <span class="metric-label">Usage</span>
+                    <span class="metric-value" id="disk-usage">--</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="disk-progress"></div>
+                </div>
+                <div class="chart-container" id="disk-chart">
+                    Disk usage trend chart will appear here
+                </div>
+            </div>
+
+            <!-- System Resources -->
+            <div class="card">
+                <h3>System Resources</h3>
+                <div class="metric-row">
+                    <span class="metric-label">CPU Usage</span>
+                    <span class="metric-value" id="cpu-usage">--</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="cpu-progress"></div>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">Memory Usage</span>
+                    <span class="metric-value" id="memory-usage">--</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="memory-progress"></div>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">Load Average</span>
+                    <span class="metric-value" id="load-average">--</span>
+                </div>
+            </div>
+
+            <!-- Data Consistency -->
+            <div class="card">
+                <h3>Data Consistency</h3>
+                <div class="metric-row">
+                    <span class="metric-label">Consistency Ratio</span>
+                    <span class="metric-value" id="consistency-ratio">--</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="consistency-progress"></div>
+                </div>
+                <div class="chart-container" id="consistency-chart">
+                    Consistency trend chart will appear here
+                </div>
+            </div>
+        </div>
+
+        <!-- Alerts Section -->
+        <div class="alerts-section">
+            <div class="card">
+                <h3>Active Alerts</h3>
+                <div id="alerts-container">
+                    <div style="text-align: center; color: #a0aec0; padding: 2rem;">
+                        No active alerts
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="refresh-indicator" id="refresh-indicator">Updating...</div>
+
+    <script>
+        let refreshInterval;
+        let lastUpdate = null;
+
+        function formatValue(value, suffix = '') {
+            if (value === null || value === undefined) return '--';
+            if (typeof value === 'number') {
+                return value.toFixed(1) + suffix;
+            }
+            return value.toString();
+        }
+
+        function getStatusClass(health) {
+            switch (health) {
+                case 'Healthy': return 'status-healthy';
+                case 'Warning': return 'status-warning';
+                case 'Critical': return 'status-critical';
+                default: return 'status-unknown';
+            }
+        }
+
+        function getProgressClass(value, warningThreshold = 75, criticalThreshold = 90) {
+            if (value > criticalThreshold) return 'progress-critical';
+            if (value > warningThreshold) return 'progress-warning';
+            return 'progress-healthy';
+        }
+
+        function updateMetrics(data) {
+            // Update health status indicators
+            document.getElementById('overall-status').className = 'status-indicator ' + getStatusClass(data.overall_health);
+            document.getElementById('disk-status').className = 'status-indicator ' + getStatusClass(data.disk_health);
+            document.getElementById('system-status').className = 'status-indicator ' + getStatusClass(data.system_health);
+            document.getElementById('consistency-status').className = 'status-indicator ' + getStatusClass(data.consistency_health);
+
+            // Update health text
+            document.getElementById('overall-health').textContent = data.overall_health || 'Unknown';
+            document.getElementById('disk-health').textContent = data.disk_health || 'Unknown';
+            document.getElementById('system-health').textContent = data.system_health || 'Unknown';
+            document.getElementById('consistency-health').textContent = data.consistency_health || 'Unknown';
+
+            // Update disk metrics
+            const diskUsage = data.key_metrics?.disk_usage_percent || 0;
+            document.getElementById('disk-usage').textContent = formatValue(diskUsage, '%');
+            const diskProgress = document.getElementById('disk-progress');
+            diskProgress.style.width = diskUsage + '%';
+            diskProgress.className = 'progress-fill ' + getProgressClass(diskUsage, 85, 95);
+
+            // Update system metrics
+            const cpuUsage = data.key_metrics?.cpu_percent || 0;
+            document.getElementById('cpu-usage').textContent = formatValue(cpuUsage, '%');
+            const cpuProgress = document.getElementById('cpu-progress');
+            cpuProgress.style.width = cpuUsage + '%';
+            cpuProgress.className = 'progress-fill ' + getProgressClass(cpuUsage, 75, 90);
+
+            const memoryUsage = data.key_metrics?.memory_percent || 0;
+            document.getElementById('memory-usage').textContent = formatValue(memoryUsage, '%');
+            const memoryProgress = document.getElementById('memory-progress');
+            memoryProgress.style.width = memoryUsage + '%';
+            memoryProgress.className = 'progress-fill ' + getProgressClass(memoryUsage, 85, 95);
+
+            const loadAverage = data.key_metrics?.load_average || 0;
+            document.getElementById('load-average').textContent = formatValue(loadAverage);
+
+            // Update consistency metrics
+            const consistencyRatio = (data.key_metrics?.consistency_ratio || 1) * 100;
+            document.getElementById('consistency-ratio').textContent = formatValue(consistencyRatio, '%');
+            const consistencyProgress = document.getElementById('consistency-progress');
+            consistencyProgress.style.width = consistencyRatio + '%';
+            consistencyProgress.className = 'progress-fill ' + getProgressClass(consistencyRatio, 99, 95);
+
+            // Update last updated time
+            const now = new Date();
+            document.getElementById('last-updated').textContent = `Last updated: ${now.toLocaleTimeString()}`;
+            lastUpdate = now;
+        }
+
+        function updateAlerts(alerts) {
+            const container = document.getElementById('alerts-container');
+            
+            if (!alerts || alerts.length === 0) {
+                container.innerHTML = '<div style="text-align: center; color: #a0aec0; padding: 2rem;">No active alerts</div>';
+                return;
+            }
+
+            const alertsHtml = alerts.map(alert => {
+                const alertClass = `alert-${alert.level}`;
+                const time = new Date(alert.timestamp * 1000).toLocaleString();
+                
+                return `
+                    <div class="alert-item ${alertClass}">
+                        <div class="alert-header">
+                            <span class="alert-component">${alert.component}</span>
+                            <span class="alert-time">${time}</span>
+                        </div>
+                        <div>${alert.message}</div>
+                    </div>
+                `;
+            }).join('');
+
+            container.innerHTML = alertsHtml;
+        }
+
+        async function fetchMetrics() {
+            try {
+                document.getElementById('refresh-indicator').classList.add('show');
+                
+                const response = await fetch('/api/metrics/current');
+                if (!response.ok) throw new Error('Failed to fetch metrics');
+                
+                const data = await response.json();
+                updateMetrics(data);
+                updateAlerts(data.alerts);
+                
+            } catch (error) {
+                console.error('Error fetching metrics:', error);
+                // Show error state
+                document.getElementById('overall-health').textContent = 'Error';
+                document.getElementById('overall-status').className = 'status-indicator status-critical';
+            } finally {
+                setTimeout(() => {
+                    document.getElementById('refresh-indicator').classList.remove('show');
+                }, 1000);
+            }
+        }
+
+        function refreshData() {
+            fetchMetrics();
+        }
+
+        function setupRefreshInterval() {
+            const interval = parseInt(document.getElementById('refresh-interval').value) * 1000;
+            
+            if (refreshInterval) {
+                clearInterval(refreshInterval);
+            }
+            
+            refreshInterval = setInterval(fetchMetrics, interval);
+        }
+
+        // Event listeners
+        document.getElementById('refresh-interval').addEventListener('change', setupRefreshInterval);
+        document.getElementById('time-range').addEventListener('change', () => {
+            // Could trigger chart updates with new time range
+            console.log('Time range changed to:', document.getElementById('time-range').value);
+        });
+
+        // Initialize
+        setupRefreshInterval();
+        fetchMetrics();
+
+        // Update page title with health status
+        function updatePageTitle(health) {
+            const statusEmojis = {
+                'Healthy': '✅',
+                'Warning': '⚠️',
+                'Critical': '🚨',
+                'Unknown': '❓'
+            };
+            
+            document.title = `${statusEmojis[health] || '❓'} MooseNG Health Monitoring`;
+        }
+    </script>
+</body>
+</html>

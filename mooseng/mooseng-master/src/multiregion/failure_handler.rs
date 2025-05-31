@@ -22,6 +22,7 @@ pub enum FailureType {
     NodeFailure {
         region_id: u32,
         node_id: String,
+        #[serde(skip, default = "Instant::now")]
         failure_time: Instant,
     },
     
@@ -29,6 +30,7 @@ pub enum FailureType {
     NetworkPartition {
         affected_regions: Vec<u32>,
         partition_type: PartitionType,
+        #[serde(skip, default = "Instant::now")]
         detected_at: Instant,
         estimated_duration: Option<Duration>,
     },
@@ -36,7 +38,9 @@ pub enum FailureType {
     /// Complete region outage
     RegionOutage {
         region_id: u32,
+        #[serde(skip, default = "Instant::now")]
         outage_start: Instant,
+        #[serde(skip)]
         estimated_recovery: Option<Instant>,
         severity: OutageSeverity,
     },

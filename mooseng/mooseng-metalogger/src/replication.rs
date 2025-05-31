@@ -72,7 +72,7 @@ impl ReplicationClient {
             jitter: true,
         };
 
-        let channel = retry_with_backoff(&retry_config, || async {
+        let channel = retry_with_backoff(retry_config, || async {
             Channel::from_shared(master_address.to_string())
                 .context("Invalid master address")?
                 .connect()

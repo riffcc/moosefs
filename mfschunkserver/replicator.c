@@ -48,9 +48,16 @@
 #define MAX_REP_TIME_SEC 150
 #define PROGRESS_CHECK 30
 
+// Adaptive timeouts based on network conditions
+#define SENDMSECTO_MIN 5000
+#define SENDMSECTO_MAX 30000
+#define RECVMSECTO_MIN 5000
+#define RECVMSECTO_MAX 30000
 #define SENDMSECTO 10000
 #define RECVMSECTO 10000
 #define CONNMAXTRY 10
+
+#define PARALLEL_CONNECTIONS 4
 
 #define REP_RETRY_CNT 5
 #define REP_RETRY_TO 60
@@ -98,7 +105,42 @@ typedef struct _replication {
 static uint32_t stats_repl = 0;
 static uint64_t stats_bytesin = 0;
 static uint64_t stats_bytesout = 0;
+static uint64_t stats_failed_repl = 0;
+static uint64_t stats_retry_count = 0;
+static double stats_avg_repl_time = 0.0;
+static uint32_t stats_repl_count = 0;
 static pthread_mutex_t statslock = PTHREAD_MUTEX_INITIALIZER;
+
+// Network condition tracking
+typedef struct _network_stats {
+	uint32_t ip;
+	uint16_t port;
+	double avg_latency;
+	uint32_t success_count;
+	uint32_t failure_count;
+	double last_update;
+} network_stats;
+
+#define NETWORK_STATS_SIZE 1024
+static network_stats net_stats[NETWORK_STATS_SIZE];
+static pthread_mutex_t netstatsmutex = PTHREAD_MUTEX_INITIALIZER;
+
+static uint32_t calculate_adaptive_timeout(uint32_t ip, uint16_t port, uint32_t base_timeout, uint32_t min_timeout, uint32_t max_timeout) {
+	uint32_t hash = ((ip >> 16) ^ (ip & 0xFFFF) ^ port) % NETWORK_STATS_SIZE;
+	uint32_t timeout = base_timeout;
+	
+	pthread_mutex_lock(&netstatsmutex);
+	if (net_stats[hash].ip == ip && net_stats[hash].port == port) {
+		if (net_stats[hash].failure_count > net_stats[hash].success_count) {
+			timeout = timeout * 2;
+		} else if (net_stats[hash].avg_latency > 0) {
+			timeout = (uint32_t)(net_stats[hash].avg_latency * 3000); // 3x average latency
+		}
+	}
+	pthread_mutex_unlock(&netstatsmutex);
+	
+	return (timeout < min_timeout) ? min_timeout : (timeout > max_timeout) ? max_timeout : timeout;
+}
 
 void replicator_stats(uint64_t *bin,uint64_t *bout,uint32_t *repl) {
 	pthread_mutex_lock(&statslock);
@@ -108,6 +150,17 @@ void replicator_stats(uint64_t *bin,uint64_t *bout,uint32_t *repl) {
 	stats_repl = 0;
 	stats_bytesin = 0;
 	stats_bytesout = 0;
+	pthread_mutex_unlock(&statslock);
+}
+
+void replicator_extended_stats(uint64_t *bin, uint64_t *bout, uint32_t *repl, uint64_t *failed, uint64_t *retries, double *avg_time) {
+	pthread_mutex_lock(&statslock);
+	*bin = stats_bytesin;
+	*bout = stats_bytesout;
+	*repl = stats_repl;
+	*failed = stats_failed_repl;
+	*retries = stats_retry_count;
+	*avg_time = stats_avg_repl_time;
 	pthread_mutex_unlock(&statslock);
 }
 

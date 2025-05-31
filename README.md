@@ -43,6 +43,38 @@ MooseFS Client uses FUSE library, available for: [Linux & BSD](https://github.co
 
 There is a separate MooseFS Client for Microsoft Windows available, built on top of [Dokany](https://github.com/dokan-dev/dokany).
 
+## MooseNG - Next Generation CLI
+
+This repository also includes **MooseNG**, a next-generation command-line interface built in Rust that provides:
+
+* **Comprehensive Cluster Management** - Status monitoring, scaling, topology management
+* **Data Operations** - Upload, download, sync between local and remote filesystems  
+* **Administrative Tools** - Chunk server management, quotas, storage classes, repair operations
+* **Real-time Monitoring** - Live metrics, health checks, performance statistics
+* **Advanced Configuration** - Centralized configuration management with validation
+
+### Quick Start with MooseNG CLI
+
+```bash
+# Build the CLI
+cd mooseng
+cargo build --release --bin mooseng
+
+# View cluster status
+./target/release/mooseng cluster status
+
+# Upload data with compression
+./target/release/mooseng data upload /local/data /remote/backup --recursive --compress
+
+# Monitor cluster metrics
+./target/release/mooseng monitor metrics --component cluster --interval 5
+
+# Configure CLI client
+./target/release/mooseng config client set-masters "master1:9421,master2:9421"
+```
+
+See [`src/cli/README.md`](src/cli/README.md) and [`scripts/cli_examples.sh`](scripts/cli_examples.sh) for comprehensive documentation and examples.
+
 ## Getting started
 You can install MooseFS using your favourite package manager on one of the following platforms using [officially supported repositories](https://moosefs.com/download):
 

@@ -1,0 +1,409 @@
+version: '3.8'
+
+services:
+  # US East Region
+  master-us-east:
+    build:
+      context: ./docker
+      dockerfile: Dockerfile.master
+    container_name: mooseng-master-us-east
+    hostname: master-us-east
+    networks:
+      - us-east-net
+      - inter-region-net
+    environment:
+      - REGION=us-east
+      - NODE_ID=1
+      - CLUSTER_ID=multiregion-test
+      - MASTER_ADDRESSES=master-us-east:9421,master-eu-west:9421,master-ap-south:9421
+      - RAFT_BIND_ADDR=0.0.0.0:9422
+      - METRICS_ADDR=0.0.0.0:9423
+    ports:
+      - "19421:9421"  # gRPC
+      - "19422:9422"  # Raft
+      - "19423:9423"  # Metrics
+    volumes:
+      - master-us-east-data:/data
+      - ./docker/configs/master.toml:/etc/mooseng/master.toml
+    labels:
+      - "mooseng.region=us-east"
+      - "mooseng.component=master"
+
+  chunkserver-us-east-1:
+    build:
+      context: ./docker
+      dockerfile: Dockerfile.chunkserver
+    container_name: mooseng-chunkserver-us-east-1
+    hostname: chunkserver-us-east-1
+    networks:
+      - us-east-net
+    depends_on:
+      - master-us-east
+    environment:
+      - REGION=us-east
+      - NODE_ID=us-east-1
+      - MASTER_ADDR=master-us-east:9421
+      - BIND_ADDR=0.0.0.0:9441
+      - STORAGE_PATH=/storage
+    ports:
+      - "19441:9441"
+    volumes:
+      - chunkserver-us-east-1-data:/storage
+      - ./docker/configs/chunkserver.toml:/etc/mooseng/chunkserver.toml
+    labels:
+      - "mooseng.region=us-east"
+      - "mooseng.component=chunkserver"
+
+  chunkserver-us-east-2:
+    build:
+      context: ./docker
+      dockerfile: Dockerfile.chunkserver
+    container_name: mooseng-chunkserver-us-east-2
+    hostname: chunkserver-us-east-2
+    networks:
+      - us-east-net
+    depends_on:
+      - master-us-east
+    environment:
+      - REGION=us-east
+      - NODE_ID=us-east-2
+      - MASTER_ADDR=master-us-east:9421
+      - BIND_ADDR=0.0.0.0:9441
+      - STORAGE_PATH=/storage
+    ports:
+      - "19442:9441"
+    volumes:
+      - chunkserver-us-east-2-data:/storage
+      - ./docker/configs/chunkserver.toml:/etc/mooseng/chunkserver.toml
+    labels:
+      - "mooseng.region=us-east"
+      - "mooseng.component=chunkserver"
+
+  # EU West Region
+  master-eu-west:
+    build:
+      context: ./docker
+      dockerfile: Dockerfile.master
+    container_name: mooseng-master-eu-west
+    hostname: master-eu-west
+    networks:
+      - eu-west-net
+      - inter-region-net
+    environment:
+      - REGION=eu-west
+      - NODE_ID=2
+      - CLUSTER_ID=multiregion-test
+      - MASTER_ADDRESSES=master-us-east:9421,master-eu-west:9421,master-ap-south:9421
+      - RAFT_BIND_ADDR=0.0.0.0:9422
+      - METRICS_ADDR=0.0.0.0:9423
+    ports:
+      - "29421:9421"  # gRPC
+      - "29422:9422"  # Raft
+      - "29423:9423"  # Metrics
+    volumes:
+      - master-eu-west-data:/data
+      - ./docker/configs/master.toml:/etc/mooseng/master.toml
+    labels:
+      - "mooseng.region=eu-west"
+      - "mooseng.component=master"
+
+  chunkserver-eu-west-1:
+    build:
+      context: ./docker
+      dockerfile: Dockerfile.chunkserver
+    container_name: mooseng-chunkserver-eu-west-1
+    hostname: chunkserver-eu-west-1
+    networks:
+      - eu-west-net
+    depends_on:
+      - master-eu-west
+    environment:
+      - REGION=eu-west
+      - NODE_ID=eu-west-1
+      - MASTER_ADDR=master-eu-west:9421
+      - BIND_ADDR=0.0.0.0:9441
+      - STORAGE_PATH=/storage
+    ports:
+      - "29441:9441"
+    volumes:
+      - chunkserver-eu-west-1-data:/storage
+      - ./docker/configs/chunkserver.toml:/etc/mooseng/chunkserver.toml
+    labels:
+      - "mooseng.region=eu-west"
+      - "mooseng.component=chunkserver"
+
+  chunkserver-eu-west-2:
+    build:
+      context: ./docker
+      dockerfile: Dockerfile.chunkserver
+    container_name: mooseng-chunkserver-eu-west-2
+    hostname: chunkserver-eu-west-2
+    networks:
+      - eu-west-net
+    depends_on:
+      - master-eu-west
+    environment:
+      - REGION=eu-west
+      - NODE_ID=eu-west-2
+      - MASTER_ADDR=master-eu-west:9421
+      - BIND_ADDR=0.0.0.0:9441
+      - STORAGE_PATH=/storage
+    ports:
+      - "29442:9441"
+    volumes:
+      - chunkserver-eu-west-2-data:/storage
+      - ./docker/configs/chunkserver.toml:/etc/mooseng/chunkserver.toml
+    labels:
+      - "mooseng.region=eu-west"
+      - "mooseng.component=chunkserver"
+
+  # AP South Region
+  master-ap-south:
+    build:
+      context: ./docker
+      dockerfile: Dockerfile.master
+    container_name: mooseng-master-ap-south
+    hostname: master-ap-south
+    networks:
+      - ap-south-net
+      - inter-region-net
+    environment:
+      - REGION=ap-south
+      - NODE_ID=3
+      - CLUSTER_ID=multiregion-test
+      - MASTER_ADDRESSES=master-us-east:9421,master-eu-west:9421,master-ap-south:9421
+      - RAFT_BIND_ADDR=0.0.0.0:9422
+      - METRICS_ADDR=0.0.0.0:9423
+    ports:
+      - "39421:9421"  # gRPC
+      - "39422:9422"  # Raft
+      - "39423:9423"  # Metrics
+    volumes:
+      - master-ap-south-data:/data
+      - ./docker/configs/master.toml:/etc/mooseng/master.toml
+    labels:
+      - "mooseng.region=ap-south"
+      - "mooseng.component=master"
+
+  chunkserver-ap-south-1:
+    build:
+      context: ./docker
+      dockerfile: Dockerfile.chunkserver
+    container_name: mooseng-chunkserver-ap-south-1
+    hostname: chunkserver-ap-south-1
+    networks:
+      - ap-south-net
+    depends_on:
+      - master-ap-south
+    environment:
+      - REGION=ap-south
+      - NODE_ID=ap-south-1
+      - MASTER_ADDR=master-ap-south:9421
+      - BIND_ADDR=0.0.0.0:9441
+      - STORAGE_PATH=/storage
+    ports:
+      - "39441:9441"
+    volumes:
+      - chunkserver-ap-south-1-data:/storage
+      - ./docker/configs/chunkserver.toml:/etc/mooseng/chunkserver.toml
+    labels:
+      - "mooseng.region=ap-south"
+      - "mooseng.component=chunkserver"
+
+  chunkserver-ap-south-2:
+    build:
+      context: ./docker
+      dockerfile: Dockerfile.chunkserver
+    container_name: mooseng-chunkserver-ap-south-2
+    hostname: chunkserver-ap-south-2
+    networks:
+      - ap-south-net
+    depends_on:
+      - master-ap-south
+    environment:
+      - REGION=ap-south
+      - NODE_ID=ap-south-2
+      - MASTER_ADDR=master-ap-south:9421
+      - BIND_ADDR=0.0.0.0:9441
+      - STORAGE_PATH=/storage
+    ports:
+      - "39442:9441"
+    volumes:
+      - chunkserver-ap-south-2-data:/storage
+      - ./docker/configs/chunkserver.toml:/etc/mooseng/chunkserver.toml
+    labels:
+      - "mooseng.region=ap-south"
+      - "mooseng.component=chunkserver"
+
+  # Network simulator for introducing latency and packet loss
+  netem-us-eu:
+    image: alpine:latest
+    container_name: netem-us-eu
+    privileged: true
+    networks:
+      - inter-region-net
+    command: |
+      sh -c "
+        apk add --no-cache iproute2 &&
+        tc qdisc add dev eth0 root netem delay 85ms 10ms loss 0.1% &&
+        tail -f /dev/null
+      "
+    labels:
+      - "mooseng.component=network-simulator"
+
+  netem-us-ap:
+    image: alpine:latest
+    container_name: netem-us-ap
+    privileged: true
+    networks:
+      - inter-region-net
+    command: |
+      sh -c "
+        apk add --no-cache iproute2 &&
+        tc qdisc add dev eth0 root netem delay 180ms 20ms loss 0.2% &&
+        tail -f /dev/null
+      "
+    labels:
+      - "mooseng.component=network-simulator"
+
+  netem-eu-ap:
+    image: alpine:latest
+    container_name: netem-eu-ap
+    privileged: true
+    networks:
+      - inter-region-net
+    command: |
+      sh -c "
+        apk add --no-cache iproute2 &&
+        tc qdisc add dev eth0 root netem delay 120ms 15ms loss 0.15% &&
+        tail -f /dev/null
+      "
+    labels:
+      - "mooseng.component=network-simulator"
+
+  # Benchmark runner for multi-region testing
+  benchmark-runner:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.cli
+    container_name: mooseng-benchmark-runner
+    hostname: benchmark-runner
+    networks:
+      - us-east-net
+      - eu-west-net
+      - ap-south-net
+      - inter-region-net
+    depends_on:
+      - master-us-east
+      - master-eu-west
+      - master-ap-south
+    environment:
+      - RUST_LOG=info
+      - BENCHMARK_CONFIG=/etc/mooseng/benchmark-config.toml
+    volumes:
+      - ./mooseng-benchmarks:/benchmarks
+      - ./docker/configs:/etc/mooseng
+      - benchmark-results:/results
+    working_dir: /benchmarks
+    command: |
+      sh -c "
+        echo 'Waiting for all regions to be ready...' &&
+        sleep 30 &&
+        cargo run --bin comprehensive_benchmark --release -- \
+          --config /etc/mooseng/benchmark-config.toml \
+          --output /results/multiregion-benchmark-results.json \
+          --regions us-east,eu-west,ap-south \
+          --enable-network-simulation
+      "
+    labels:
+      - "mooseng.component=benchmark-runner"
+
+  # Monitoring and metrics collection
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus-multiregion
+    networks:
+      - us-east-net
+      - eu-west-net
+      - ap-south-net
+      - inter-region-net
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./docker/prometheus/prometheus-multiregion.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    labels:
+      - "mooseng.component=monitoring"
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana-multiregion
+    networks:
+      - us-east-net
+      - eu-west-net
+      - ap-south-net
+      - inter-region-net
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - ./docker/grafana/dashboards:/var/lib/grafana/dashboards
+      - ./docker/grafana/datasources:/etc/grafana/provisioning/datasources
+      - grafana-data:/var/lib/grafana
+    labels:
+      - "mooseng.component=monitoring"
+
+networks:
+  us-east-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24
+    labels:
+      - "mooseng.region=us-east"
+
+  eu-west-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.21.0.0/24
+    labels:
+      - "mooseng.region=eu-west"
+
+  ap-south-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.22.0.0/24
+    labels:
+      - "mooseng.region=ap-south"
+
+  inter-region-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+    labels:
+      - "mooseng.type=inter-region"
+
+volumes:
+  master-us-east-data:
+  chunkserver-us-east-1-data:
+  chunkserver-us-east-2-data:
+  master-eu-west-data:
+  chunkserver-eu-west-1-data:
+  chunkserver-eu-west-2-data:
+  master-ap-south-data:
+  chunkserver-ap-south-1-data:
+  chunkserver-ap-south-2-data:
+  prometheus-data:
+  grafana-data:
+  benchmark-results:
