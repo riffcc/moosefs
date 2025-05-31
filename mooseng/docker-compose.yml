@@ -52,10 +52,12 @@ services:
       - MOOSENG_CLIENT_PORT=9421
       - MOOSENG_CHUNKSERVER_PORT=9422
       - MOOSENG_RAFT_PORT=9423
+      - MOOSENG_HEALTH_PORT=9430
     ports:
       - "9431:9421"  # Client port
       - "9432:9422"  # Chunkserver port
       - "9433:9423"  # Raft port
+      - "9434:9430"  # Health endpoints
     volumes:
       - master-2-data:/var/lib/mooseng/master
       - master-2-logs:/var/log/mooseng
@@ -87,10 +89,12 @@ services:
       - MOOSENG_CLIENT_PORT=9421
       - MOOSENG_CHUNKSERVER_PORT=9422
       - MOOSENG_RAFT_PORT=9423
+      - MOOSENG_HEALTH_PORT=9430
     ports:
       - "9441:9421"  # Client port
       - "9442:9422"  # Chunkserver port
       - "9443:9423"  # Raft port
+      - "9444:9430"  # Health endpoints
     volumes:
       - master-3-data:/var/lib/mooseng/master
       - master-3-logs:/var/log/mooseng
@@ -120,13 +124,17 @@ services:
       - MOOSENG_MASTER_ENDPOINTS=master-1:9422,master-2:9422,master-3:9422
       - MOOSENG_BIND_ADDRESS=0.0.0.0
       - MOOSENG_PORT=9420
-      - MOOSENG_DATA_DIRS=/data1,/data2
+      - MOOSENG_DATA_DIRS=/data1,/data2,/data3,/data4
       - MOOSENG_CHUNK_SIZE_MB=64
+      - MOOSENG_HEALTH_PORT=9429
     ports:
       - "9420:9420"
+      - "9429:9429"  # Health endpoints
     volumes:
       - chunkserver-1-data1:/data1
       - chunkserver-1-data2:/data2
+      - chunkserver-1-data3:/data3
+      - chunkserver-1-data4:/data4
       - chunkserver-1-logs:/var/log/mooseng
       - ./docker/configs:/etc/mooseng/configs:ro
     networks:
@@ -152,13 +160,17 @@ services:
       - MOOSENG_MASTER_ENDPOINTS=master-1:9422,master-2:9422,master-3:9422
       - MOOSENG_BIND_ADDRESS=0.0.0.0
       - MOOSENG_PORT=9420
-      - MOOSENG_DATA_DIRS=/data1,/data2
+      - MOOSENG_DATA_DIRS=/data1,/data2,/data3,/data4
       - MOOSENG_CHUNK_SIZE_MB=64
+      - MOOSENG_HEALTH_PORT=9429
     ports:
       - "9450:9420"
+      - "9451:9429"  # Health endpoints
     volumes:
       - chunkserver-2-data1:/data1
       - chunkserver-2-data2:/data2
+      - chunkserver-2-data3:/data3
+      - chunkserver-2-data4:/data4
       - chunkserver-2-logs:/var/log/mooseng
       - ./docker/configs:/etc/mooseng/configs:ro
     networks:
@@ -184,13 +196,17 @@ services:
       - MOOSENG_MASTER_ENDPOINTS=master-1:9422,master-2:9422,master-3:9422
       - MOOSENG_BIND_ADDRESS=0.0.0.0
       - MOOSENG_PORT=9420
-      - MOOSENG_DATA_DIRS=/data1,/data2
+      - MOOSENG_DATA_DIRS=/data1,/data2,/data3,/data4
       - MOOSENG_CHUNK_SIZE_MB=64
+      - MOOSENG_HEALTH_PORT=9429
     ports:
       - "9460:9420"
+      - "9461:9429"  # Health endpoints
     volumes:
       - chunkserver-3-data1:/data1
       - chunkserver-3-data2:/data2
+      - chunkserver-3-data3:/data3
+      - chunkserver-3-data4:/data4
       - chunkserver-3-logs:/var/log/mooseng
       - ./docker/configs:/etc/mooseng/configs:ro
     networks:
@@ -355,17 +371,29 @@ volumes:
     driver: local
   chunkserver-1-data2:
     driver: local
+  chunkserver-1-data3:
+    driver: local
+  chunkserver-1-data4:
+    driver: local
   chunkserver-1-logs:
     driver: local
   chunkserver-2-data1:
     driver: local
   chunkserver-2-data2:
     driver: local
+  chunkserver-2-data3:
+    driver: local
+  chunkserver-2-data4:
+    driver: local
   chunkserver-2-logs:
     driver: local
   chunkserver-3-data1:
     driver: local
   chunkserver-3-data2:
+    driver: local
+  chunkserver-3-data3:
+    driver: local
+  chunkserver-3-data4:
     driver: local
   chunkserver-3-logs:
     driver: local

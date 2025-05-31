@@ -1,0 +1,257 @@
+version: '3.8'
+
+# Simplified development setup with 1 master and 3 chunkservers
+services:
+  # Single master for development
+  master:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.master
+    container_name: mooseng-master-dev
+    hostname: master
+    environment:
+      - RUST_LOG=debug
+      - MOOSENG_NODE_ID=1
+      - MOOSENG_CLUSTER_NAME=mooseng-dev
+      - MOOSENG_BIND_ADDRESS=0.0.0.0
+      - MOOSENG_CLIENT_PORT=9421
+      - MOOSENG_CHUNKSERVER_PORT=9422
+      - MOOSENG_HEALTH_PORT=9430
+      - MOOSENG_SINGLE_NODE=true
+    ports:
+      - "9421:9421"  # Client port
+      - "9422:9422"  # Chunkserver port
+      - "9430:9430"  # Health endpoints
+    volumes:
+      - master-dev-data:/var/lib/mooseng/master
+      - master-dev-logs:/var/log/mooseng
+      - ./docker/configs:/etc/mooseng/configs:ro
+    networks:
+      - mooseng-dev-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9430/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Chunk servers with 4 data directories each
+  chunkserver-1:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.chunkserver
+    container_name: mooseng-chunkserver-1-dev
+    hostname: chunkserver-1
+    environment:
+      - RUST_LOG=debug
+      - MOOSENG_MASTER_ENDPOINTS=master:9422
+      - MOOSENG_BIND_ADDRESS=0.0.0.0
+      - MOOSENG_PORT=9420
+      - MOOSENG_DATA_DIRS=/data1,/data2,/data3,/data4
+      - MOOSENG_CHUNK_SIZE_MB=64
+      - MOOSENG_HEALTH_PORT=9429
+    ports:
+      - "9420:9420"
+      - "9429:9429"
+    volumes:
+      - chunkserver-1-dev-data1:/data1
+      - chunkserver-1-dev-data2:/data2
+      - chunkserver-1-dev-data3:/data3
+      - chunkserver-1-dev-data4:/data4
+      - chunkserver-1-dev-logs:/var/log/mooseng
+      - ./docker/configs:/etc/mooseng/configs:ro
+    networks:
+      - mooseng-dev-net
+    restart: unless-stopped
+    depends_on:
+      master:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9429/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  chunkserver-2:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.chunkserver
+    container_name: mooseng-chunkserver-2-dev
+    hostname: chunkserver-2
+    environment:
+      - RUST_LOG=debug
+      - MOOSENG_MASTER_ENDPOINTS=master:9422
+      - MOOSENG_BIND_ADDRESS=0.0.0.0
+      - MOOSENG_PORT=9420
+      - MOOSENG_DATA_DIRS=/data1,/data2,/data3,/data4
+      - MOOSENG_CHUNK_SIZE_MB=64
+      - MOOSENG_HEALTH_PORT=9429
+    ports:
+      - "9450:9420"
+      - "9451:9429"
+    volumes:
+      - chunkserver-2-dev-data1:/data1
+      - chunkserver-2-dev-data2:/data2
+      - chunkserver-2-dev-data3:/data3
+      - chunkserver-2-dev-data4:/data4
+      - chunkserver-2-dev-logs:/var/log/mooseng
+      - ./docker/configs:/etc/mooseng/configs:ro
+    networks:
+      - mooseng-dev-net
+    restart: unless-stopped
+    depends_on:
+      master:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9429/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  chunkserver-3:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.chunkserver
+    container_name: mooseng-chunkserver-3-dev
+    hostname: chunkserver-3
+    environment:
+      - RUST_LOG=debug
+      - MOOSENG_MASTER_ENDPOINTS=master:9422
+      - MOOSENG_BIND_ADDRESS=0.0.0.0
+      - MOOSENG_PORT=9420
+      - MOOSENG_DATA_DIRS=/data1,/data2,/data3,/data4
+      - MOOSENG_CHUNK_SIZE_MB=64
+      - MOOSENG_HEALTH_PORT=9429
+    ports:
+      - "9460:9420"
+      - "9461:9429"
+    volumes:
+      - chunkserver-3-dev-data1:/data1
+      - chunkserver-3-dev-data2:/data2
+      - chunkserver-3-dev-data3:/data3
+      - chunkserver-3-dev-data4:/data4
+      - chunkserver-3-dev-logs:/var/log/mooseng
+      - ./docker/configs:/etc/mooseng/configs:ro
+    networks:
+      - mooseng-dev-net
+    restart: unless-stopped
+    depends_on:
+      master:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9429/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # Client example (FUSE mount)
+  client:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    container_name: mooseng-client-dev
+    hostname: client
+    environment:
+      - RUST_LOG=debug
+      - MOOSENG_MASTER_ENDPOINTS=master:9421
+      - MOOSENG_MOUNT_POINT=/mnt/mooseng
+      - MOOSENG_CACHE_SIZE_MB=512
+    volumes:
+      - ./mnt:/mnt/mooseng:shared
+      - client-dev-logs:/var/log/mooseng
+      - ./docker/configs:/etc/mooseng/configs:ro
+    networks:
+      - mooseng-dev-net
+    restart: unless-stopped
+    depends_on:
+      chunkserver-1:
+        condition: service_healthy
+      chunkserver-2:
+        condition: service_healthy
+      chunkserver-3:
+        condition: service_healthy
+    privileged: true
+    devices:
+      - /dev/fuse:/dev/fuse
+    cap_add:
+      - SYS_ADMIN
+
+  # CLI/Admin container
+  cli:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.cli
+    container_name: mooseng-cli-dev
+    hostname: cli
+    environment:
+      - RUST_LOG=debug
+      - MOOSENG_MASTER_ENDPOINTS=master:9421
+    volumes:
+      - cli-dev-home:/home/mooseng
+      - ./docker/configs:/etc/mooseng/configs:ro
+    networks:
+      - mooseng-dev-net
+    depends_on:
+      master:
+        condition: service_healthy
+    stdin_open: true
+    tty: true
+    command: ["/bin/sh"]
+
+networks:
+  mooseng-dev-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.21.0.0/16
+
+volumes:
+  # Master server data
+  master-dev-data:
+    driver: local
+  master-dev-logs:
+    driver: local
+
+  # Chunk server data
+  chunkserver-1-dev-data1:
+    driver: local
+  chunkserver-1-dev-data2:
+    driver: local
+  chunkserver-1-dev-data3:
+    driver: local
+  chunkserver-1-dev-data4:
+    driver: local
+  chunkserver-1-dev-logs:
+    driver: local
+  
+  chunkserver-2-dev-data1:
+    driver: local
+  chunkserver-2-dev-data2:
+    driver: local
+  chunkserver-2-dev-data3:
+    driver: local
+  chunkserver-2-dev-data4:
+    driver: local
+  chunkserver-2-dev-logs:
+    driver: local
+  
+  chunkserver-3-dev-data1:
+    driver: local
+  chunkserver-3-dev-data2:
+    driver: local
+  chunkserver-3-dev-data3:
+    driver: local
+  chunkserver-3-dev-data4:
+    driver: local
+  chunkserver-3-dev-logs:
+    driver: local
+
+  # Client and CLI
+  client-dev-logs:
+    driver: local
+  cli-dev-home:
+    driver: local

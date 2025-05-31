@@ -5,15 +5,13 @@
 
 use super::hybrid_clock::HLCTimestamp;
 use anyhow::Result;
-use ::serde::{Deserialize, Serialize};
-use ::serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
+use serde::de::DeserializeOwned;
 use std::collections::{HashMap, HashSet, BTreeMap, BTreeSet};
 use std::cmp::{Ord, Ordering};
 use std::hash::Hash;
 use std::fmt::Debug;
-
-/// Unique identifier for a node/replica in the distributed system
-pub type NodeId = u64;
+pub use mooseng_common::types::NodeId;
 
 /// Trait for all CRDT types
 pub trait CRDT: Clone + Debug + Serialize + DeserializeOwned {
@@ -131,12 +129,33 @@ impl CRDT for PNCounter {
 
 /// G-Set: Grow-only set CRDT
 /// Elements can only be added, never removed
-#[derive(Debug, Clone, Serialize, ::serde::Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct GSet<T> 
 where 
     T: Clone + Debug + Serialize + DeserializeOwned + Eq + Hash + Ord,
 {
     elements: BTreeSet<T>,
+}
+
+impl<'de, T> Deserialize<'de> for GSet<T>
+where
+    T: Clone + Debug + Serialize + DeserializeOwned + Eq + Hash + Ord,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(bound = "T: Clone + Debug + Serialize + DeserializeOwned + Eq + Hash + Ord")]
+        struct GSetHelper<T> {
+            elements: BTreeSet<T>,
+        }
+        
+        let helper = GSetHelper::deserialize(deserializer)?;
+        Ok(GSet {
+            elements: helper.elements,
+        })
+    }
 }
 
 impl<T> GSet<T> 
@@ -284,9 +303,10 @@ where
 {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
-        D: ::serde::Deserializer<'de>,
+        D: serde::Deserializer<'de>,
     {
-        #[derive(::serde::Deserialize)]
+        #[derive(Deserialize)]
+        #[serde(bound = "T: Clone + Debug + Serialize + DeserializeOwned + Eq + Hash + Ord")]
         struct TwoPSetHelper<T> 
         where 
             T: Clone + Debug + Serialize + DeserializeOwned + Eq + Hash + Ord,
@@ -305,7 +325,7 @@ where
 
 /// LWW-Register: Last-Writer-Wins Register CRDT
 /// Each update includes a timestamp, and the value with the latest timestamp wins
-#[derive(Debug, Clone, Serialize, ::serde::Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct LWWRegister<T> 
 where 
     T: Clone + Debug + Serialize + DeserializeOwned + Eq,
@@ -313,6 +333,31 @@ where
     value: Option<T>,
     timestamp: HLCTimestamp,
     node_id: NodeId,
+}
+
+impl<'de, T> Deserialize<'de> for LWWRegister<T>
+where
+    T: Clone + Debug + Serialize + DeserializeOwned + Eq,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(bound = "T: Clone + Debug + Serialize + DeserializeOwned + Eq")]
+        struct LWWRegisterHelper<T> {
+            value: Option<T>,
+            timestamp: HLCTimestamp,
+            node_id: NodeId,
+        }
+        
+        let helper = LWWRegisterHelper::deserialize(deserializer)?;
+        Ok(LWWRegister {
+            value: helper.value,
+            timestamp: helper.timestamp,
+            node_id: helper.node_id,
+        })
+    }
 }
 
 impl<T> LWWRegister<T> 
@@ -499,12 +544,13 @@ where
 {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
-        D: ::serde::Deserializer<'de>,
+        D: serde::Deserializer<'de>,
     {
-        #[derive(::serde::Deserialize)]
+        #[derive(Deserialize)]
+        #[serde(bound = "T: Clone + Debug + Serialize + DeserializeOwned + Eq + Hash + Ord")]
         struct ORSetHelper<T> 
         where 
-            T: Clone + Debug + Serialize + DeserializeOwned + Eq + Hash,
+            T: Clone + Debug + Serialize + DeserializeOwned + Eq + Hash + Ord,
         {
             added: HashMap<T, BTreeSet<(HLCTimestamp, NodeId)>>,
             removed: HashMap<T, BTreeSet<(HLCTimestamp, NodeId)>>,
@@ -644,9 +690,10 @@ where
 {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
-        D: ::serde::Deserializer<'de>,
+        D: serde::Deserializer<'de>,
     {
-        #[derive(::serde::Deserialize)]
+        #[derive(Deserialize)]
+        #[serde(bound = "K: Clone + Debug + Serialize + DeserializeOwned + Eq + Hash + Ord, V: Clone + Debug + Serialize + DeserializeOwned + Eq")]
         struct LWWMapHelper<K, V> 
         where 
             K: Clone + Debug + Serialize + DeserializeOwned + Eq + Hash + Ord,

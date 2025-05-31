@@ -47,6 +47,9 @@ pub type ChunkVersion = u32;
 /// Unique identifier for regions
 pub type RegionId = u8;
 
+/// Unique identifier for nodes in the cluster
+pub type NodeId = u64;
+
 /// Unique identifier for storage classes
 pub type StorageClassId = u8;
 
