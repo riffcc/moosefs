@@ -1,11 +1,11 @@
 # Task ID: 4
-# Title: Create FUSE-based client mount
-# Status: done
-# Dependencies: 1
+# Title: Master Server Core Implementation
+# Status: pending
+# Dependencies: 2, 3
 # Priority: high
-# Description: Develop the client component that allows mounting MooseNG as a FUSE filesystem.
+# Description: Implement the core functionality of the Master Server component responsible for metadata management and coordination.
 # Details:
-Create a new crate 'mooseng-client'. Use the fuse-rs = '0.7.0' crate for FUSE bindings. Implement basic filesystem operations (read, write, getattr, etc.). Create a gRPC client to communicate with the Master Server. Implement local caching for improved small file performance using lru = '0.10.0' crate.
+Implement the Master Server using Tokio for async runtime. Create gRPC service definitions using Tonic. Implement file system operations (create, read, update, delete, list). Implement chunk allocation and management logic. Create namespace management with proper locking strategy (consider using parking_lot 0.12+ for efficient locks). Implement session tracking for connected clients and chunk servers. Add background tasks for maintenance operations. Implement basic authentication and authorization. Create efficient in-memory representation of the file system tree with Arc<> and RwLock<> for concurrent access. Implement journaling for crash recovery. Add health check endpoints. Implement metrics collection using metrics 0.20+ crate.
 
 # Test Strategy:
-Develop unit tests for individual filesystem operations. Create integration tests that mount a test filesystem and perform various operations. Benchmark small file performance against local filesystem operations.
+Unit tests for individual components. Integration tests for file system operations. Benchmark performance under various workloads. Test crash recovery scenarios. Test concurrent access patterns. Simulate network partitions and validate behavior.

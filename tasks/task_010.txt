@@ -1,11 +1,11 @@
 # Task ID: 10
-# Title: Develop Kubernetes deployment
-# Status: done
-# Dependencies: 9
+# Title: Multi-region Replication Framework
+# Status: pending
+# Dependencies: 4, 5, 8
 # Priority: medium
-# Description: Create Kubernetes manifests and Helm charts for MooseNG deployment.
+# Description: Implement the framework for multi-region replication with active/active/active configuration.
 # Details:
-Create Kubernetes manifests for each component. Develop a Helm chart for easy deployment and configuration. Use StatefulSets for Chunk Servers to maintain stable network identities. Implement proper liveness and readiness probes. Create a Kubernetes operator using the operator-framework = '0.19.0' crate for advanced management and automation.
+Design and implement cross-region replication architecture inspired by YugabyteDB's approach. Create region-aware Raft consensus with locality configuration. Implement leader leases for fast local reads/writes. Create region-aware data placement policies. Implement cross-region async replication with bounded lag. Integrate Conflict-free Replicated Data Types (CRDTs) for metadata using crdts crate. Implement hybrid logical clocks (HLC) for distributed ordering. Create configurable consistency levels per operation. Implement automatic region discovery and topology management. Add metrics for cross-region operations. Create administrative API for multi-region configuration.
 
 # Test Strategy:
-Test Kubernetes deployments in Minikube and a cloud-based Kubernetes service. Verify all components can scale and communicate correctly. Test the operator's ability to manage MooseNG clusters.
+Integration tests with multi-region setup. Test various network partition scenarios. Benchmark cross-region replication performance. Test failover between regions. Validate consistency guarantees under various failure scenarios. Test bounded lag enforcement. Validate conflict resolution with CRDTs.

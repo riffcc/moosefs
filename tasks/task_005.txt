@@ -1,11 +1,11 @@
 # Task ID: 5
-# Title: Implement Metalogger functionality
-# Status: done
+# Title: Chunk Server Core Implementation
+# Status: pending
 # Dependencies: 2
-# Priority: medium
-# Description: Develop the Metalogger component for enhanced metadata backup with real-time replication.
+# Priority: high
+# Description: Implement the core functionality of the Chunk Server component responsible for storing and retrieving file data chunks.
 # Details:
-Create a new crate 'metalogger'. Implement real-time metadata replication from the Master Server. Use tokio streams for efficient data transfer. Implement a local storage mechanism for metadata backups using sled. Create a recovery process to restore metadata to the Master Server.
+Implement the Chunk Server using Tokio for async runtime. Create gRPC service definitions using Tonic. Implement chunk storage with direct I/O using aligned_utils crate for better performance. Create chunk allocation and management. Implement read/write operations with proper concurrency control. Add background tasks for maintenance operations (garbage collection, scrubbing). Implement chunk verification using xxhash or blake3 for checksums. Create efficient buffer management with minimal copying. Implement disk space management. Add health check endpoints. Implement metrics collection. Use memory-mapped files for hot data access with memmap2 crate. Implement chunk labeling and tagging for policy-based placement.
 
 # Test Strategy:
-Develop unit tests for metadata replication and storage. Create integration tests simulating Master Server failure and metadata recovery. Measure replication latency and ensure it meets performance criteria.
+Unit tests for individual components. Integration tests for chunk operations. Benchmark I/O performance under various workloads. Test recovery from corrupted chunks. Test concurrent access patterns. Simulate disk failures and validate behavior.

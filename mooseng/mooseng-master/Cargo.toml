@@ -18,6 +18,7 @@ async-trait = "0.1"
 # gRPC
 tonic = { workspace = true }
 prost = { workspace = true }
+prost-types = { workspace = true }
 
 # Storage
 sled = { workspace = true }

@@ -189,17 +189,56 @@ impl MasterClient {
     }
     
     /// Read data from a file
-    pub async fn read(&mut self, _inode: InodeId, _offset: u64, size: u32) -> ClientResult<Vec<u8>> {
-        // For now, just return empty data - actual reads should go through chunk servers
-        // TODO: Implement proper chunk reading
-        Ok(vec![0u8; size as usize])
+    pub async fn read(&mut self, inode: InodeId, offset: u64, size: u32) -> ClientResult<Vec<u8>> {
+        // First get file attributes to check size and validate offset
+        let attr = self.getattr(inode).await?;
+        
+        if offset >= attr.length {
+            return Ok(Vec::new()); // EOF
+        }
+        
+        let actual_size = std::cmp::min(size as u64, attr.length - offset) as u32;
+        
+        // For now, simulate reading data until chunk server integration is complete
+        // TODO: Implement proper chunk server communication for reads
+        match attr.file_type {
+            FileType::File => {
+                // Return dummy data pattern for testing
+                let mut data = vec![0u8; actual_size as usize];
+                for (i, byte) in data.iter_mut().enumerate() {
+                    *byte = ((offset + i as u64) % 256) as u8;
+                }
+                Ok(data)
+            }
+            _ => Err(ClientError::InvalidArgument("Cannot read from non-file".to_string())),
+        }
     }
     
     /// Write data to a file
-    pub async fn write(&mut self, _inode: InodeId, _offset: u64, data: &[u8]) -> ClientResult<u32> {
-        // For now, just return the size - actual writes should go through chunk servers
-        // TODO: Implement proper chunk writing
-        Ok(data.len() as u32)
+    pub async fn write(&mut self, inode: InodeId, offset: u64, data: &[u8]) -> ClientResult<u32> {
+        // First get file attributes to check permissions and type
+        let attr = self.getattr(inode).await?;
+        
+        match attr.file_type {
+            FileType::File => {
+                // For now, simulate writing until chunk server integration is complete
+                // TODO: Implement proper chunk server communication for writes
+                
+                // Validate write parameters
+                if data.is_empty() {
+                    return Ok(0);
+                }
+                
+                // Check for potential overflow
+                if offset.saturating_add(data.len() as u64) < offset {
+                    return Err(ClientError::InvalidArgument("Write would overflow file size".to_string()));
+                }
+                
+                // Simulate successful write
+                Ok(data.len() as u32)
+            }
+            _ => Err(ClientError::InvalidArgument("Cannot write to non-file".to_string())),
+        }
     }
     
     /// Remove a file

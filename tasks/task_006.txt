@@ -1,64 +1,11 @@
 # Task ID: 6
-# Title: Implement Raft consensus for Master Server HA
-# Status: done
+# Title: FUSE Client Implementation
+# Status: pending
 # Dependencies: 2
 # Priority: high
-# Description: Integrate Raft consensus algorithm for Master Server high availability and automatic failover.
+# Description: Implement the FUSE-based client for mounting MooseNG file systems with improved caching and performance.
 # Details:
-Use the raft-rs = '0.7.0' crate to implement Raft consensus in the mooseng-master module. Modify the Master Server to use Raft for all metadata operations. Implement leader election and automatic failover. Ensure all metadata changes go through the Raft log. Implement a mechanism for non-voting members to support read scaling.
+Implement FUSE client using fuser crate (0.12+). Create gRPC client for Master Server communication. Implement file operations (open, read, write, etc.). Create efficient client-side caching with configurable policies. Implement read-ahead and write-behind for improved performance. Add connection pooling for chunk servers. Implement session management and reconnection logic. Create background tasks for cache maintenance. Add metrics collection. Implement proper error handling and reporting. Create multi-level caching (memory, disk) similar to JuiceFS approach. Implement adaptive read-ahead based on access patterns. Use tokio-uring for Linux platforms to leverage io_uring for better I/O performance.
 
 # Test Strategy:
-Develop unit tests for Raft integration. Create integration tests simulating various failure scenarios. Verify automatic failover occurs within the specified sub-second time frame. Test read scaling with multiple active masters.
-
-# Subtasks:
-## 1. Implement Leader Election [done]
-### Dependencies: None
-### Description: Develop the leader election mechanism for the Raft consensus algorithm
-### Details:
-Implement heartbeat mechanism, randomized election timeouts, and vote request/response handling in the mooseng-master module
-<info added on 2025-05-31T04:15:14.339Z>
-Instance 1 is working on implementing Raft leader election mechanism. Development focuses on basic Raft state machine implementation and election timeout handling. This includes state transitions between follower, candidate, and leader roles, as well as proper management of randomized election timeouts to prevent election conflicts.
-</info added on 2025-05-31T04:15:14.339Z>
-
-## 2. Implement Log Replication [done]
-### Dependencies: 6.1
-### Description: Create the log replication system for maintaining consistency across nodes
-### Details:
-Implement append entries RPC, log consistency check, and commit index management in the mooseng-master module
-
-## 3. Implement Safety Checks [done]
-### Dependencies: 6.1, 6.2
-### Description: Add safety measures to ensure the correctness of the Raft algorithm
-### Details:
-Implement election restriction, commit index advancement rules, and log matching property in the mooseng-master module
-
-## 4. Implement Membership Changes [done]
-### Dependencies: 6.1, 6.2, 6.3
-### Description: Develop the mechanism for adding or removing servers from the Raft cluster
-### Details:
-Implement joint consensus for configuration changes and log compaction in the mooseng-master module
-
-## 5. Implement Non-Voting Members [done]
-### Dependencies: 6.1, 6.2, 6.3, 6.4
-### Description: Add support for non-voting members in the Raft cluster
-### Details:
-Implement log replication for non-voting members and transition mechanism to voting members in the mooseng-master module
-
-## 6. Implement Read Scaling [done]
-### Dependencies: 6.1, 6.2, 6.3
-### Description: Develop mechanisms to improve read performance in the Raft cluster
-### Details:
-Implement read-only queries, lease-based reads, and consistency guarantees for reads in the mooseng-master module
-
-## 7. Integrate with Master Server [done]
-### Dependencies: 6.1, 6.2, 6.3, 6.4, 6.5, 6.6
-### Description: Integrate the Raft implementation with the existing Master Server code
-### Details:
-Refactor mooseng-master module to use Raft for consensus and state management
-
-## 8. Perform Testing and Optimization [done]
-### Dependencies: 6.7
-### Description: Conduct thorough testing and optimize the Raft implementation
-### Details:
-Write unit tests, integration tests, perform stress testing, and optimize for performance of the Raft implementation in the mooseng-master module
-
+Unit tests for individual components. Integration tests with mounted file system. Benchmark performance compared to MooseFS. Test recovery from network failures. Test concurrent access patterns. Validate cache coherence under various scenarios.

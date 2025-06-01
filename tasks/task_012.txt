@@ -1,55 +1,11 @@
 # Task ID: 12
-# Title: Implement zero-copy data paths
-# Status: done
-# Dependencies: 3, 4
+# Title: Kubernetes Operator and Helm Charts
+# Status: pending
+# Dependencies: 11
 # Priority: medium
-# Description: Optimize data paths to use zero-copy operations where possible.
+# Description: Develop Kubernetes operator and Helm charts for deploying and managing MooseNG in Kubernetes environments.
 # Details:
-Identify opportunities for zero-copy operations in data transfer paths within the mooseng-chunkserver module. Use memory mapping for efficient data access. Implement scatter-gather I/O for improved performance. Utilize kernel bypass techniques like DPDK where appropriate for high-performance scenarios. Note: Being worked on by Claude Instance 2-B (Tab 3) alongside Task 7. Instance 2 is conducting initial analysis of current data flows in the chunkserver module to identify specific optimization opportunities for memory-mapped I/O and scatter-gather operations.
+Create Kubernetes operator using operator-sdk or kube-rs. Implement Custom Resource Definitions (CRDs) for MooseNG clusters. Create Helm charts for simplified deployment. Implement StatefulSets for Chunk Servers with persistent volumes. Create Services and NetworkPolicies for secure communication. Implement ConfigMaps and Secrets for configuration. Add Prometheus ServiceMonitor resources for metrics collection. Create PodDisruptionBudgets for availability. Implement horizontal and vertical scaling capabilities. Add rolling update strategies. Create initialization and validation webhooks. Implement automatic backup and restore operations. Add documentation for Kubernetes deployment.
 
 # Test Strategy:
-Benchmark performance improvements from zero-copy implementations in the mooseng-chunkserver module. Verify data integrity across zero-copy operations. Test system behavior under various load conditions.
-
-# Subtasks:
-## 12.1. undefined [done]
-### Dependencies: None
-### Description: Analyze current data paths in mooseng-chunkserver module to identify zero-copy opportunities
-### Details:
-
-
-## 12.2. undefined [done]
-### Dependencies: None
-### Description: Implement memory mapping for efficient data access in chunkserver operations
-### Details:
-
-
-## 12.3. undefined [done]
-### Dependencies: None
-### Description: Develop scatter-gather I/O patterns for the chunkserver module
-### Details:
-
-
-## 12.4. undefined [done]
-### Dependencies: None
-### Description: Evaluate and implement kernel bypass techniques where appropriate
-### Details:
-
-
-## 12.5. undefined [done]
-### Dependencies: None
-### Description: Create benchmarks to measure performance improvements
-### Details:
-
-
-## 12.6. undefined [done]
-### Dependencies: None
-### Description: Coordinate with Instance 2 to integrate their data flow analysis findings
-### Details:
-
-
-## 12.7. undefined [done]
-### Dependencies: None
-### Description: Prioritize implementation targets based on Instance 2's analysis results
-### Details:
-
-
+Deploy and test in Kubernetes environment. Validate operator reconciliation logic. Test scaling operations. Validate backup and restore functionality. Test automatic failover in Kubernetes. Benchmark performance in Kubernetes environment. Test upgrade procedures.

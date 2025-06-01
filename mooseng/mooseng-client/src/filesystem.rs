@@ -11,7 +11,7 @@ use tokio::sync::{RwLock, mpsc, oneshot};
 use tracing::{debug, error, info};
 
 use mooseng_common::types::{
-    FileAttr, FileType, InodeId, MFS_ROOT_ID, now_micros,
+    FileAttr, FileType, InodeId, MFS_ROOT_ID, now_micros, FsNode,
 };
 use crate::{
     cache::{ClientCache, DirEntry, DirListing},
@@ -200,8 +200,13 @@ impl MooseFuse {
                         let _ = reply.send(result);
                     }
                     FuseRequest::Read { inode, offset, size, reply } => {
-                        let mut master = worker_master.write().await;
-                        let result = master.read(inode, offset, size).await;
+                        let result = Self::read_cached_async(
+                            &worker_master,
+                            &worker_cache,
+                            inode,
+                            offset,
+                            size,
+                        ).await;
                         let _ = reply.send(result);
                     }
                     FuseRequest::Write { inode, offset, data, reply } => {
@@ -390,6 +395,68 @@ impl MooseFuse {
         
         Ok(dir_entries)
     }
+    
+    /// Read data with caching
+    async fn read_cached_async(
+        master_client: &Arc<RwLock<MasterClient>>,
+        cache: &Arc<ClientCache>,
+        inode: InodeId,
+        offset: u64,
+        size: u32,
+    ) -> ClientResult<Vec<u8>> {
+        const BLOCK_SIZE: u64 = 64 * 1024; // 64KB blocks
+        
+        let mut result = Vec::new();
+        let mut remaining = size as u64;
+        let mut current_offset = offset;
+        
+        while remaining > 0 {
+            let block_offset = (current_offset / BLOCK_SIZE) * BLOCK_SIZE;
+            let block_end = block_offset + BLOCK_SIZE;
+            let in_block_offset = current_offset - block_offset;
+            let chunk_size = std::cmp::min(remaining, block_end - current_offset);
+            
+            // Check cache first
+            if let Some(cached_block) = cache.get_data(inode, block_offset).await {
+                let start = in_block_offset as usize;
+                let end = std::cmp::min(start + chunk_size as usize, cached_block.len());
+                
+                if end > start {
+                    result.extend_from_slice(&cached_block[start..end]);
+                    current_offset += (end - start) as u64;
+                    remaining -= (end - start) as u64;
+                    continue;
+                }
+            }
+            
+            // Cache miss - read from master
+            let mut master = master_client.write().await;
+            let block_data = master.read(inode, block_offset, BLOCK_SIZE as u32).await?;
+            drop(master);
+            
+            if !block_data.is_empty() {
+                // Cache the block
+                let cached_data = bytes::Bytes::from(block_data.clone());
+                cache.put_data(inode, block_offset, cached_data).await;
+                
+                // Extract the requested portion
+                let start = in_block_offset as usize;
+                let end = std::cmp::min(start + chunk_size as usize, block_data.len());
+                
+                if end > start {
+                    result.extend_from_slice(&block_data[start..end]);
+                    current_offset += (end - start) as u64;
+                    remaining -= (end - start) as u64;
+                } else {
+                    break; // EOF
+                }
+            } else {
+                break; // EOF
+            }
+        }
+        
+        Ok(result)
+    }
 }
 
 impl Filesystem for MooseFuse {
@@ -549,7 +616,7 @@ impl Filesystem for MooseFuse {
     fn open(&mut self, _req: &Request, ino: u64, flags: i32, reply: ReplyOpen) {
         debug!("open: ino={}, flags={}", ino, flags);
         
-        // For now, just check if the file exists
+        // Check if the file exists and get its attributes
         let (tx, rx) = oneshot::channel();
         let request = FuseRequest::GetAttr {
             inode: ino,
@@ -563,9 +630,24 @@ impl Filesystem for MooseFuse {
         }
         
         match rx.blocking_recv() {
-            Ok(Ok(_attr)) => {
-                // TODO: Implement proper file handle management
-                let fh = ino; // Use inode as file handle for now
+            Ok(Ok(attr)) => {
+                // Create proper file handle
+                let fs_node = Arc::new(FsNode {
+                    inode: ino,
+                    file_type: attr.file_type,
+                    mode: attr.mode,
+                    uid: attr.uid,
+                    gid: attr.gid,
+                    size: attr.length,
+                    access_time: attr.atime,
+                    modify_time: attr.mtime,
+                    change_time: attr.ctime,
+                    link_count: attr.nlink,
+                    storage_class: attr.storage_class,
+                });
+                
+                let fh = self.cache.add_open_file(fs_node);
+                debug!("Opened file {} with handle {}", ino, fh);
                 reply.opened(fh, 0);
             }
             Ok(Err(ClientError::FileNotFound(_))) => {
@@ -993,5 +1075,30 @@ impl Filesystem for MooseFuse {
                 reply.error(EIO);
             }
         }
+    }
+    
+    fn release(&mut self, _req: &Request, ino: u64, fh: u64, _flags: i32, _lock_owner: Option<u64>, _flush: bool, reply: fuser::ReplyEmpty) {
+        debug!("release: ino={}, fh={}", ino, fh);
+        
+        // Remove the file handle from cache
+        self.cache.remove_open_file(fh);
+        
+        reply.ok();
+    }
+    
+    fn flush(&mut self, _req: &Request, ino: u64, fh: u64, _lock_owner: u64, reply: fuser::ReplyEmpty) {
+        debug!("flush: ino={}, fh={}", ino, fh);
+        
+        // For now, just acknowledge the flush
+        // TODO: Implement proper data flushing when chunk servers are integrated
+        reply.ok();
+    }
+    
+    fn fsync(&mut self, _req: &Request, ino: u64, fh: u64, datasync: bool, reply: fuser::ReplyEmpty) {
+        debug!("fsync: ino={}, fh={}, datasync={}", ino, fh, datasync);
+        
+        // For now, just acknowledge the fsync
+        // TODO: Implement proper data synchronization when chunk servers are integrated
+        reply.ok();
     }
 }

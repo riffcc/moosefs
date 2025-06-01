@@ -27,6 +27,12 @@ struct PeerReplicationState {
     replicating: bool,
     /// Number of consecutive failures
     failure_count: u32,
+    /// Adaptive batch size based on peer performance
+    batch_size: usize,
+    /// Last RTT for adaptive timeout calculation
+    last_rtt: Option<Duration>,
+    /// Whether this peer supports pipelining
+    supports_pipelining: bool,
 }
 
 impl PeerReplicationState {
@@ -37,6 +43,37 @@ impl PeerReplicationState {
             last_sent: Instant::now(),
             replicating: false,
             failure_count: 0,
+            batch_size: 10, // Start with conservative batch size
+            last_rtt: None,
+            supports_pipelining: true, // Assume support until proven otherwise
+        }
+    }
+    
+    /// Adapt batch size based on performance
+    fn adapt_batch_size(&mut self, success: bool) {
+        if success {
+            // Gradually increase batch size on success
+            if self.batch_size < 100 {
+                self.batch_size = std::cmp::min(self.batch_size * 2, 100);
+            }
+            self.failure_count = 0;
+        } else {
+            // Decrease batch size on failure
+            self.batch_size = std::cmp::max(self.batch_size / 2, 1);
+            self.failure_count += 1;
+        }
+    }
+    
+    /// Update RTT measurement
+    fn update_rtt(&mut self, rtt: Duration) {
+        self.last_rtt = Some(rtt);
+    }
+    
+    /// Get adaptive timeout based on RTT
+    fn get_adaptive_timeout(&self, base_timeout: Duration) -> Duration {
+        match self.last_rtt {
+            Some(rtt) => std::cmp::max(rtt * 3, base_timeout),
+            None => base_timeout,
         }
     }
 }
@@ -279,13 +316,23 @@ impl ReplicationManager {
                 node_guard.log.term_at(prev_log_index).unwrap_or(0)
             };
             
-            // Get entries to send (batch size limited)
-            let max_entries = config.max_append_entries.unwrap_or(100);
-            let mut entries = Vec::new();
+            // Get entries to send with adaptive batch sizing
+            let states_guard = peer_states.lock().await;
+            let peer_state = states_guard.get(peer).ok_or_else(|| anyhow::anyhow!("No state for peer {}", peer))?;
+            let adaptive_batch_size = std::cmp::min(
+                peer_state.batch_size,
+                config.max_append_entries.unwrap_or(100)
+            );
+            drop(states_guard);
             
-            for i in next_index..=std::cmp::min(next_index + max_entries - 1, last_log_index) {
+            let mut entries = Vec::with_capacity(adaptive_batch_size);
+            
+            for i in next_index..=std::cmp::min(next_index + adaptive_batch_size as u64 - 1, last_log_index) {
                 if let Ok(Some(entry)) = node_guard.log.get(i) {
                     entries.push(entry);
+                } else {
+                    warn!("Missing log entry at index {} for peer {}", i, peer);
+                    break;
                 }
             }
             
@@ -304,24 +351,37 @@ impl ReplicationManager {
             leader_commit: commit_index,
         };
         
+        // Use adaptive timeout based on peer RTT
+        let adaptive_timeout = {
+            let states_guard = peer_states.lock().await;
+            if let Some(peer_state) = states_guard.get(peer) {
+                peer_state.get_adaptive_timeout(Duration::from_millis(config.rpc_timeout_ms))
+            } else {
+                Duration::from_millis(config.rpc_timeout_ms)
+            }
+        };
+        
+        let start_time = Instant::now();
         let response = timeout(
-            Duration::from_millis(config.rpc_timeout_ms),
+            adaptive_timeout,
             rpc.send_append_entries(peer, request),
         ).await;
+        
+        let rtt = start_time.elapsed();
         
         match response {
             Ok(Ok(resp)) => {
                 Self::handle_append_response(
-                    node, peer_states, peer, &resp, next_index, entries.len()
+                    node, peer_states, peer, &resp, next_index, entries.len(), Some(rtt)
                 ).await?;
             }
             Ok(Err(e)) => {
                 error!("Append entries to {} failed: {}", peer, e);
-                Self::handle_append_failure(peer_states, peer).await;
+                Self::handle_append_failure(peer_states, peer, false).await;
             }
             Err(_) => {
-                warn!("Append entries to {} timed out", peer);
-                Self::handle_append_failure(peer_states, peer).await;
+                warn!("Append entries to {} timed out after {:?}", peer, adaptive_timeout);
+                Self::handle_append_failure(peer_states, peer, true).await;
             }
         }
         
@@ -362,32 +422,45 @@ impl ReplicationManager {
         response: &AppendEntriesResponse,
         sent_index: LogIndex,
         entries_count: usize,
+        rtt: Option<Duration>,
     ) -> Result<()> {
         let mut states = peer_states.lock().await;
         let state = states.get_mut(peer).ok_or_else(|| anyhow::anyhow!("No state for peer {}", peer))?;
         
         if response.success {
-            // Success - update indices
+            // Success - update indices and adapt batch size
             if entries_count > 0 {
                 state.match_index = sent_index + entries_count as u64 - 1;
                 state.next_index = state.match_index + 1;
-                debug!("Successfully replicated to {}, match_index: {}", peer, state.match_index);
+                debug!("Successfully replicated {} entries to {}, match_index: {}", 
+                      entries_count, peer, state.match_index);
             }
-            state.failure_count = 0;
+            state.adapt_batch_size(true);
+            
+            // Update RTT if provided
+            if let Some(rtt) = rtt {
+                state.update_rtt(rtt);
+            }
         } else {
-            // Failure - backtrack
+            // Failure - backtrack and adapt
             if state.next_index > 1 {
-                state.next_index -= 1;
-                debug!("Append failed to {}, decremented next_index to {}", peer, state.next_index);
+                // Use binary search style backtracking for faster convergence
+                let backtrack_amount = std::cmp::max(1, state.batch_size as u64 / 2);
+                state.next_index = state.next_index.saturating_sub(backtrack_amount);
+                if state.next_index == 0 {
+                    state.next_index = 1;
+                }
+                debug!("Append failed to {}, decremented next_index by {} to {}", 
+                      peer, backtrack_amount, state.next_index);
             }
-            state.failure_count += 1;
+            state.adapt_batch_size(false);
             
             // Handle term conflicts
             if response.term > sent_index {
                 let mut node_guard = node.write().await;
                 if response.term > node_guard.current_term() {
                     node_guard.state.become_follower(response.term, None);
-                    warn!("Stepping down due to higher term from {}", peer);
+                    warn!("Stepping down due to higher term {} from {}", response.term, peer);
                 }
             }
         }
@@ -399,11 +472,18 @@ impl ReplicationManager {
     async fn handle_append_failure(
         peer_states: &Arc<Mutex<HashMap<NodeId, PeerReplicationState>>>,
         peer: &NodeId,
+        is_timeout: bool,
     ) {
         let mut states = peer_states.lock().await;
         if let Some(state) = states.get_mut(peer) {
-            state.failure_count += 1;
+            state.adapt_batch_size(false);
             state.last_sent = Instant::now();
+            
+            // Disable pipelining for peers that timeout frequently
+            if is_timeout && state.failure_count > 3 {
+                state.supports_pipelining = false;
+                debug!("Disabled pipelining for peer {} due to timeouts", peer);
+            }
         }
     }
     

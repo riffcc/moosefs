@@ -60,6 +60,36 @@ pub struct ChunkServerConfig {
     
     /// Metrics export port
     pub metrics_port: Option<u16>,
+    
+    /// Enable background scrubbing
+    pub enable_scrubbing: bool,
+    
+    /// Maximum concurrent scrub operations
+    pub max_concurrent_scrubs: Option<usize>,
+    
+    /// Scrub interval for periodic checks (in seconds)
+    pub scrub_interval_secs: u64,
+    
+    /// Enable automatic repair of corrupted chunks
+    pub enable_auto_repair: bool,
+    
+    /// Enable tiered storage functionality
+    pub enable_tiered_storage: bool,
+    
+    /// Tiered storage configuration file path
+    pub tiered_storage_config: Option<PathBuf>,
+    
+    /// Hot tier storage path (SSD/fast storage)
+    pub hot_tier_path: Option<PathBuf>,
+    
+    /// Warm tier storage path (HDD/medium storage)
+    pub warm_tier_path: Option<PathBuf>,
+    
+    /// Maximum hot tier capacity in bytes
+    pub hot_tier_capacity: Option<u64>,
+    
+    /// Maximum warm tier capacity in bytes
+    pub warm_tier_capacity: Option<u64>,
 }
 
 impl Default for ChunkServerConfig {
@@ -84,6 +114,16 @@ impl Default for ChunkServerConfig {
             labels: Vec::new(),
             enable_metrics: true,
             metrics_port: Some(9423),
+            enable_scrubbing: true,
+            max_concurrent_scrubs: Some(2),
+            scrub_interval_secs: 24 * 60 * 60, // 24 hours
+            enable_auto_repair: true,
+            enable_tiered_storage: false,
+            tiered_storage_config: None,
+            hot_tier_path: Some(PathBuf::from("/var/lib/mooseng/chunks/hot")),
+            warm_tier_path: Some(PathBuf::from("/var/lib/mooseng/chunks/warm")),
+            hot_tier_capacity: Some(100 * 1024 * 1024 * 1024), // 100GB default
+            warm_tier_capacity: Some(1024 * 1024 * 1024 * 1024), // 1TB default
         }
     }
 }

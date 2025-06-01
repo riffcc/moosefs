@@ -1,11 +1,11 @@
 # Task ID: 14
-# Title: Implement native compression support
-# Status: done
-# Dependencies: 3
+# Title: Prometheus Metrics and Monitoring
+# Status: pending
+# Dependencies: 4, 5, 6, 7
 # Priority: medium
-# Description: Add native compression capabilities to MooseNG for improved storage efficiency.
+# Description: Implement comprehensive metrics collection and Prometheus integration for all components.
 # Details:
-Implement multiple compression algorithms (e.g., LZ4, Zstd) using the rust-lz4 = '0.8.2' and zstd = '0.12.3' crates. Develop a mechanism to automatically select the best compression algorithm based on data characteristics. Implement transparent compression/decompression in the data path. Allow per-file and per-directory compression policies.
+Integrate prometheus crate (0.13+) for metrics collection. Implement metrics for all key operations and components. Create HTTP endpoints for Prometheus scraping. Add detailed documentation for available metrics. Implement histograms for latency measurements. Create counters for operation rates. Add gauges for resource utilization. Implement custom collectors for system-specific metrics. Create metric naming convention following Prometheus best practices. Add process metrics (memory, CPU). Implement tracing with OpenTelemetry integration.
 
 # Test Strategy:
-Benchmark compression ratios and performance for various data types. Verify transparent access to compressed data. Test system behavior with mixed compressed and uncompressed data.
+Validate metrics collection under various workloads. Test Prometheus scraping functionality. Verify metric naming and documentation. Test alerting based on metrics. Validate tracing functionality. Test metric cardinality and performance impact.

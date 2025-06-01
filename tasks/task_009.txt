@@ -1,11 +1,11 @@
 # Task ID: 9
-# Title: Develop Docker containerization
-# Status: done
-# Dependencies: 2, 3, 4, 5
-# Priority: medium
-# Description: Create Docker images for all MooseNG components.
+# Title: Erasure Coding Implementation
+# Status: pending
+# Dependencies: 5
+# Priority: high
+# Description: Implement Reed-Solomon erasure coding support with configurable data and parity chunks.
 # Details:
-Create Dockerfiles for Master Server, Chunk Server, Client, and Metalogger components. Use multi-stage builds to minimize image size. Base images on the official Rust Alpine image. Implement health checks for each component. Create a docker-compose.yml file for easy local deployment and testing.
+Integrate reed-solomon-erasure crate (4.0+) for erasure coding. Implement 8+n and 4+n configurations as specified in PRD. Create chunk placement strategy for erasure coded data. Implement encoding and decoding operations. Add background repair for damaged chunks. Create migration between replication and erasure coding. Implement background EC conversion for cold data. Add metrics for erasure coding operations. Implement efficient buffer management for coding operations. Create region-aware stripe placement for multi-region deployments. Optimize for SIMD acceleration where available. Implement progressive recovery to minimize recovery time.
 
 # Test Strategy:
-Verify Docker images can be built successfully. Test containers individually and in a compose environment. Ensure health checks accurately reflect component status. Verify all components can communicate correctly when deployed as containers.
+Unit tests for encoding/decoding operations. Integration tests with Chunk Servers. Test recovery from various failure scenarios. Benchmark performance compared to replication. Test migration between replication and EC. Validate data integrity after recovery operations.

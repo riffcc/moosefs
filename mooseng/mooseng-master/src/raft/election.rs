@@ -113,25 +113,41 @@ impl ElectionManager {
         safety_checker: &Arc<RaftSafetyChecker>,
         timeout_gen: &(dyn Fn() -> Duration + Send + Sync),
     ) -> Result<()> {
-        let should_start_election = {
+        let (should_start_election, current_state) = {
             let node_guard = node.read().await;
             let elapsed = node_guard.heartbeat_elapsed();
             let timeout = timeout_gen();
+            let state = format!("Node: {}, State: {:?}, Term: {}", 
+                node_guard.node_id, node_guard.state.node_state, node_guard.current_term());
             
-            !node_guard.is_leader() && elapsed > timeout
+            (!node_guard.is_leader() && elapsed > timeout, state)
         };
         
         if should_start_election {
-            // Check safety before starting election
+            debug!("Election timeout detected: {}", current_state);
+            
+            // Check safety before starting election with better error handling
             let can_start = {
                 let node_guard = node.read().await;
-                safety_checker.can_start_election(&node_guard.state, &node_guard.log).unwrap_or(false)
+                match safety_checker.can_start_election(&node_guard.state, &node_guard.log) {
+                    Ok(can_start) => can_start,
+                    Err(e) => {
+                        warn!("Safety check failed with error: {}. Refusing to start election.", e);
+                        return Ok(());
+                    }
+                }
             };
             
             if can_start {
-                Self::start_election_round(node, config, rpc, safety_checker).await?;
+                match Self::start_election_round(node, config, rpc, safety_checker).await {
+                    Ok(_) => debug!("Election round started successfully"),
+                    Err(e) => {
+                        warn!("Election round failed: {}. Will retry on next timeout.", e);
+                        // Don't propagate error to keep the election manager running
+                    }
+                }
             } else {
-                debug!("Safety check failed, cannot start election");
+                debug!("Safety check failed, cannot start election: {}", current_state);
             }
         }
         
@@ -194,44 +210,75 @@ impl ElectionManager {
             }
         }).collect();
         
-        // Collect vote responses
+        // Collect vote responses with error tracking
         let responses = futures::future::join_all(vote_futures).await;
+        let mut vote_errors = 0;
+        let mut total_peers = peers.len();
         
-        // Process responses
-        for response in responses.into_iter().flatten() {
-            let (peer_id, vote_response) = response;
-            let mut node_guard = node.write().await;
-            
-            // Check if we're still a candidate
-            if !node_guard.is_candidate() {
-                break;
-            }
-            
-            // Handle the vote response
-            let won_election = node_guard.handle_vote_response(
-                &peer_id,
-                vote_response.term,
-                vote_response.vote_granted,
-            ).await?;
-            
-            if won_election {
-                // Additional safety check before becoming leader
-                if let Some(candidate_state) = &node_guard.candidate_state {
-                    let can_become_leader = safety_checker.can_become_leader(
-                        &node_guard.state,
-                        &node_guard.log,
-                        &candidate_state.votes_received,
-                    ).unwrap_or(false);
+        // Process responses with enhanced error handling
+        for response in responses.into_iter() {
+            match response {
+                Some((peer_id, vote_response)) => {
+                    let mut node_guard = node.write().await;
                     
-                    if can_become_leader {
-                        info!("Won election for term {} - becoming leader", node_guard.current_term());
-                        drop(node_guard);
+                    // Check if we're still a candidate
+                    if !node_guard.is_candidate() {
+                        debug!("No longer candidate, stopping vote processing");
                         break;
-                    } else {
-                        warn!("Safety check failed - cannot become leader despite winning election");
                     }
+                    
+                    // Handle the vote response with error handling
+                    match node_guard.handle_vote_response(
+                        &peer_id,
+                        vote_response.term,
+                        vote_response.vote_granted,
+                    ).await {
+                        Ok(won_election) => {
+                            if won_election {
+                                // Additional safety check before becoming leader
+                                if let Some(candidate_state) = &node_guard.candidate_state {
+                                    match safety_checker.can_become_leader(
+                                        &node_guard.state,
+                                        &node_guard.log,
+                                        &candidate_state.votes_received,
+                                    ) {
+                                        Ok(true) => {
+                                            info!("Won election for term {} with {} votes - becoming leader", 
+                                                node_guard.current_term(), candidate_state.votes_received.len());
+                                            drop(node_guard);
+                                            return Ok(());
+                                        },
+                                        Ok(false) => {
+                                            warn!("Safety check failed - cannot become leader despite winning election");
+                                            // Step down to follower
+                                            let term = node_guard.current_term();
+                                            node_guard.step_down(term, None);
+                                        },
+                                        Err(e) => {
+                                            error!("Safety check error during leader validation: {}", e);
+                                            let term = node_guard.current_term();
+                                            node_guard.step_down(term, None);
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        Err(e) => {
+                            warn!("Error handling vote response from {}: {}", peer_id, e);
+                        }
+                    }
+                },
+                None => {
+                    vote_errors += 1;
                 }
             }
+        }
+        
+        // Log election outcome
+        if vote_errors > 0 {
+            warn!("Election completed with {} errors out of {} peers", vote_errors, total_peers);
+        } else {
+            debug!("Election completed - did not win majority");
         }
         
         Ok(())
@@ -281,25 +328,31 @@ impl ElectionManager {
         config: &RaftConfig,
         peer: &NodeId,
     ) -> Result<()> {
-        let node_guard = node.read().await;
+        let (is_leader, append_request) = {
+            let node_guard = node.read().await;
+            
+            if !node_guard.is_leader() {
+                return Ok(());
+            }
+            
+            let term = node_guard.current_term();
+            let commit_index = node_guard.state.commit_index;
+            
+            // For heartbeats, we send empty entries
+            let append_request = rpc.create_append_entries_request(
+                term,
+                node_guard.log.last_index(),
+                node_guard.log.last_entry_info().1,
+                vec![],
+                commit_index,
+            );
+            
+            (true, append_request)
+        };
         
-        if !node_guard.is_leader() {
+        if !is_leader {
             return Ok(());
         }
-        
-        let term = node_guard.current_term();
-        let commit_index = node_guard.state.commit_index;
-        
-        // For heartbeats, we send empty entries
-        let append_request = rpc.create_append_entries_request(
-            term,
-            node_guard.log.last_index(),
-            node_guard.log.last_entry_info().1,
-            vec![],
-            commit_index,
-        );
-        
-        drop(node_guard);
         
         let response = timeout(
             Duration::from_millis(config.rpc_timeout_ms),
@@ -309,18 +362,25 @@ impl ElectionManager {
         match response {
             Ok(Ok(resp)) => {
                 let mut node_guard = node.write().await;
-                node_guard.handle_append_entries_response(
-                    peer,
-                    resp.term,
-                    resp.success,
-                    resp.match_index,
-                ).await?;
+                if node_guard.is_leader() {
+                    match node_guard.handle_append_entries_response(
+                        peer,
+                        resp.term,
+                        resp.success,
+                        resp.match_index,
+                    ).await {
+                        Ok(_) => debug!("Heartbeat to {} successful", peer),
+                        Err(e) => warn!("Error processing heartbeat response from {}: {}", peer, e),
+                    }
+                }
             }
             Ok(Err(e)) => {
                 debug!("Heartbeat to {} failed: {}", peer, e);
+                // Consider marking peer as temporarily unavailable
             }
             Err(_) => {
                 debug!("Heartbeat to {} timed out", peer);
+                // Consider exponential backoff for timed out peers
             }
         }
         

@@ -11,7 +11,6 @@ use bytes::Bytes;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::fs;
-// tempfile only available in tests
 use tracing::{info, warn, debug};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -93,7 +92,10 @@ pub struct SystemInfo {
 /// Comprehensive storage benchmarking suite
 pub struct StorageBenchmarker {
     config: BenchmarkConfig,
-    temp_dir: TempDir,
+    #[cfg(test)]
+    temp_dir: tempfile::TempDir,
+    #[cfg(not(test))]
+    temp_dir: std::path::PathBuf,
     storage: Arc<dyn ChunkStorage>,
     chunk_server_config: Arc<ChunkServerConfig>,
 }
@@ -101,9 +103,19 @@ pub struct StorageBenchmarker {
 impl StorageBenchmarker {
     /// Create a new benchmarker with the given configuration
     pub fn new(config: BenchmarkConfig) -> Result<Self, Box<dyn std::error::Error>> {
-        let temp_dir = TempDir::new()?;
+        #[cfg(test)]
+        let temp_dir = tempfile::TempDir::new()?;
+        #[cfg(not(test))]
+        let temp_dir = std::env::temp_dir().join("mooseng_benchmarks");
+        
         let mut chunk_server_config = ChunkServerConfig::default();
-        chunk_server_config.data_dir = temp_dir.path().to_path_buf();
+        #[cfg(test)]
+        { chunk_server_config.data_dir = temp_dir.path().to_path_buf(); }
+        #[cfg(not(test))]
+        { 
+            std::fs::create_dir_all(&temp_dir)?;
+            chunk_server_config.data_dir = temp_dir.clone(); 
+        }
         
         let storage = Arc::new(FileStorage::new_with_limits(
             Arc::new(chunk_server_config.clone()),
@@ -594,7 +606,10 @@ impl StorageBenchmarker {
         // Create test files
         let mut test_files = Vec::new();
         for i in 0..self.config.chunk_count {
+            #[cfg(test)]
             let file_path = self.temp_dir.path().join(format!("test_file_{}.dat", i));
+            #[cfg(not(test))]
+            let file_path = self.temp_dir.join(format!("test_file_{}.dat", i));
             let test_data = self.generate_random_data(self.config.chunk_size);
             fs::write(&file_path, &test_data).await?;
             test_files.push(file_path);

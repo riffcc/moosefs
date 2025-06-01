@@ -1,67 +1,11 @@
 # Task ID: 25
-# Title: Implement efficient block allocation
+# Title: Performance Benchmarking and Optimization
 # Status: pending
-# Dependencies: 3
+# Dependencies: 4, 5, 6, 9, 21, 22
 # Priority: medium
-# Description: Develop an efficient block allocation system for improved storage utilization and performance.
+# Description: Conduct comprehensive performance benchmarking and implement optimizations to meet or exceed performance targets.
 # Details:
-Implement multiple block allocation strategies (e.g., best-fit, worst-fit, next-fit). Develop a mechanism to dynamically select the best allocation strategy based on current storage conditions. Implement block coalescing for reduced fragmentation. Use bitmap-based free space tracking for large volumes. This task is assigned to Instance 4 (Tiered Storage & Infrastructure Specialist) and should be coordinated with Task 15 for efficient integration.
+Create benchmark suite for all components and operations. Implement performance regression testing. Add profiling for hot paths. Create optimization for small file operations. Implement memory usage optimization. Add I/O pattern optimization. Create network efficiency improvements. Implement caching strategy optimization. Add compiler and runtime optimizations. Create documentation for performance tuning. Implement comparison benchmarks against MooseFS and other distributed file systems.
 
 # Test Strategy:
-Benchmark allocation and deallocation performance. Test fragmentation levels under various workloads. Verify correct handling of out-of-space conditions. Compare storage utilization against other allocation strategies.
-
-# Subtasks:
-## 1. Design allocation strategy interface [pending]
-### Dependencies: None
-### Description: Create a common interface for all block allocation strategies to implement, allowing for dynamic strategy selection at runtime.
-### Details:
-Define a base class or interface with virtual methods for allocating and freeing blocks. Include methods for initialization, allocation requests, deallocation, and performance metrics collection. Design should support concurrent operations and be thread-safe.
-
-## 2. Implement first-fit and best-fit allocation strategies [pending]
-### Dependencies: 25.1
-### Description: Develop two fundamental allocation strategies that can be used as baseline implementations.
-### Details:
-Create concrete implementations of the allocation strategy interface for first-fit (allocates the first available block that fits) and best-fit (allocates the smallest block that fits the request). Include memory-efficient data structures to track free blocks and optimize search operations.
-
-## 3. Implement bitmap-based free space tracking [pending]
-### Dependencies: 25.1
-### Description: Develop a bitmap-based system to efficiently track and manage free blocks in memory.
-### Details:
-Create a bitmap representation where each bit represents a block's allocation status. Implement operations for finding contiguous free blocks, marking blocks as allocated/free, and optimizing for memory efficiency. Design for cache-friendly access patterns and minimal memory overhead.
-
-## 4. Implement block coalescing mechanism [pending]
-### Dependencies: 25.2, 25.3
-### Description: Create a system to merge adjacent free blocks to reduce fragmentation.
-### Details:
-Develop algorithms to identify and merge adjacent free blocks during deallocation. Include configurable policies for when coalescing should occur (immediate vs. deferred). Ensure thread safety during coalescing operations and minimize performance impact.
-
-## 5. Create dynamic strategy selection framework [pending]
-### Dependencies: 25.2
-### Description: Develop a system to dynamically select the most appropriate allocation strategy based on current system state and workload patterns.
-### Details:
-Implement a framework that can switch between allocation strategies based on metrics like fragmentation level, allocation size distribution, and system load. Include monitoring components to collect relevant metrics and decision logic to trigger strategy switches.
-
-## 6. Integrate with chunk server and metadata cache [pending]
-### Dependencies: 25.4, 25.5
-### Description: Ensure the block allocation system works seamlessly with the chunk server improvements and metadata caching enhancements.
-### Details:
-Coordinate with Instance 2 (chunk server) and Instance 3 (metadata cache) to establish integration points. Implement necessary APIs for cross-component communication. Ensure allocation decisions consider tiered storage characteristics and metadata availability.
-
-## 7. Develop CLI tools for allocation management [pending]
-### Dependencies: 25.6
-### Description: Create command-line tools to monitor, configure, and debug the block allocation system.
-### Details:
-Work with Instance 4 to develop CLI commands for viewing allocation statistics, changing allocation strategies, triggering manual defragmentation, and diagnosing allocation issues. Include visualization tools for fragmentation analysis and performance monitoring.
-
-## 8. Conduct performance benchmarking and optimization [pending]
-### Dependencies: 25.7
-### Description: Evaluate the performance of different allocation strategies under various workloads and optimize accordingly.
-### Details:
-Design and implement benchmarks to measure allocation/deallocation throughput, fragmentation levels, and memory efficiency. Compare different strategies under various workload patterns. Identify bottlenecks and implement optimizations. Document performance characteristics to guide strategy selection.
-
-## 9. Coordinate with Task 15 for integration [pending]
-### Dependencies: 25.1
-### Description: Ensure efficient integration between block allocation system and the work being done in Task 15.
-### Details:
-Establish regular communication with the team working on Task 15. Identify integration points, potential conflicts, and opportunities for optimization. Create shared interfaces and ensure consistent design patterns across both tasks. Document integration requirements and dependencies.
-
+Run benchmarks under various workloads and configurations. Compare performance against targets in PRD. Validate optimizations with before/after measurements. Test memory usage under load. Verify I/O patterns match expectations. Test network efficiency with various topologies.

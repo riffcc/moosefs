@@ -1,37 +1,11 @@
 # Task ID: 7
-# Title: Develop Reed-Solomon erasure coding
-# Status: done
-# Dependencies: 3
-# Priority: high
-# Description: Implement Reed-Solomon erasure coding for improved storage efficiency.
+# Title: Metalogger Implementation
+# Status: pending
+# Dependencies: 2, 4
+# Priority: medium
+# Description: Implement the Metalogger component for enhanced metadata backup with real-time replication.
 # Details:
-Use the reed-solomon-erasure = '4.0.2' crate for erasure coding implementation. Create modules for both 8+n and 4+n configurations. Implement encoding and decoding functions. Develop a chunk placement strategy that considers erasure coding stripes. Implement background processes for converting replicated data to erasure-coded data. Note: Being worked on by Claude Instance 2. Focus on implementing efficient encoding/decoding algorithms and integrating Reed-Solomon erasure coding with the mooseng-chunkserver module.
+Implement Metalogger using Tokio for async runtime. Create gRPC client for Master Server communication. Implement metadata change log consumption and storage. Create efficient storage format for metadata backups. Implement point-in-time recovery capabilities. Add background tasks for maintenance operations. Implement metrics collection. Create rotation and retention policies for logs. Implement compression for stored logs using zstd or lz4. Add verification of backup integrity. Implement incremental backup capabilities. Create recovery tools for restoring from Metalogger backups.
 
 # Test Strategy:
-Develop unit tests for encoding and decoding operations. Create integration tests verifying data integrity with simulated chunk server failures. Benchmark storage efficiency improvements and verify 50% improvement over replication.
-
-# Subtasks:
-## 7.1. Implement core Reed-Solomon encoding/decoding algorithms [done]
-### Dependencies: None
-### Description: Develop efficient encoding and decoding functions using the reed-solomon-erasure crate, optimizing for performance.
-### Details:
-
-
-## 7.2. Integrate erasure coding with chunkserver module [done]
-### Dependencies: None
-### Description: Connect the Reed-Solomon implementation with the chunkserver module to handle data chunks appropriately.
-### Details:
-
-
-## 7.3. Implement 8+n and 4+n configuration modules [done]
-### Dependencies: None
-### Description: Create configurable modules that support both 8+n and 4+n erasure coding schemes.
-### Details:
-
-
-## 7.4. Develop chunk placement strategy for erasure coding [done]
-### Dependencies: None
-### Description: Design and implement a strategy for placing chunks across servers that accounts for erasure coding stripes.
-### Details:
-
-
+Unit tests for individual components. Integration tests with Master Server. Test recovery from backup under various failure scenarios. Benchmark backup and restore performance. Validate backup integrity after network failures.

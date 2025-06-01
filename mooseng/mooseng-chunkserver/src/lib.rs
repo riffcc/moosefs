@@ -15,10 +15,13 @@ pub mod grpc_server;
 pub mod compression_service;
 pub mod tiered_storage;
 pub mod tier_movement;
-// pub mod object_storage;
-// pub mod tiered_storage_integration;
-// pub mod integrity;
-// pub mod benchmarks;
+pub mod block_allocator;
+pub mod scrubber;
+pub mod object_storage;
+pub mod tiered_storage_integration;
+pub mod tiered_storage_demo;
+pub mod integrity;
+pub mod benchmarks;
 
 pub use error::{ChunkServerError, Result};
 pub use chunk::{Chunk, ChunkMetrics, ChunkMetadata, ChecksumType, ChunkChecksum};
@@ -32,8 +35,6 @@ pub use tiered_storage::{
     StorageTier, TierConfig, TieredStorageManager, ChunkTierMetadata, 
     DataClassification, AccessFrequency, ObjectStorageConfig
 };
-// Temporarily disabled for core functionality focus
-/*
 pub use object_storage::{
     ObjectStorageBackend, StorageProvider, ObjectCache, ChunkObjectMetadata,
     ObjectStorageMetrics
@@ -41,8 +42,15 @@ pub use object_storage::{
 pub use tiered_storage_integration::{
     TieredStorageIntegrationTest, demonstrate_tiered_storage
 };
-*/
+pub use tiered_storage_demo::{TieredStorageDemo, run_quick_demo};
 pub use tier_movement::{
     DataMovementEngine, MovementEngineConfig, MovementTask, MovementResult,
     MovementStats, MovementReason
+};
+pub use block_allocator::{
+    AllocationStrategy, FirstFitAllocator, BestFitAllocator, DynamicBlockAllocator,
+    AllocatedBlock, FreeSpaceInfo, WorkloadHint, BLOCK_SIZE
+};
+pub use scrubber::{
+    ChunkScrubber, ScrubResult, ScrubStats, ScrubPriority
 };

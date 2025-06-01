@@ -1,85 +1,11 @@
 # Task ID: 3
-# Title: Develop Chunk Server core functionality
-# Status: in-progress
-# Dependencies: 1
+# Title: Metadata Storage Backend Implementation
+# Status: pending
+# Dependencies: 2
 # Priority: high
-# Description: Implement the basic structure and functionality of the Chunk Server, including data storage and retrieval operations.
+# Description: Implement the metadata storage backend using RocksDB or Sled for efficient, persistent storage of file system metadata.
 # Details:
-Create a new crate 'chunk-server'. Implement chunk allocation, read, and write operations using tokio for async I/O. Use the memmap2 = '0.5.10' crate for efficient memory-mapped file operations. Implement a basic chunk format with metadata and data sections. Use direct I/O for chunk operations where supported by the OS. Implement background processes for maintenance, verification, and metrics collection. Focus on getting essential functionality working before addressing optional modules. Instance 2 (Infrastructure Specialist) is actively working on chunk server completion, handling subtasks 3.5-3.11. Final integration with the coordinator will be coordinated after the compilation gate (Task 34) is resolved.
+Create an abstraction layer for metadata storage with trait interfaces. Implement RocksDB backend using rocksdb 0.20+ crate with appropriate configuration for metadata workloads (LSM tuning, bloom filters, etc.). Implement alternative Sled backend using sled 0.34+ for comparison. Create key design with efficient prefix scanning for directory traversal. Implement batched operations for atomic updates. Add compaction and background maintenance tasks. Implement metadata versioning for point-in-time recovery. Create efficient serialization format for metadata entries. Implement caching layer with LRU policy using lru 0.10+ crate. Add metrics collection for storage operations. Consider implementing a pluggable backend system to support multiple metadata stores (Redis, PostgreSQL, etc.) similar to JuiceFS approach.
 
 # Test Strategy:
-Develop unit tests for chunk operations. Create integration tests to verify data integrity across write and read operations. Benchmark performance against direct file system operations. Test heartbeat functionality, chunk verification, and metrics collection. Ensure proper integration testing with other system components. Coordinate with main instance for comprehensive integration testing after compilation gate (Task 34) is resolved.
-
-# Subtasks:
-## 3.1. Implement heartbeat task to master server [done]
-### Dependencies: None
-### Description: Created a background task that sends periodic heartbeat signals to the master server to indicate chunk server health and availability.
-### Details:
-
-
-## 3.2. Implement background chunk verification [done]
-### Dependencies: None
-### Description: Developed a background process that periodically verifies the integrity of stored chunks to detect corruption or data loss.
-### Details:
-
-
-## 3.3. Add metrics collection task [done]
-### Dependencies: None
-### Description: Implemented a background task that collects and reports performance metrics from the chunk server.
-### Details:
-
-
-## 3.4. Fix compilation issues [done]
-### Dependencies: None
-### Description: Resolved compilation issues in the chunk server codebase to ensure proper building and execution.
-### Details:
-
-
-## 3.5. Resolve gRPC protocol compatibility issues [in-progress]
-### Dependencies: None
-### Description: Address remaining compatibility issues with the gRPC protocol to ensure proper communication between chunk server and other components. Instance 2 (Infrastructure Specialist) is actively working on this subtask.
-### Details:
-
-
-## 3.6. Fix Instant serialization issues [in-progress]
-### Dependencies: None
-### Description: Check for and fix any Instant serialization issues in the chunk server similar to those resolved in the coordinator. Instance 2 (Infrastructure Specialist) is actively working on this subtask.
-### Details:
-
-
-## 3.7. Address scope conflicts and type mismatches [done]
-### Dependencies: None
-### Description: Successfully resolved scope conflicts and type mismatches in the chunk server codebase. Fixed critical compilation error by adding missing Context trait import in tiered_storage.rs. Cleaned up unused imports across multiple files (erasure_storage.rs, placement.rs, zero_copy.rs, metrics.rs, compression_service.rs, tiered_storage.rs, and tier_movement.rs), reducing warnings from 32 to 11. Verified component compatibility between mooseng-chunkserver and mooseng-client, confirming they share compatible workspace dependencies with no build script conflicts.
-### Details:
-
-
-## 3.8. Perform code cleanup [in-progress]
-### Dependencies: None
-### Description: Refactor and clean up the codebase to improve readability, maintainability, and performance. Ensure no duplicate functions and fix any problematic imports. Instance 2 (Infrastructure Specialist) is actively working on this subtask.
-### Details:
-
-
-## 3.9. Complete final integration work [in-progress]
-### Dependencies: None
-### Description: Finalize integration of all components to achieve full compilation and functionality of the chunk server. Instance 2 (Infrastructure Specialist) is actively working on this subtask, with coordination with main instance for integration testing after compilation gate (Task 34) is resolved.
-### Details:
-
-
-## 3.11. Prioritize and implement optional modules [in-progress]
-### Dependencies: None
-### Description: After core functionality is working, assess and implement optional modules based on priority and system requirements. Instance 2 (Infrastructure Specialist) is actively working on this subtask.
-### Details:
-
-
-## 3.12. Coordinate integration testing with main instance [to-do]
-### Dependencies: None
-### Description: Set up and execute comprehensive integration testing in collaboration with the main instance to ensure proper functionality across all system components. This will be initiated after the compilation gate (Task 34) is resolved.
-### Details:
-
-
-## 3.13. Address remaining warnings in mooseng-chunkserver [to-do]
-### Dependencies: None
-### Description: Resolve the 11 remaining warnings in the mooseng-chunkserver component to ensure clean compilation and optimal code quality.
-### Details:
-
-
+Unit tests for individual storage operations. Integration tests with sample filesystem operations. Benchmark different storage backends for read/write performance. Test recovery from corrupted database. Test concurrent access patterns. Simulate various failure scenarios and validate recovery.

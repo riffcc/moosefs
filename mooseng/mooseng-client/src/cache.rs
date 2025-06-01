@@ -47,6 +47,9 @@ pub struct ClientCache {
     
     /// Next file handle ID
     next_fh: Arc<std::sync::atomic::AtomicU64>,
+    
+    /// Track data cache keys by inode for efficient invalidation
+    data_keys_by_inode: Arc<DashMap<InodeId, Vec<DataCacheKey>>>,
 }
 
 impl ClientCache {
@@ -93,6 +96,7 @@ impl ClientCache {
             negative_cache,
             open_files: Arc::new(DashMap::new()),
             next_fh: Arc::new(std::sync::atomic::AtomicU64::new(1)),
+            data_keys_by_inode: Arc::new(DashMap::new()),
         }
     }
     
@@ -135,14 +139,22 @@ impl ClientCache {
     /// Cache data block
     pub async fn put_data(&self, inode: InodeId, block_offset: u64, data: Bytes) {
         let key = DataCacheKey { inode, block_offset };
+        
+        // Track this key for the inode
+        let mut entry = self.data_keys_by_inode.entry(inode).or_insert_with(Vec::new);
+        entry.push(key.clone());
+        
         self.data_cache.insert(key, data).await;
     }
     
     /// Invalidate cached data for inode
-    pub async fn invalidate_data(&self, _inode: InodeId) {
-        // Note: moka doesn't have range invalidation, so we'd need to track keys
-        // For now, we'll just let the TTL handle it
-        // TODO: Implement a key tracking mechanism for range invalidation
+    pub async fn invalidate_data(&self, inode: InodeId) {
+        // Invalidate all cached data blocks for this inode
+        if let Some((_, keys)) = self.data_keys_by_inode.remove(&inode) {
+            for key in keys {
+                self.data_cache.invalidate(&key).await;
+            }
+        }
     }
     
     /// Check negative cache

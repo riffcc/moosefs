@@ -1,11 +1,11 @@
 # Task ID: 19
-# Title: Implement REST API for automation
+# Title: Health Checks and Self-healing
 # Status: pending
-# Dependencies: 2, 3, 4, 5
+# Dependencies: 4, 5, 6, 7
 # Priority: medium
-# Description: Develop a comprehensive REST API for automating MooseNG management and monitoring.
+# Description: Implement health checking and self-healing capabilities for all components.
 # Details:
-Use the axum = '0.6.18' framework to implement the REST API. Define OpenAPI specifications for the API using the utoipa = '3.3.0' crate. Implement endpoints for all management and monitoring operations. Use JSON for request/response payloads. Implement proper authentication and authorization using JWT tokens.
+Create health check endpoints for all components. Implement internal health monitoring. Create self-healing mechanisms for common failure scenarios. Implement circuit breakers for external dependencies. Add automatic restart for failed processes. Create data integrity checking and repair. Implement leader failover for unhealthy masters. Add chunk rebalancing for optimal distribution. Create automatic recovery from metadata corruption. Implement deadlock detection and resolution. Add resource exhaustion handling.
 
 # Test Strategy:
-Develop unit tests for individual API endpoints. Create integration tests that use the API to manage a test cluster. Verify correct handling of authentication and authorization. Test API performance under high load.
+Test health checks under various failure scenarios. Validate self-healing mechanisms. Test circuit breaker functionality. Verify automatic restart capabilities. Test data integrity checking and repair. Validate leader failover. Test chunk rebalancing.

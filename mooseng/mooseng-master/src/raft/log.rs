@@ -163,15 +163,25 @@ impl RaftLog {
             logical_idx
         };
         
+        // Batch operations for better performance
+        if new_entries.is_empty() {
+            return Ok(prev_index);
+        }
+        
         self.entries.truncate(insert_point);
         
         let mut last_index = prev_index;
+        let mut batch_entries = Vec::with_capacity(new_entries.len());
+        
         for mut entry in new_entries {
             last_index += 1;
             entry.index = last_index;
             self.entries.push(entry.clone());
-            self.persist_entry(&entry)?;
+            batch_entries.push(entry);
         }
+        
+        // Batch persist entries for better performance
+        self.batch_persist_entries(&batch_entries)?;
         
         Ok(last_index)
     }
@@ -295,8 +305,14 @@ impl RaftLog {
     
     fn persist_entry(&mut self, entry: &LogEntry) -> Result<()> {
         let serialized = bincode::serialize(entry)?;
+        let entry_size = serialized.len() as u32;
+        
+        // Write entry size first for easier reading
+        self.log_file.write_all(&entry_size.to_le_bytes())?;
         self.log_file.write_all(&serialized)?;
-        self.log_file.sync_all()?;
+        
+        // Use fsync instead of sync_all for better performance
+        self.log_file.sync_data()?;
         Ok(())
     }
     
@@ -309,7 +325,30 @@ impl RaftLog {
         
         let entries_bytes = bincode::serialize(&self.entries)?;
         self.log_file.write_all(&entries_bytes)?;
-        self.log_file.sync_all()?;
+        self.log_file.sync_data()?;
+        
+        Ok(())
+    }
+    
+    /// Batch persist multiple entries for better performance
+    fn batch_persist_entries(&mut self, entries: &[LogEntry]) -> Result<()> {
+        if entries.is_empty() {
+            return Ok(());
+        }
+        
+        // Use buffered writer for batch operations
+        let mut writer = BufWriter::new(&mut self.log_file);
+        
+        for entry in entries {
+            let serialized = bincode::serialize(entry)?;
+            let entry_size = serialized.len() as u32;
+            
+            writer.write_all(&entry_size.to_le_bytes())?;
+            writer.write_all(&serialized)?;
+        }
+        
+        writer.flush()?;
+        self.log_file.sync_data()?;
         
         Ok(())
     }

@@ -15,6 +15,9 @@ pub use async_runtime::{
     RateLimiter, RetryConfig, retry_with_backoff,
     channels, streams, timeouts,
     TaskSupervisor, GenericSupervisor, RestartPolicy,
+    MultiRegionScheduler, AdaptiveStreamProcessor, AsyncTask, TaskPriority,
+    RegionLoadBalancer, CrossRegionChannel, CrossRegionMessage, HealthStatus,
+    TaskResult, ResourceUsage,
 };
 pub use networking::{
     ConnectionPool, ConnectionPoolConfig, ManagedConnection, PoolStats,

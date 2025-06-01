@@ -1,11 +1,11 @@
 # Task ID: 2
-# Title: Implement basic Master Server structure
-# Status: done
+# Title: Core Data Structures and Protocol Definitions
+# Status: pending
 # Dependencies: 1
 # Priority: high
-# Description: Create the foundational structure for the Master Server component, including main loop and basic metadata management.
+# Description: Define the core data structures, protocol buffers, and interfaces that will be used across all components of MooseNG.
 # Details:
-Create a new crate 'master-server'. Implement the main function using tokio runtime. Set up a basic gRPC server using tonic. Create initial structs for metadata representation. Use sled = '0.34.7' for local metadata storage. Implement basic CRUD operations for metadata.
+Create a shared library crate for common data structures. Define Protocol Buffers (using prost 0.11+ and tonic) for all inter-component communication. Implement core data structures for file metadata, chunk information, and system configuration. Define trait interfaces for storage backends, networking components, and consensus modules. Create serialization/deserialization implementations using serde 1.0+. Define error types and result wrappers. Implement version compatibility checking for protocol messages. Consider using capnproto as an alternative to protobuf for better performance. Define FUSE interface structures based on fuser crate (0.12+) for client implementation.
 
 # Test Strategy:
-Write unit tests for metadata CRUD operations. Implement integration tests to ensure the gRPC server can start and respond to basic health check requests.
+Unit tests for all data structures with serialization/deserialization roundtrip tests. Property-based testing using proptest for complex data structures. Compatibility tests with sample MooseFS protocol messages if maintaining compatibility. Benchmark serialization/deserialization performance.

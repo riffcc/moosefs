@@ -1,11 +1,11 @@
 # Task ID: 22
-# Title: Implement TLS encryption for all connections
-# Status: done
-# Dependencies: 2, 3, 4, 5
-# Priority: high
-# Description: Add TLS encryption to all network connections between MooseNG components.
+# Title: Tiered Storage Implementation
+# Status: pending
+# Dependencies: 5
+# Priority: medium
+# Description: Implement tiered storage with automatic data movement between storage tiers.
 # Details:
-Use the rustls = '0.21.1' crate for TLS implementation. Implement certificate management and rotation. Provide options for mutual TLS authentication. Ensure proper handling of TLS errors and connection upgrades. Implement perfect forward secrecy using ephemeral Diffie-Hellman key exchange.
+Create storage tier definitions (SSD, HDD, archive). Implement policy-based data placement. Create automatic data movement based on access patterns. Implement background migration tasks. Add tier-aware read path optimization. Create monitoring for tier utilization. Implement cost-based optimization algorithms. Add manual tier control for specific data. Create tier transition hooks for custom processing. Implement efficient tier identification for chunks.
 
 # Test Strategy:
-Verify all connections are correctly encrypted using TLS. Test certificate validation and rotation processes. Benchmark performance impact of TLS encryption. Test system behavior with invalid or expired certificates.
+Test automatic data movement between tiers. Validate policy-based placement. Benchmark performance with various tier configurations. Test background migration. Verify tier utilization monitoring. Test manual tier control.

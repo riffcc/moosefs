@@ -4,6 +4,7 @@ pub mod file_operations;
 pub mod metadata_operations;
 pub mod multiregion;
 pub mod multiregion_performance;
+pub mod enhanced_multiregion;
 pub mod comparison;
 pub mod network_simulation;
 pub mod network_file_operations;
@@ -36,6 +37,7 @@ impl BenchmarkSuite {
             Arc::new(multiregion::ConsistencyBenchmark::new()),
             Arc::new(multiregion_performance::MultiRegionReplicationBenchmark::new()),
             Arc::new(multiregion_performance::GeographicLatencyBenchmark::new()),
+            Arc::new(enhanced_multiregion::EnhancedMultiRegionBenchmark::new()),
             Arc::new(comparison::MooseFSComparisonBenchmark::new()),
             Arc::new(network_simulation::NetworkConditionBenchmark::new()),
             Arc::new(network_simulation::RealNetworkBenchmark::new()),
@@ -63,6 +65,7 @@ impl BenchmarkSuite {
             "consistency_benchmark".to_string(),
             "multiregion_replication_benchmark".to_string(),
             "geographic_latency_benchmark".to_string(),
+            "enhanced_multi_region".to_string(),
         ]);
         categories.insert("network".to_string(), vec![
             "network_condition_benchmark".to_string(),

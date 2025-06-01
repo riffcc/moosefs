@@ -7,6 +7,7 @@
 //! - Async stream processing utilities
 //! - Graceful shutdown mechanisms
 
+use std::collections::HashMap;
 use std::future::Future;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
@@ -20,6 +21,7 @@ use tokio::sync::{broadcast, mpsc, oneshot, watch, Mutex, RwLock, Semaphore};
 use tokio::task::JoinHandle;
 use tokio::time::{interval, sleep, timeout};
 use tracing::{error, info, warn};
+use uuid::Uuid;
 
 use crate::error::MooseNGError;
 
@@ -557,6 +559,400 @@ impl ShutdownCoordinator {
                 failed_tasks
             ))
         }
+    }
+}
+
+/// Multi-region aware async task scheduler
+pub struct MultiRegionScheduler {
+    /// Local region priority
+    local_priority: u8,
+    /// Region-specific task queues
+    region_queues: Arc<RwLock<HashMap<String, mpsc::Sender<AsyncTask>>>>,
+    /// Load balancer for tasks
+    load_balancer: Arc<RwLock<RegionLoadBalancer>>,
+    /// Cross-region communication channels
+    cross_region_channels: Arc<RwLock<HashMap<String, CrossRegionChannel>>>,
+}
+
+/// Async task with region affinity
+#[derive(Debug)]
+pub struct AsyncTask {
+    pub id: uuid::Uuid,
+    pub preferred_region: Option<String>,
+    pub priority: TaskPriority,
+    pub max_execution_time: Duration,
+    pub retry_policy: Option<RetryConfig>,
+    pub task: Box<dyn Future<Output = Result<()>> + Send + 'static>,
+}
+
+/// Task priority levels
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum TaskPriority {
+    Critical = 0,
+    High = 1,
+    Normal = 2,
+    Low = 3,
+    Background = 4,
+}
+
+/// Load balancer for multi-region task distribution
+#[derive(Debug)]
+pub struct RegionLoadBalancer {
+    /// Current load per region (0.0-1.0)
+    region_loads: HashMap<String, f64>,
+    /// Task completion rates per region
+    completion_rates: HashMap<String, f64>,
+    /// Network latencies between regions
+    latencies: HashMap<String, HashMap<String, Duration>>,
+    /// Last update timestamp
+    last_update: Instant,
+}
+
+/// Cross-region communication channel
+#[derive(Debug)]
+pub struct CrossRegionChannel {
+    /// Outbound message queue
+    outbound: mpsc::Sender<CrossRegionMessage>,
+    /// Inbound message receiver
+    inbound: Arc<Mutex<mpsc::Receiver<CrossRegionMessage>>>,
+    /// Connection health
+    health: Arc<AtomicBool>,
+    /// Last heartbeat
+    last_heartbeat: Arc<Mutex<Instant>>,
+}
+
+/// Cross-region message types
+#[derive(Debug, Clone)]
+pub enum CrossRegionMessage {
+    TaskExecution(TaskExecutionMessage),
+    LoadUpdate(LoadUpdateMessage),
+    Heartbeat(HeartbeatMessage),
+    TaskResult(TaskResultMessage),
+}
+
+#[derive(Debug, Clone)]
+pub struct TaskExecutionMessage {
+    pub task_id: uuid::Uuid,
+    pub source_region: String,
+    pub target_region: String,
+    pub payload: Vec<u8>,
+    pub priority: TaskPriority,
+    pub timeout: Duration,
+}
+
+#[derive(Debug, Clone)]
+pub struct LoadUpdateMessage {
+    pub region: String,
+    pub cpu_load: f64,
+    pub memory_usage: f64,
+    pub network_bandwidth: f64,
+    pub active_tasks: u32,
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Clone)]
+pub struct HeartbeatMessage {
+    pub region: String,
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+    pub health_status: HealthStatus,
+}
+
+#[derive(Debug, Clone)]
+pub struct TaskResultMessage {
+    pub task_id: uuid::Uuid,
+    pub source_region: String,
+    pub result: TaskResult,
+    pub execution_time: Duration,
+    pub resource_usage: ResourceUsage,
+}
+
+#[derive(Debug, Clone)]
+pub enum TaskResult {
+    Success(Vec<u8>),
+    Failure(String),
+    Timeout,
+    Cancelled,
+}
+
+#[derive(Debug, Clone)]
+pub struct ResourceUsage {
+    pub cpu_time: Duration,
+    pub memory_peak: u64,
+    pub network_bytes: u64,
+    pub disk_io: u64,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum HealthStatus {
+    Healthy,
+    Degraded,
+    Unhealthy,
+    Unreachable,
+}
+
+impl MultiRegionScheduler {
+    /// Create a new multi-region scheduler
+    pub async fn new(local_region: String, local_priority: u8) -> Result<Self> {
+        let region_queues = Arc::new(RwLock::new(HashMap::new()));
+        let load_balancer = Arc::new(RwLock::new(RegionLoadBalancer::new()));
+        let cross_region_channels = Arc::new(RwLock::new(HashMap::new()));
+
+        // Initialize local region queue
+        let (tx, mut rx) = mpsc::channel::<AsyncTask>(1000);
+        region_queues.write().await.insert(local_region.clone(), tx);
+
+        // Start local task processor
+        let queues_clone = region_queues.clone();
+        let lb_clone = load_balancer.clone();
+        tokio::spawn(async move {
+            while let Some(task) = rx.recv().await {
+                Self::execute_task(task, &queues_clone, &lb_clone).await;
+            }
+        });
+
+        Ok(Self {
+            local_priority,
+            region_queues,
+            load_balancer,
+            cross_region_channels,
+        })
+    }
+
+    /// Schedule a task for execution
+    pub async fn schedule_task(&self, mut task: AsyncTask) -> Result<uuid::Uuid> {
+        // Assign unique ID if not present
+        if task.id == uuid::Uuid::nil() {
+            task.id = uuid::Uuid::new_v4();
+        }
+
+        // Determine optimal region for execution
+        let target_region = self.select_optimal_region(&task).await?;
+        
+        // Send task to appropriate queue
+        let queues = self.region_queues.read().await;
+        if let Some(queue) = queues.get(&target_region) {
+            queue.send(task).await
+                .map_err(|_| MooseNGError::ResourceExhausted("Task queue full".into()))?;
+            Ok(task.id)
+        } else {
+            Err(MooseNGError::InvalidParameter(format!("Unknown region: {}", target_region)).into())
+        }
+    }
+
+    /// Select optimal region for task execution
+    async fn select_optimal_region(&self, task: &AsyncTask) -> Result<String> {
+        let lb = self.load_balancer.read().await;
+        
+        // If task has preferred region and it's healthy, use it
+        if let Some(preferred) = &task.preferred_region {
+            if lb.region_loads.get(preferred).map_or(false, |load| *load < 0.9) {
+                return Ok(preferred.clone());
+            }
+        }
+
+        // Find least loaded region
+        let optimal_region = lb.region_loads
+            .iter()
+            .min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+            .map(|(region, _)| region.clone())
+            .ok_or_else(|| MooseNGError::Internal("No available regions".into()))?;
+
+        Ok(optimal_region)
+    }
+
+    /// Execute a task
+    async fn execute_task(
+        task: AsyncTask,
+        _queues: &Arc<RwLock<HashMap<String, mpsc::Sender<AsyncTask>>>>,
+        _load_balancer: &Arc<RwLock<RegionLoadBalancer>>,
+    ) {
+        let start_time = Instant::now();
+        
+        // Apply timeout if specified
+        let execution_result = if task.max_execution_time > Duration::ZERO {
+            timeout(task.max_execution_time, task.task).await
+        } else {
+            Ok(task.task.await)
+        };
+
+        let execution_time = start_time.elapsed();
+        
+        match execution_result {
+            Ok(Ok(())) => {
+                info!("Task {} completed successfully in {:?}", task.id, execution_time);
+            }
+            Ok(Err(e)) => {
+                error!("Task {} failed: {:?}", task.id, e);
+            }
+            Err(_) => {
+                warn!("Task {} timed out after {:?}", task.id, execution_time);
+            }
+        }
+    }
+
+    /// Add a new region to the scheduler
+    pub async fn add_region(&self, region_name: String) -> Result<()> {
+        let (tx, mut rx) = mpsc::channel::<AsyncTask>(1000);
+        
+        // Add to region queues
+        self.region_queues.write().await.insert(region_name.clone(), tx);
+        
+        // Initialize load balancer entry
+        self.load_balancer.write().await.region_loads.insert(region_name.clone(), 0.0);
+        
+        // Start task processor for this region
+        let queues_clone = self.region_queues.clone();
+        let lb_clone = self.load_balancer.clone();
+        tokio::spawn(async move {
+            while let Some(task) = rx.recv().await {
+                Self::execute_task(task, &queues_clone, &lb_clone).await;
+            }
+        });
+
+        info!("Added region {} to scheduler", region_name);
+        Ok(())
+    }
+}
+
+impl RegionLoadBalancer {
+    fn new() -> Self {
+        Self {
+            region_loads: HashMap::new(),
+            completion_rates: HashMap::new(),
+            latencies: HashMap::new(),
+            last_update: Instant::now(),
+        }
+    }
+
+    /// Update load for a region
+    pub fn update_load(&mut self, region: &str, load: f64) {
+        self.region_loads.insert(region.to_string(), load.clamp(0.0, 1.0));
+        self.last_update = Instant::now();
+    }
+
+    /// Update completion rate for a region
+    pub fn update_completion_rate(&mut self, region: &str, rate: f64) {
+        self.completion_rates.insert(region.to_string(), rate);
+    }
+
+    /// Update latency between regions
+    pub fn update_latency(&mut self, from: &str, to: &str, latency: Duration) {
+        self.latencies.entry(from.to_string())
+            .or_insert_with(HashMap::new)
+            .insert(to.to_string(), latency);
+    }
+
+    /// Get current load for a region
+    pub fn get_load(&self, region: &str) -> Option<f64> {
+        self.region_loads.get(region).copied()
+    }
+}
+
+/// Adaptive async stream processor with backpressure and multi-region support
+pub struct AdaptiveStreamProcessor<T> {
+    /// Input stream buffer
+    input_buffer: Arc<Mutex<Vec<T>>>,
+    /// Processing concurrency
+    concurrency: Arc<AtomicU64>,
+    /// Backpressure threshold
+    backpressure_threshold: usize,
+    /// Processing rate limiter
+    rate_limiter: Option<Arc<RateLimiter>>,
+    /// Regional processing preferences
+    region_preferences: HashMap<String, f64>,
+}
+
+impl<T> AdaptiveStreamProcessor<T>
+where
+    T: Send + 'static,
+{
+    /// Create a new adaptive stream processor
+    pub fn new(initial_concurrency: usize, backpressure_threshold: usize) -> Self {
+        Self {
+            input_buffer: Arc::new(Mutex::new(Vec::new())),
+            concurrency: Arc::new(AtomicU64::new(initial_concurrency as u64)),
+            backpressure_threshold,
+            rate_limiter: None,
+            region_preferences: HashMap::new(),
+        }
+    }
+
+    /// Add rate limiting
+    pub fn with_rate_limit(mut self, rate: u32, burst: u32) -> Self {
+        self.rate_limiter = Some(Arc::new(RateLimiter::new(rate, burst)));
+        self
+    }
+
+    /// Set regional processing preferences
+    pub fn with_region_preferences(mut self, preferences: HashMap<String, f64>) -> Self {
+        self.region_preferences = preferences;
+        self
+    }
+
+    /// Process items with adaptive concurrency
+    pub async fn process<F, Fut, R>(
+        &self,
+        items: Vec<T>,
+        processor: F,
+    ) -> Vec<Result<R>>
+    where
+        F: Fn(T) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<R>> + Send,
+        R: Send + 'static,
+    {
+        let total_items = items.len();
+        let current_concurrency = self.concurrency.load(Ordering::SeqCst) as usize;
+        
+        // Adjust concurrency based on buffer size
+        let optimal_concurrency = self.calculate_optimal_concurrency(total_items);
+        self.concurrency.store(optimal_concurrency as u64, Ordering::SeqCst);
+
+        // Process items in batches with controlled concurrency
+        let semaphore = Arc::new(Semaphore::new(optimal_concurrency));
+        let processor = Arc::new(processor);
+        let mut tasks = Vec::new();
+
+        for item in items {
+            let sem = semaphore.clone();
+            let proc = processor.clone();
+            let rate_limiter = self.rate_limiter.clone();
+
+            let task = tokio::spawn(async move {
+                let _permit = sem.acquire().await.unwrap();
+                
+                // Apply rate limiting if configured
+                if let Some(limiter) = rate_limiter {
+                    let _ = limiter.acquire().await;
+                }
+
+                proc(item).await
+            });
+
+            tasks.push(task);
+        }
+
+        // Collect results
+        let mut results = Vec::new();
+        for task in tasks {
+            match task.await {
+                Ok(result) => results.push(result),
+                Err(e) => results.push(Err(MooseNGError::Internal(format!("Task failed: {:?}", e)).into())),
+            }
+        }
+
+        results
+    }
+
+    /// Calculate optimal concurrency based on current conditions
+    fn calculate_optimal_concurrency(&self, item_count: usize) -> usize {
+        let base_concurrency = num_cpus::get();
+        let buffer_factor = if item_count > self.backpressure_threshold {
+            0.5 // Reduce concurrency under high load
+        } else {
+            1.5 // Increase concurrency under normal load
+        };
+        
+        ((base_concurrency as f64 * buffer_factor) as usize).max(1).min(1000)
     }
 }
 

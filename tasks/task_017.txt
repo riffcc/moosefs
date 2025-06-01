@@ -1,55 +1,11 @@
 # Task ID: 17
-# Title: Create Grafana dashboards
+# Title: REST API Implementation
 # Status: pending
-# Dependencies: 16
-# Priority: low
-# Description: Develop Grafana dashboards for visualizing MooseNG metrics and system health, building upon the completed Prometheus metrics implementation.
+# Dependencies: 4, 5
+# Priority: medium
+# Description: Implement a comprehensive REST API for automation and integration with external systems.
 # Details:
-Design and implement Grafana dashboards for different aspects of MooseNG (e.g., overall system health, performance metrics, storage utilization). Use Grafana's JSON model to define dashboards programmatically. Implement alerting rules for critical metrics. Create dashboard templates that can be easily customized for different deployments. This task will be handled by Instance 4 (Infrastructure Specialist) as part of the monitoring and visualization infrastructure.
+Create REST API using axum 0.6+ or actix-web 4.0+ frameworks. Implement OpenAPI specification using utoipa crate. Create endpoints for all management operations. Implement authentication and authorization. Add rate limiting and request validation. Create pagination for list operations. Implement filtering and sorting capabilities. Add versioning for API compatibility. Create comprehensive error responses. Implement CORS support for web clients. Add documentation generation. Create client SDK generation using OpenAPI tools.
 
 # Test Strategy:
-Verify all dashboards correctly display data from Prometheus. Test alerting rules under various conditions. Ensure dashboards are responsive and performant when displaying large amounts of data.
-
-# Subtasks:
-## 17.1. Design dashboard layout and organization structure [pending]
-### Dependencies: None
-### Description: Plan the overall organization of dashboards, including hierarchy, naming conventions, and folder structure.
-### Details:
-
-
-## 17.2. Create system health dashboard [pending]
-### Dependencies: None
-### Description: Implement dashboard for overall system health metrics including CPU, memory, disk usage, and network traffic.
-### Details:
-
-
-## 17.3. Create MooseNG performance dashboard [pending]
-### Dependencies: None
-### Description: Implement dashboard for MooseNG-specific performance metrics like request rates, latencies, and error rates.
-### Details:
-
-
-## 17.4. Create storage utilization dashboard [pending]
-### Dependencies: None
-### Description: Implement dashboard for storage metrics including capacity, throughput, and IOPS.
-### Details:
-
-
-## 17.5. Configure alerting rules [pending]
-### Dependencies: None
-### Description: Set up Grafana alerting rules for critical metrics with appropriate thresholds and notification channels.
-### Details:
-
-
-## 17.6. Create dashboard templates [pending]
-### Dependencies: None
-### Description: Develop reusable dashboard templates that can be customized for different deployments.
-### Details:
-
-
-## 17.7. Document dashboard usage and customization [pending]
-### Dependencies: None
-### Description: Create documentation explaining how to use and customize the dashboards.
-### Details:
-
-
+Test all API endpoints with various inputs. Validate authentication and authorization. Test rate limiting functionality. Verify pagination, filtering, and sorting. Test error handling and reporting. Validate generated client SDKs. Benchmark API performance.

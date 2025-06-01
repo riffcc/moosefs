@@ -2,6 +2,7 @@ use crate::{
     chunk::{Chunk, ChunkMetadata, ChecksumType},
     config::ChunkServerConfig,
     error::{ChunkServerError, Result},
+    block_allocator::{DynamicBlockAllocator, AllocationStrategy, AllocatedBlock, WorkloadHint},
 };
 // TODO: Fix zero_copy module import
 // use crate::zero_copy::ZeroCopyTransfer;
@@ -72,6 +73,15 @@ pub struct StorageStats {
     pub total_bytes: u64,
     pub free_space_bytes: u64,
     pub corrupted_chunks: u64,
+}
+
+/// Comprehensive storage statistics including tiered storage
+#[derive(Debug, Clone)]
+pub struct ComprehensiveStorageStats {
+    pub primary_storage: StorageStats,
+    pub allocation: crate::block_allocator::FreeSpaceInfo,
+    pub tiered_storage: Option<crate::tiered_storage::PerformanceMetrics>,
+    pub movement: Option<crate::tier_movement::MovementStats>,
 }
 
 /// File-based chunk storage implementation with performance optimizations
@@ -690,12 +700,237 @@ fn parse_chunk_filename(filename: &str) -> Option<(ChunkId, ChunkVersion)> {
 /// Storage manager that coordinates multiple storage backends
 pub struct StorageManager {
     primary_storage: Arc<dyn ChunkStorage>,
+    block_allocator: Arc<DynamicBlockAllocator>,
+    // Tiered storage integration
+    tiered_storage_manager: Option<Arc<crate::tiered_storage::TieredStorageManager>>,
+    movement_engine: Option<Arc<crate::tier_movement::DataMovementEngine>>,
+    object_backends: std::collections::HashMap<crate::tiered_storage::StorageTier, Arc<crate::object_storage::ObjectStorageBackend>>,
 }
 
 impl StorageManager {
     /// Create a new storage manager
-    pub fn new(primary_storage: Arc<dyn ChunkStorage>) -> Self {
-        Self { primary_storage }
+    pub fn new(primary_storage: Arc<dyn ChunkStorage>, total_storage_size: u64) -> Self {
+        let block_allocator = Arc::new(DynamicBlockAllocator::new(total_storage_size));
+        Self { 
+            primary_storage,
+            block_allocator,
+            tiered_storage_manager: None,
+            movement_engine: None,
+            object_backends: std::collections::HashMap::new(),
+        }
+    }
+    
+    /// Create a new storage manager with tiered storage enabled
+    pub async fn new_with_tiered_storage(
+        primary_storage: Arc<dyn ChunkStorage>, 
+        total_storage_size: u64,
+        tiered_config: Option<crate::tiered_storage::TierConfig>
+    ) -> Result<Self> {
+        let block_allocator = Arc::new(DynamicBlockAllocator::new(total_storage_size));
+        let mut manager = Self { 
+            primary_storage,
+            block_allocator,
+            tiered_storage_manager: None,
+            movement_engine: None,
+            object_backends: std::collections::HashMap::new(),
+        };
+        
+        if let Some(_config) = tiered_config {
+            manager.initialize_tiered_storage().await?;
+        }
+        
+        Ok(manager)
+    }
+    
+    /// Initialize tiered storage components
+    pub async fn initialize_tiered_storage(&mut self) -> Result<()> {
+        use crate::tiered_storage::{TieredStorageManager, TierConfig, StorageTier};
+        use crate::tier_movement::DataMovementEngine;
+        use crate::object_storage::{ObjectStorageBackend, StorageProvider};
+        use std::path::PathBuf;
+        
+        // Create tiered storage manager
+        let tiered_storage_manager = Arc::new(TieredStorageManager::new());
+        
+        // Configure default tiers
+        let hot_config = TierConfig::hot_tier(
+            PathBuf::from("/tmp/mooseng/hot"),
+            1024 * 1024 * 1024, // 1GB hot tier
+        );
+        tiered_storage_manager.add_tier_config(hot_config).await?;
+        
+        let warm_config = TierConfig::warm_tier(
+            PathBuf::from("/tmp/mooseng/warm"),
+            10 * 1024 * 1024 * 1024, // 10GB warm tier
+        );
+        tiered_storage_manager.add_tier_config(warm_config).await?;
+        
+        let cold_config = TierConfig::cold_tier(
+            "mooseng-cold".to_string(),
+            "us-west-2".to_string(),
+            100 * 1024 * 1024 * 1024, // 100GB cold tier
+        );
+        tiered_storage_manager.add_tier_config(cold_config).await?;
+        
+        // Create movement engine
+        let movement_engine = Arc::new(DataMovementEngine::new(tiered_storage_manager.clone()));
+        
+        // Create object storage backends for cold and archive tiers
+        let memory_backend = Arc::new(
+            ObjectStorageBackend::new(
+                StorageProvider::Memory,
+                cold_config.object_storage.clone().unwrap()
+            ).await?
+        );
+        self.object_backends.insert(StorageTier::Cold, memory_backend);
+        
+        self.tiered_storage_manager = Some(tiered_storage_manager);
+        self.movement_engine = Some(movement_engine);
+        
+        info!("Tiered storage initialized successfully");
+        Ok(())
+    }
+    
+    /// Check if tiered storage is enabled
+    pub fn is_tiered_storage_enabled(&self) -> bool {
+        self.tiered_storage_manager.is_some()
+    }
+    
+    /// Get the tiered storage manager
+    pub fn tiered_storage_manager(&self) -> Option<&Arc<crate::tiered_storage::TieredStorageManager>> {
+        self.tiered_storage_manager.as_ref()
+    }
+    
+    /// Get the movement engine
+    pub fn movement_engine(&self) -> Option<&Arc<crate::tier_movement::DataMovementEngine>> {
+        self.movement_engine.as_ref()
+    }
+    
+    /// Store chunk with tiered storage awareness
+    pub async fn store_chunk_tiered(&self, chunk: &Chunk) -> Result<()> {
+        // Store to primary storage first
+        self.primary_storage.store_chunk(chunk).await?;
+        
+        // If tiered storage is enabled, record access and classify
+        if let Some(ref tiered_manager) = self.tiered_storage_manager {
+            // Record the chunk access
+            tiered_manager.record_chunk_access(chunk.id()).await?;
+            
+            // Classify the chunk and potentially schedule movement
+            if let Some(ref movement_engine) = self.movement_engine {
+                if let Ok(optimal_tier) = tiered_manager.get_optimal_tier(chunk.id()).await {
+                    if let Ok(Some(target_tier)) = tiered_manager.should_move_chunk(chunk.id()).await {
+                        movement_engine.schedule_movement(
+                            chunk.id(),
+                            target_tier,
+                            crate::tier_movement::MovementReason::AutomaticAccess
+                        ).await?;
+                    }
+                }
+            }
+        }
+        
+        Ok(())
+    }
+    
+    /// Retrieve chunk with tiered storage awareness
+    pub async fn get_chunk_tiered(&self, chunk_id: ChunkId, version: ChunkVersion) -> Result<Chunk> {
+        // If tiered storage is enabled, record access
+        if let Some(ref tiered_manager) = self.tiered_storage_manager {
+            tiered_manager.record_chunk_access(chunk_id).await?;
+        }
+        
+        // Try primary storage first
+        match self.primary_storage.get_chunk(chunk_id, version).await {
+            Ok(chunk) => Ok(chunk),
+            Err(ChunkServerError::ChunkNotFound { .. }) => {
+                // If not found in primary storage, try object backends
+                self.get_chunk_from_object_storage(chunk_id, version).await
+            }
+            Err(e) => Err(e),
+        }
+    }
+    
+    /// Attempt to retrieve chunk from object storage tiers
+    async fn get_chunk_from_object_storage(&self, chunk_id: ChunkId, version: ChunkVersion) -> Result<Chunk> {
+        for (tier, backend) in &self.object_backends {
+            // This is a simplified approach - in practice, we'd need to track
+            // which tier contains which chunks
+            info!("Attempting to retrieve chunk {} v{} from tier {:?}", chunk_id, version, tier);
+            
+            // Generate object metadata (in practice, this would be stored)
+            let object_metadata = crate::object_storage::ChunkObjectMetadata {
+                chunk_id,
+                object_path: format!("chunks/{:016x}_v{:08x}", chunk_id, version),
+                size: 0, // Would be populated from stored metadata
+                uploaded_at: 0,
+                etag: None,
+                checksum: String::new(),
+                encryption: None,
+                lifecycle: crate::tiered_storage::LifecycleMetadata {
+                    storage_class: "STANDARD".to_string(),
+                    transitions: Vec::new(),
+                    expires_at: None,
+                },
+            };
+            
+            match backend.download_chunk(&object_metadata).await {
+                Ok(data) => {
+                    // Reconstruct chunk from downloaded data
+                    let chunk = Chunk::new(
+                        chunk_id,
+                        version,
+                        data,
+                        crate::chunk::ChecksumType::Blake3,
+                        1,
+                    );
+                    
+                    info!("Successfully retrieved chunk {} v{} from tier {:?}", chunk_id, version, tier);
+                    return Ok(chunk);
+                }
+                Err(_) => {
+                    // Continue trying other tiers
+                    continue;
+                }
+            }
+        }
+        
+        Err(ChunkServerError::ChunkNotFound { chunk_id })
+    }
+    
+    /// Get performance metrics including tiered storage stats
+    pub async fn get_comprehensive_stats(&self) -> Result<ComprehensiveStorageStats> {
+        let primary_stats = self.primary_storage.get_stats().await?;
+        let allocation_stats = self.block_allocator.get_free_space_info().await?;
+        
+        let tiered_stats = if let Some(ref tiered_manager) = self.tiered_storage_manager {
+            Some(tiered_manager.get_performance_metrics().await)
+        } else {
+            None
+        };
+        
+        let movement_stats = if let Some(ref movement_engine) = self.movement_engine {
+            Some(movement_engine.get_stats().await)
+        } else {
+            None
+        };
+        
+        Ok(ComprehensiveStorageStats {
+            primary_storage: primary_stats,
+            allocation: allocation_stats,
+            tiered_storage: tiered_stats,
+            movement: movement_stats,
+        })
+    }
+    
+    /// Start tiered storage background services
+    pub async fn start_tiered_storage_services(&self) -> Result<()> {
+        if let Some(ref movement_engine) = self.movement_engine {
+            movement_engine.clone().start().await?;
+            info!("Started tiered storage movement engine");
+        }
+        
+        Ok(())
     }
     
     /// Get the primary storage backend
@@ -706,6 +941,26 @@ impl StorageManager {
     /// Get storage statistics
     pub async fn get_stats(&self) -> Result<StorageStats> {
         self.primary_storage.get_stats().await
+    }
+    
+    /// Allocate storage space for a chunk with workload hint
+    pub async fn allocate_chunk_space(&self, size: u64, hint: WorkloadHint) -> Result<AllocatedBlock> {
+        self.block_allocator.allocate_with_hint(size, hint).await
+    }
+    
+    /// Free previously allocated storage space
+    pub async fn free_chunk_space(&self, block: &AllocatedBlock) -> Result<()> {
+        self.block_allocator.free(block).await
+    }
+    
+    /// Get current allocation strategy name
+    pub async fn get_allocation_strategy(&self) -> String {
+        self.block_allocator.get_current_strategy_name().await
+    }
+    
+    /// Get free space information from the allocator
+    pub async fn get_allocation_stats(&self) -> Result<crate::block_allocator::FreeSpaceInfo> {
+        self.block_allocator.get_free_space_info().await
     }
 }
 

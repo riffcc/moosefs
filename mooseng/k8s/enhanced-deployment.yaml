@@ -1,0 +1,570 @@
+# Enhanced Kubernetes deployment configuration for MooseNG
+# Features:
+# - Production-ready security configurations
+# - Resource management and horizontal pod autoscaling
+# - Network policies for security
+# - Pod disruption budgets for availability
+# - Service mesh ready annotations
+# - Comprehensive monitoring and alerting
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mooseng
+  labels:
+    name: mooseng
+    app.kubernetes.io/name: mooseng
+    app.kubernetes.io/instance: production
+    istio-injection: enabled  # Enable service mesh if available
+  annotations:
+    kubernetes.io/description: "MooseNG distributed filesystem namespace"
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: mooseng
+  namespace: mooseng
+  labels:
+    app.kubernetes.io/name: mooseng
+    app.kubernetes.io/component: service-account
+automountServiceAccountToken: false
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: mooseng
+  name: mooseng-role
+  labels:
+    app.kubernetes.io/name: mooseng
+    app.kubernetes.io/component: rbac
+rules:
+- apiGroups: [""]
+  resources: ["pods", "services", "endpoints"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["apps"]
+  resources: ["statefulsets", "daemonsets", "deployments"]
+  verbs: ["get", "list", "watch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: mooseng-role-binding
+  namespace: mooseng
+  labels:
+    app.kubernetes.io/name: mooseng
+    app.kubernetes.io/component: rbac
+subjects:
+- kind: ServiceAccount
+  name: mooseng
+  namespace: mooseng
+roleRef:
+  kind: Role
+  name: mooseng-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mooseng-master-config
+  namespace: mooseng
+  labels:
+    app.kubernetes.io/name: mooseng
+    app.kubernetes.io/component: config
+data:
+  master.toml: |
+    [server]
+    listen_addr = "0.0.0.0"
+    listen_port = 9421
+    grpc_port = 9422
+    metrics_port = 9423
+    workers = 8
+
+    [data]
+    data_dir = "/var/lib/mooseng/master"
+    metadata_backup_interval = 300
+    metadata_checksum = true
+
+    [raft]
+    node_id = "${MOOSENG_NODE_ID}"
+    cluster_id = "mooseng-k8s-production"
+    peers = "mooseng-master-0.mooseng-master-headless.mooseng.svc.cluster.local:9422,mooseng-master-1.mooseng-master-headless.mooseng.svc.cluster.local:9422,mooseng-master-2.mooseng-master-headless.mooseng.svc.cluster.local:9422"
+    election_timeout_ms = 5000
+    heartbeat_interval_ms = 1000
+    log_compaction_threshold = 10000
+
+    [cache]
+    enable = true
+    size_mb = 2048
+    ttl_seconds = 300
+    hot_threshold = 5
+
+    [logging]
+    level = "info"
+    log_dir = "/var/log/mooseng"
+    file_rotation = true
+    max_file_size_mb = 100
+    max_files = 10
+
+    [monitoring]
+    metrics_enabled = true
+    health_check_interval = 30
+    prometheus_metrics = true
+    opentelemetry_enabled = true
+
+    [storage_classes]
+    [[storage_classes.class]]
+    id = 1
+    name = "default"
+    copies = 3
+    tier = "standard"
+
+    [[storage_classes.class]]
+    id = 2
+    name = "fast"
+    copies = 2
+    tier = "ssd"
+
+    [[storage_classes.class]]
+    id = 3
+    name = "archive"
+    copies = 1
+    erasure_scheme = "8+4"
+    tier = "cold"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mooseng-master-headless
+  namespace: mooseng
+  labels:
+    app.kubernetes.io/name: mooseng
+    app.kubernetes.io/component: master
+spec:
+  type: ClusterIP
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app.kubernetes.io/name: mooseng
+    app.kubernetes.io/component: master
+  ports:
+  - name: server
+    port: 9421
+    targetPort: server
+    protocol: TCP
+  - name: raft
+    port: 9422
+    targetPort: raft
+    protocol: TCP
+  - name: metrics
+    port: 9423
+    targetPort: metrics
+    protocol: TCP
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mooseng-master
+  namespace: mooseng
+  labels:
+    app.kubernetes.io/name: mooseng
+    app.kubernetes.io/component: master-loadbalancer
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9423"
+    prometheus.io/path: "/metrics"
+spec:
+  type: LoadBalancer
+  selector:
+    app.kubernetes.io/name: mooseng
+    app.kubernetes.io/component: master
+  ports:
+  - name: server
+    port: 9421
+    targetPort: server
+    protocol: TCP
+  - name: metrics
+    port: 9423
+    targetPort: metrics
+    protocol: TCP
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 10800
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: mooseng-master-pdb
+  namespace: mooseng
+  labels:
+    app.kubernetes.io/name: mooseng
+    app.kubernetes.io/component: master
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mooseng
+      app.kubernetes.io/component: master
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mooseng-master
+  namespace: mooseng
+  labels:
+    app.kubernetes.io/name: mooseng
+    app.kubernetes.io/component: master
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: "kubernetes"
+spec:
+  serviceName: mooseng-master-headless
+  replicas: 3
+  podManagementPolicy: Parallel
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      partition: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mooseng
+      app.kubernetes.io/component: master
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mooseng
+        app.kubernetes.io/component: master
+        version: v1
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9423"
+        prometheus.io/path: "/metrics"
+        sidecar.istio.io/inject: "true"
+        config.checksum: ${CONFIG_CHECKSUM}
+    spec:
+      serviceAccountName: mooseng
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app.kubernetes.io/component
+                operator: In
+                values:
+                - master
+            topologyKey: kubernetes.io/hostname
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app.kubernetes.io/component
+                  operator: In
+                  values:
+                  - master
+              topologyKey: topology.kubernetes.io/zone
+      nodeSelector:
+        kubernetes.io/arch: amd64
+        mooseng.io/node-type: "master"
+      tolerations:
+      - key: "mooseng.io/master"
+        operator: "Equal"
+        value: "true"
+        effect: "NoSchedule"
+      - key: "node.kubernetes.io/not-ready"
+        operator: "Exists"
+        effect: "NoExecute"
+        tolerationSeconds: 300
+      - key: "node.kubernetes.io/unreachable"
+        operator: "Exists"
+        effect: "NoExecute"
+        tolerationSeconds: 300
+      initContainers:
+      - name: config-setup
+        image: busybox:1.36
+        command:
+        - sh
+        - -c
+        - |
+          export MOOSENG_NODE_ID=${HOSTNAME##*-}
+          envsubst < /etc/mooseng/master.toml > /shared/master.toml
+          echo "Node ID: $MOOSENG_NODE_ID"
+          cat /shared/master.toml
+        env:
+        - name: HOSTNAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        volumeMounts:
+        - name: config
+          mountPath: /etc/mooseng
+        - name: shared-config
+          mountPath: /shared
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          runAsGroup: 1000
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+          limits:
+            cpu: 100m
+            memory: 128Mi
+      containers:
+      - name: master
+        image: mooseng/master:1.0.0
+        imagePullPolicy: IfNotPresent
+        command:
+        - /usr/local/bin/mooseng-master
+        - --config
+        - /shared/master.toml
+        env:
+        - name: RUST_LOG
+          value: "info"
+        - name: MOOSENG_NODE_ID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: RUST_BACKTRACE
+          value: "1"
+        - name: MOOSENG_METRICS_ADDR
+          value: "0.0.0.0:9423"
+        ports:
+        - name: server
+          containerPort: 9421
+          protocol: TCP
+        - name: raft
+          containerPort: 9422
+          protocol: TCP
+        - name: metrics
+          containerPort: 9423
+          protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: metrics
+            scheme: HTTP
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+          successThreshold: 1
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: metrics
+            scheme: HTTP
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+          successThreshold: 1
+        startupProbe:
+          httpGet:
+            path: /startup
+            port: metrics
+            scheme: HTTP
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 30
+          successThreshold: 1
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+            ephemeral-storage: "2Gi"
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"
+            ephemeral-storage: "5Gi"
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/mooseng/master
+        - name: logs
+          mountPath: /var/log/mooseng
+        - name: shared-config
+          mountPath: /shared
+        - name: tmp
+          mountPath: /tmp
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 1000
+          runAsGroup: 1000
+          capabilities:
+            drop:
+            - ALL
+        lifecycle:
+          preStop:
+            exec:
+              command:
+              - /bin/sh
+              - -c
+              - "sleep 15"
+      terminationGracePeriodSeconds: 60
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      volumes:
+      - name: config
+        configMap:
+          name: mooseng-master-config
+          defaultMode: 0644
+      - name: shared-config
+        emptyDir:
+          sizeLimit: 100Mi
+      - name: logs
+        emptyDir:
+          sizeLimit: 1Gi
+      - name: tmp
+        emptyDir:
+          sizeLimit: 500Mi
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+      labels:
+        app.kubernetes.io/name: mooseng
+        app.kubernetes.io/component: master-data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      storageClassName: fast-ssd
+      resources:
+        requests:
+          storage: 50Gi
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: mooseng-master-hpa
+  namespace: mooseng
+  labels:
+    app.kubernetes.io/name: mooseng
+    app.kubernetes.io/component: master-autoscaler
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: StatefulSet
+    name: mooseng-master
+  minReplicas: 3
+  maxReplicas: 5
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 15
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 60
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mooseng-master-netpol
+  namespace: mooseng
+  labels:
+    app.kubernetes.io/name: mooseng
+    app.kubernetes.io/component: master-network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mooseng
+      app.kubernetes.io/component: master
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: mooseng
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: mooseng
+          app.kubernetes.io/component: chunkserver
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: mooseng
+          app.kubernetes.io/component: client
+    ports:
+    - protocol: TCP
+      port: 9421
+    - protocol: TCP
+      port: 9422
+    - protocol: TCP
+      port: 9423
+  - from:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: mooseng
+          app.kubernetes.io/component: master
+    ports:
+    - protocol: TCP
+      port: 9422  # Raft communication
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: mooseng
+          app.kubernetes.io/component: master
+    ports:
+    - protocol: TCP
+      port: 9422
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 53
+    - protocol: UDP
+      port: 53
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443  # HTTPS for external services
+    - protocol: TCP
+      port: 80   # HTTP for health checks

@@ -13,6 +13,7 @@ pub mod optimization;
 pub mod multiregion_optimization;
 pub mod test_runner;
 pub mod block_replication;
+pub mod resilience;
 
 #[cfg(test)]
 pub mod tests;
@@ -34,6 +35,7 @@ pub use multiregion_optimization::{
     TimeoutAdaptationAlgorithm, NetworkConditions
 };
 pub use test_runner::{RaftTestRunner, TestResult, run_raft_testing_and_optimization};
+pub use resilience::{ResilienceManager, PeerHealthStatus, ResilienceStats, CircuitBreakerState};
 
 use anyhow::Result;
 use std::sync::Arc;
@@ -48,6 +50,7 @@ pub struct RaftConsensus {
     safety_checker: Arc<RaftSafetyChecker>,
     membership_manager: Arc<MembershipManager>,
     read_scaling_manager: Arc<RwLock<ReadScalingManager>>,
+    resilience_manager: Arc<ResilienceManager>,
 }
 
 impl RaftConsensus {
@@ -84,9 +87,18 @@ impl RaftConsensus {
         ));
         
         let read_scaling_manager = Arc::new(RwLock::new(ReadScalingManager::new(
-            node_id,
+            node_id.clone(),
             std::time::Duration::from_secs(30), // 30 second lease duration
         )));
+        
+        let resilience_manager = Arc::new(ResilienceManager::new(config.clone()));
+        
+        // Initialize resilience monitoring for cluster members
+        let peer_ids: Vec<NodeId> = config.initial_members.iter()
+            .filter(|id| **id != node_id)
+            .cloned()
+            .collect();
+        resilience_manager.initialize_peers(&peer_ids).await;
         
         Ok(Self {
             node,
@@ -96,6 +108,7 @@ impl RaftConsensus {
             safety_checker,
             membership_manager,
             read_scaling_manager,
+            resilience_manager,
         })
     }
     
@@ -302,5 +315,35 @@ impl RaftConsensus {
             commit_index: node.state.commit_index,
             term: node.current_term(),
         })
+    }
+    
+    /// Get cluster resilience status
+    pub async fn get_resilience_status(&self) -> ResilienceStats {
+        self.resilience_manager.get_resilience_stats().await
+    }
+    
+    /// Check if the cluster is healthy from a resilience perspective
+    pub async fn is_cluster_resilient(&self) -> bool {
+        self.resilience_manager.is_cluster_healthy().await
+    }
+    
+    /// Get health status for all peers
+    pub async fn get_peer_health_status(&self) -> std::collections::HashMap<NodeId, PeerHealthStatus> {
+        self.resilience_manager.get_cluster_health_status().await
+    }
+    
+    /// Detect potential network partitions
+    pub async fn detect_network_partitions(&self) -> Option<Vec<NodeId>> {
+        self.resilience_manager.detect_network_partition().await
+    }
+    
+    /// Record successful communication with a peer (for resilience tracking)
+    pub async fn record_peer_success(&self, peer_id: &NodeId, rtt: std::time::Duration) {
+        self.resilience_manager.record_success(peer_id, rtt).await;
+    }
+    
+    /// Record failed communication with a peer (for resilience tracking)
+    pub async fn record_peer_failure(&self, peer_id: &NodeId, is_timeout: bool) {
+        self.resilience_manager.record_failure(peer_id, is_timeout).await;
     }
 }

@@ -2747,6 +2747,7 @@ dependencies = [
  "prometheus",
  "proptest",
  "prost 0.13.5",
+ "prost-types",
  "rand 0.8.5",
  "serde",
  "serde_bytes",

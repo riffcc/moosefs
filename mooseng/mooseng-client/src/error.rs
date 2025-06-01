@@ -35,6 +35,15 @@ pub enum ClientError {
     
     #[error("Operation not supported: {0}")]
     NotSupported(String),
+    
+    #[error("Timeout occurred")]
+    Timeout,
+    
+    #[error("Operation interrupted")]
+    Interrupted,
+    
+    #[error("Resource temporarily unavailable")]
+    TryAgain,
 }
 
 impl From<Status> for ClientError {
@@ -50,6 +59,9 @@ impl ClientError {
             ClientError::PermissionDenied => libc::EACCES,
             ClientError::InvalidArgument(_) => libc::EINVAL,
             ClientError::NotSupported(_) => libc::ENOSYS,
+            ClientError::Timeout => libc::ETIMEDOUT,
+            ClientError::Interrupted => libc::EINTR,
+            ClientError::TryAgain => libc::EAGAIN,
             ClientError::StatusError(status) => match status {
                 Status::Ok => 0,
                 Status::EPerm => libc::EPERM,
