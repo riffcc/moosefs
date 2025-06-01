@@ -11,7 +11,7 @@ use tokio::sync::{RwLock, mpsc, oneshot};
 use tracing::{debug, error, info};
 
 use mooseng_common::types::{
-    FileAttr, FileType, InodeId, MFS_ROOT_ID, now_micros, FsNode,
+    FileAttr, FileType, InodeId, MFS_ROOT_ID, now_micros, FsNode, FsNodeType, DirStats,
 };
 use crate::{
     cache::{ClientCache, DirEntry, DirListing},
@@ -634,16 +634,37 @@ impl Filesystem for MooseFuse {
                 // Create proper file handle
                 let fs_node = Arc::new(FsNode {
                     inode: ino,
-                    file_type: attr.file_type,
-                    mode: attr.mode,
+                    parent: None,  // Will be updated later if needed
+                    ctime: attr.ctime,
+                    mtime: attr.mtime,
+                    atime: attr.atime,
                     uid: attr.uid,
                     gid: attr.gid,
-                    size: attr.length,
-                    access_time: attr.atime,
-                    modify_time: attr.mtime,
-                    change_time: attr.ctime,
-                    link_count: attr.nlink,
-                    storage_class: attr.storage_class,
+                    mode: attr.mode,
+                    flags: 0,
+                    winattr: 0,
+                    storage_class_id: attr.storage_class.id,
+                    trash_retention: 0,
+                    node_type: match attr.file_type {
+                        FileType::File => FsNodeType::File {
+                            length: attr.length,
+                            chunk_ids: vec![],  // Will be populated later
+                            session_id: None,
+                        },
+                        FileType::Directory => FsNodeType::Directory {
+                            children: vec![],
+                            stats: DirStats::default(),
+                            quota: None,
+                        },
+                        FileType::Symlink => FsNodeType::Symlink {
+                            target: String::new(),  // Will be populated later
+                        },
+                        _ => FsNodeType::File {
+                            length: attr.length,
+                            chunk_ids: vec![],
+                            session_id: None,
+                        },
+                    },
                 });
                 
                 let fh = self.cache.add_open_file(fs_node);

@@ -55,6 +55,12 @@ pub enum ChunkServerError {
     },
 }
 
+impl From<anyhow::Error> for ChunkServerError {
+    fn from(err: anyhow::Error) -> Self {
+        ChunkServerError::Internal(err.to_string())
+    }
+}
+
 impl ChunkServerError {
     /// Convert to MooseFS status code
     pub fn to_status(&self) -> Status {

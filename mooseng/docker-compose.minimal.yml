@@ -1,0 +1,85 @@
+# Minimal MooseNG Docker Compose for testing
+# This uses simplified services to demonstrate the architecture
+
+version: '3.8'
+
+services:
+  # Simple master placeholder (using a basic HTTP server for now)
+  master-placeholder:
+    image: nginx:alpine
+    container_name: mooseng-master-placeholder
+    ports:
+      - "9421:80"
+    volumes:
+      - ./docker/mock-services/master-mock-response.json:/usr/share/nginx/html/index.html:ro
+    networks:
+      - mooseng-net
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost/"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+
+  # Simple chunkserver placeholder
+  chunkserver-placeholder:
+    image: nginx:alpine
+    container_name: mooseng-chunkserver-placeholder
+    ports:
+      - "9420:80"
+    volumes:
+      - ./docker/mock-services/chunkserver-mock-response.json:/usr/share/nginx/html/index.html:ro
+    networks:
+      - mooseng-net
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost/"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+
+  # Real MooseNG client (the only component that builds successfully)
+  client-1:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    container_name: mooseng-client-1
+    hostname: client-1
+    environment:
+      - RUST_LOG=info
+      - MOOSENG_CLIENT_ID=client-1
+      - MOOSENG_MASTER_ENDPOINTS=master-placeholder:80
+      - MOOSENG_MOUNT_POINT=/mnt/mooseng
+      - MOOSENG_CACHE_DIR=/var/cache/mooseng
+      - MOOSENG_CACHE_SIZE_MB=512
+    volumes:
+      - ./mnt/client-1:/mnt/mooseng:rshared
+      - client-1-cache:/var/cache/mooseng
+      - /dev/fuse:/dev/fuse
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - apparmor:unconfined
+    devices:
+      - /dev/fuse
+    networks:
+      - mooseng-net
+    depends_on:
+      - master-placeholder
+      - chunkserver-placeholder
+
+  # Dashboard for visualization
+  dashboard:
+    image: nginx:alpine
+    container_name: mooseng-dashboard
+    ports:
+      - "8080:80"
+    volumes:
+      - ./dashboard:/usr/share/nginx/html:ro
+    networks:
+      - mooseng-net
+
+networks:
+  mooseng-net:
+    driver: bridge
+
+volumes:
+  client-1-cache:

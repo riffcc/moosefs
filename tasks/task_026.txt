@@ -1,11 +1,145 @@
 # Task ID: 26
-# Title: Implement background scrubbing and repair
-# Status: pending
-# Dependencies: 3, 7
-# Priority: medium
-# Description: Develop background processes for data scrubbing and automatic repair.
+# Title: Create Docker Compose Demo Setup for MooseNG
+# Status: done
+# Dependencies: 11
+# Priority: high
+# Description: Develop a comprehensive Docker Compose setup demonstrating MooseNG's distributed file system with 3 masters (Raft HA), 3 chunkservers, and 3 FUSE clients, ensuring full functionality and proper health checks.
 # Details:
-Implement periodic background scrubbing of stored data. Develop checksumming mechanisms using the crc32fast = '1.3.2' crate. Implement automatic error detection and correction using erasure coding. Develop prioritization mechanisms for repair operations. Implement throttling to minimize impact on foreground operations.
+1. Create a docker-compose.yml file with services for:
+   - 3 Master servers (master1, master2, master3)
+   - 3 Chunk servers (chunk1, chunk2, chunk3)
+   - 3 FUSE clients (client1, client2, client3)
+   - 1 Metalogger
+
+2. Configure networking:
+   - Create a custom bridge network for inter-container communication
+   - Expose necessary ports for external access (e.g., client mounts)
+
+3. Set up volumes:
+   - For each chunk server, create 4 named volumes for storage directories
+   - Create volumes for master servers to persist metadata
+   - Set up a volume for the metalogger
+
+4. Configure environment variables:
+   - Set unique IDs for each component
+   - Configure Raft cluster settings for master servers
+   - Set storage paths for chunk servers
+   - Configure client connection details
+
+5. Implement health checks:
+   - For master servers: Check Raft leader election status
+   - For chunk servers: Verify storage directories are accessible
+   - For clients: Ensure FUSE mount is active
+   - For metalogger: Check connection to master servers
+
+6. Create startup scripts:
+   - Implement wait-for-it logic to ensure proper startup order
+   - Configure Raft cluster formation for master servers
+
+7. Optimize Dockerfiles:
+   - Use multi-stage builds to minimize image sizes
+   - Implement proper signal handling for graceful shutdown
+
+8. Add logging configuration:
+   - Set up centralized logging (e.g., using fluentd or vector)
+   - Configure log rotation and retention policies
+
+9. Implement resource constraints:
+   - Set appropriate CPU and memory limits for each service
+
+10. Create a demo script:
+    - Automate the process of starting the cluster
+    - Perform basic operations (create, read, write, delete files)
+    - Demonstrate failover scenarios (e.g., master node failure)
+
+11. Document the setup:
+    - Create a README with instructions for running the demo
+    - Include troubleshooting tips and common issues
+
+12. Optimize for performance:
+    - Tune Docker storage driver settings
+    - Configure appropriate ulimits for file descriptors
+
+13. Implement monitoring:
+    - Add Prometheus exporters for each component
+    - Create a Grafana dashboard for visualizing system metrics
+
+14. Develop multiple demo configurations:
+    - Mock demo: Fully working with placeholder containers
+    - Partial demo: With working components
+    - Full demo: With all real components
+
+15. Resolve Rust compilation errors:
+    - Identify and fix compilation issues blocking real component integration
+    - Ensure all components can be properly built and containerized
 
 # Test Strategy:
-Verify detection and correction of injected errors. Test system performance impact during scrubbing and repair operations. Verify correct prioritization of repair operations. Test system behavior with large-scale data corruption scenarios.
+1. Verify Docker Compose file validity:
+   - Run `docker-compose config` to check for syntax errors
+
+2. Build and start the cluster:
+   - Execute `docker-compose up --build -d`
+   - Ensure all containers start without errors
+
+3. Check container health:
+   - Use `docker-compose ps` to verify all containers are in the "Up" state
+   - Inspect logs with `docker-compose logs` for any error messages
+
+4. Verify Raft cluster formation:
+   - Check master server logs to confirm leader election
+   - Use `docker exec` to run Raft status commands on master containers
+
+5. Test chunk server storage:
+   - Verify all 4 storage directories are properly mounted and writable
+   - Perform disk I/O tests to ensure expected performance
+
+6. Validate FUSE client mounts:
+   - Check if FUSE mounts are active in client containers
+   - Perform basic file operations (create, read, write, delete) on each client
+
+7. Test failover scenarios:
+   - Stop the Raft leader and verify automatic failover
+   - Restart a chunk server and ensure proper recovery
+
+8. Perform load testing:
+   - Use tools like fio or iozone to generate file system workload
+   - Monitor system performance and resource usage under load
+
+9. Check logging and monitoring:
+   - Verify centralized logging is capturing events from all components
+   - Access Grafana dashboard to ensure metrics are being collected
+
+10. Test network isolation:
+    - Attempt unauthorized access between containers to verify network security
+
+11. Validate resource constraints:
+    - Use `docker stats` to check CPU and memory usage stays within limits
+
+12. Run demo script:
+    - Execute the automated demo script
+    - Verify all operations complete successfully
+
+13. Test scaling:
+    - Attempt to scale up/down the number of chunk servers
+    - Verify the system adapts correctly to the changed configuration
+
+14. Perform cleanup:
+    - Run `docker-compose down -v` and ensure all resources are properly removed
+    - Restart the cluster and verify it initializes correctly from a clean state
+
+15. Test all demo configurations:
+    - Verify the mock demo correctly simulates the system architecture
+    - Test the partial demo with available working components
+    - Validate the full demo once all components are implemented
+
+16. Verify compilation fixes:
+    - Ensure Rust compilation errors are resolved
+    - Confirm all real components can be built and integrated into the demo
+
+# Subtasks:
+## 1. Fix Rust compilation errors in mooseng-common [done]
+### Dependencies: None
+### Description: Investigate and resolve all compilation errors in the mooseng-common crate to ensure it builds successfully
+### Details:
+
+

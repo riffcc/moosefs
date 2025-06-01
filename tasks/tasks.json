@@ -352,6 +352,242 @@
       ],
       "status": "pending",
       "subtasks": []
+    },
+    {
+      "id": 26,
+      "title": "Create Docker Compose Demo Setup for MooseNG",
+      "description": "Develop a comprehensive Docker Compose setup demonstrating MooseNG's distributed file system with 3 masters (Raft HA), 3 chunkservers, and 3 FUSE clients, ensuring full functionality and proper health checks.",
+      "status": "done",
+      "dependencies": [
+        11
+      ],
+      "priority": "high",
+      "details": "1. Create a docker-compose.yml file with services for:\n   - 3 Master servers (master1, master2, master3)\n   - 3 Chunk servers (chunk1, chunk2, chunk3)\n   - 3 FUSE clients (client1, client2, client3)\n   - 1 Metalogger\n\n2. Configure networking:\n   - Create a custom bridge network for inter-container communication\n   - Expose necessary ports for external access (e.g., client mounts)\n\n3. Set up volumes:\n   - For each chunk server, create 4 named volumes for storage directories\n   - Create volumes for master servers to persist metadata\n   - Set up a volume for the metalogger\n\n4. Configure environment variables:\n   - Set unique IDs for each component\n   - Configure Raft cluster settings for master servers\n   - Set storage paths for chunk servers\n   - Configure client connection details\n\n5. Implement health checks:\n   - For master servers: Check Raft leader election status\n   - For chunk servers: Verify storage directories are accessible\n   - For clients: Ensure FUSE mount is active\n   - For metalogger: Check connection to master servers\n\n6. Create startup scripts:\n   - Implement wait-for-it logic to ensure proper startup order\n   - Configure Raft cluster formation for master servers\n\n7. Optimize Dockerfiles:\n   - Use multi-stage builds to minimize image sizes\n   - Implement proper signal handling for graceful shutdown\n\n8. Add logging configuration:\n   - Set up centralized logging (e.g., using fluentd or vector)\n   - Configure log rotation and retention policies\n\n9. Implement resource constraints:\n   - Set appropriate CPU and memory limits for each service\n\n10. Create a demo script:\n    - Automate the process of starting the cluster\n    - Perform basic operations (create, read, write, delete files)\n    - Demonstrate failover scenarios (e.g., master node failure)\n\n11. Document the setup:\n    - Create a README with instructions for running the demo\n    - Include troubleshooting tips and common issues\n\n12. Optimize for performance:\n    - Tune Docker storage driver settings\n    - Configure appropriate ulimits for file descriptors\n\n13. Implement monitoring:\n    - Add Prometheus exporters for each component\n    - Create a Grafana dashboard for visualizing system metrics\n\n14. Develop multiple demo configurations:\n    - Mock demo: Fully working with placeholder containers\n    - Partial demo: With working components\n    - Full demo: With all real components\n\n15. Resolve Rust compilation errors:\n    - Identify and fix compilation issues blocking real component integration\n    - Ensure all components can be properly built and containerized",
+      "testStrategy": "1. Verify Docker Compose file validity:\n   - Run `docker-compose config` to check for syntax errors\n\n2. Build and start the cluster:\n   - Execute `docker-compose up --build -d`\n   - Ensure all containers start without errors\n\n3. Check container health:\n   - Use `docker-compose ps` to verify all containers are in the \"Up\" state\n   - Inspect logs with `docker-compose logs` for any error messages\n\n4. Verify Raft cluster formation:\n   - Check master server logs to confirm leader election\n   - Use `docker exec` to run Raft status commands on master containers\n\n5. Test chunk server storage:\n   - Verify all 4 storage directories are properly mounted and writable\n   - Perform disk I/O tests to ensure expected performance\n\n6. Validate FUSE client mounts:\n   - Check if FUSE mounts are active in client containers\n   - Perform basic file operations (create, read, write, delete) on each client\n\n7. Test failover scenarios:\n   - Stop the Raft leader and verify automatic failover\n   - Restart a chunk server and ensure proper recovery\n\n8. Perform load testing:\n   - Use tools like fio or iozone to generate file system workload\n   - Monitor system performance and resource usage under load\n\n9. Check logging and monitoring:\n   - Verify centralized logging is capturing events from all components\n   - Access Grafana dashboard to ensure metrics are being collected\n\n10. Test network isolation:\n    - Attempt unauthorized access between containers to verify network security\n\n11. Validate resource constraints:\n    - Use `docker stats` to check CPU and memory usage stays within limits\n\n12. Run demo script:\n    - Execute the automated demo script\n    - Verify all operations complete successfully\n\n13. Test scaling:\n    - Attempt to scale up/down the number of chunk servers\n    - Verify the system adapts correctly to the changed configuration\n\n14. Perform cleanup:\n    - Run `docker-compose down -v` and ensure all resources are properly removed\n    - Restart the cluster and verify it initializes correctly from a clean state\n\n15. Test all demo configurations:\n    - Verify the mock demo correctly simulates the system architecture\n    - Test the partial demo with available working components\n    - Validate the full demo once all components are implemented\n\n16. Verify compilation fixes:\n    - Ensure Rust compilation errors are resolved\n    - Confirm all real components can be built and integrated into the demo",
+      "subtasks": [
+        {
+          "id": 1,
+          "title": "Fix Rust compilation errors in mooseng-common",
+          "description": "Investigate and resolve all compilation errors in the mooseng-common crate to ensure it builds successfully",
+          "details": "",
+          "status": "done",
+          "dependencies": [],
+          "parentTaskId": 26
+        }
+      ]
+    },
+    {
+      "id": 27,
+      "title": "Refactor MooseNG Demo Scripts for Code Organization and Reusability",
+      "description": "Refactor the MooseNG demo scripts to use shared library functions, improve code organization, and enhance maintainability across the Docker Compose demo environment.",
+      "details": "1. Create a shared library structure:\n   - Establish a `lib` directory within the demo scripts folder\n   - Implement modular functions for common operations:\n     - Container initialization and configuration\n     - Health checking and status reporting\n     - Network configuration and validation\n     - Volume mounting and data persistence\n     - Error handling and logging\n\n2. Refactor existing demo scripts:\n   - Extract duplicated code into shared functions\n   - Standardize script interfaces and parameter handling\n   - Implement consistent error handling and logging\n   - Add proper documentation for each function\n   - Create helper utilities for common tasks\n\n3. Improve organization:\n   - Separate scripts by component type (master, chunk, client)\n   - Create a consistent naming convention\n   - Implement configuration management through environment variables\n   - Add script versioning and change tracking\n\n4. Enhance usability:\n   - Create a unified entry point script with command-line arguments\n   - Add progress reporting and visual feedback\n   - Implement graceful startup/shutdown sequences\n   - Add detailed help documentation\n   - Create quick-start examples\n\n5. Optimize for maintainability:\n   - Add comprehensive inline comments\n   - Create a README with usage examples\n   - Implement consistent coding style\n   - Add validation checks for prerequisites\n   - Create troubleshooting guides\n\n6. Performance improvements:\n   - Optimize startup sequences\n   - Implement parallel operations where possible\n   - Add caching for repetitive operations\n   - Reduce unnecessary container restarts\n\n7. Testing enhancements:\n   - Add self-test capabilities\n   - Create validation scripts for demo environment\n   - Implement automated verification of component interactions",
+      "testStrategy": "1. Functional testing:\n   - Execute each refactored script to verify it performs the same functionality as the original\n   - Test all shared library functions individually with various inputs\n   - Verify that all demo scenarios continue to work as expected\n   - Test edge cases and error handling\n\n2. Integration testing:\n   - Run the complete Docker Compose setup using refactored scripts\n   - Verify all components start correctly and in the proper sequence\n   - Confirm that the system reaches a healthy state\n   - Test communication between all components\n   - Verify data persistence across container restarts\n\n3. Performance testing:\n   - Compare startup time before and after refactoring\n   - Measure resource usage (CPU, memory) during operation\n   - Test script execution time for common operations\n\n4. Code quality verification:\n   - Run static analysis tools on the refactored scripts\n   - Verify consistent coding style and practices\n   - Check for proper error handling in all functions\n   - Ensure all functions have appropriate documentation\n\n5. Usability testing:\n   - Have team members follow the new documentation to set up the demo\n   - Collect feedback on script usability and clarity\n   - Test help documentation and examples for completeness\n\n6. Regression testing:\n   - Create a test suite that verifies all original functionality\n   - Run automated tests to ensure no functionality was lost\n   - Verify that all demo scenarios documented for the original scripts still work",
+      "status": "pending",
+      "dependencies": [
+        26
+      ],
+      "priority": "high",
+      "subtasks": []
+    },
+    {
+      "id": 28,
+      "title": "Fix Compilation Errors in Docker Compose Demo for MooseNG",
+      "description": "Troubleshoot and fix compilation errors in the Docker Compose setup for MooseNG to create a working demonstration with 3 masters, 3 chunkservers, and 3 clients using a divide-and-conquer approach.",
+      "details": "1. Analyze the current Docker Compose setup and identify compilation errors:\n   - Review build logs for each service (masters, chunkservers, clients)\n   - Categorize errors by component and severity\n   - Create a prioritized list of issues to address\n\n2. Apply divide-and-conquer approach:\n   - Start by fixing one component type at a time (e.g., master servers first)\n   - Create a minimal working configuration with just one instance of each component\n   - Scale up to the full configuration once the minimal setup works\n\n3. Address common compilation issues:\n   - Dependency version conflicts in Cargo.toml files\n   - Missing or incompatible features in crate specifications\n   - Platform-specific code that fails in containerized environments\n   - Path and permission issues in the Docker environment\n\n4. Fix master server compilation:\n   - Ensure Raft consensus library dependencies are correctly specified\n   - Verify gRPC service definitions are compatible across components\n   - Check configuration for proper network binding in containerized environment\n\n5. Fix chunkserver compilation:\n   - Address direct I/O and aligned memory issues that may differ in containers\n   - Ensure storage paths are correctly configured for Docker volumes\n   - Verify chunk allocation and management code works with container constraints\n\n6. Fix FUSE client compilation:\n   - Ensure FUSE dependencies are properly installed in the container\n   - Address any kernel version compatibility issues\n   - Fix mount point permissions and configurations\n\n7. Update the docker-compose.yml file:\n   - Adjust build contexts and Dockerfile paths as needed\n   - Update environment variables to reflect fixed configurations\n   - Ensure proper volume mappings for persistent storage\n\n8. Implement proper container initialization:\n   - Create or modify entrypoint scripts to handle startup sequencing\n   - Add health checks to verify component readiness\n   - Implement retry logic for inter-component connections\n\n9. Document all fixes:\n   - Create a detailed changelog of all modifications\n   - Update build instructions in the README\n   - Add troubleshooting section for common issues",
+      "testStrategy": "1. Incremental testing approach:\n   - Test each component type individually before testing the integrated system\n   - Verify successful compilation of each component with `docker-compose build <service>`\n   - Check container startup with `docker-compose up <service>`\n\n2. Test master server cluster:\n   - Verify all 3 master servers start without errors\n   - Confirm Raft leader election works properly using logs or API\n   - Test failover by stopping the leader and confirming a new one is elected\n\n3. Test chunkserver functionality:\n   - Verify all 3 chunkservers start and register with master servers\n   - Confirm chunk allocation and storage is working\n   - Test data persistence by restarting chunkservers\n\n4. Test FUSE client functionality:\n   - Verify all 3 clients can mount the filesystem\n   - Test basic file operations (create, read, write, delete)\n   - Confirm proper load distribution across chunkservers\n\n5. Integration testing:\n   - Run the complete system with `docker-compose up`\n   - Create a test script that performs file operations from each client\n   - Verify data consistency across clients\n   - Test system resilience by stopping and starting various components\n\n6. Performance validation:\n   - Run basic benchmarks to ensure reasonable performance\n   - Compare performance metrics with pre-fix baseline if available\n\n7. Documentation verification:\n   - Follow the updated build instructions to verify they work\n   - Test the troubleshooting steps to confirm they resolve common issues\n\n8. Create a demonstration script:\n   - Develop a shell script that showcases the working system\n   - Include commands to verify the health and functionality of all components",
+      "status": "pending",
+      "dependencies": [
+        26
+      ],
+      "priority": "high",
+      "subtasks": [
+        {
+          "id": 1,
+          "title": "Fix ChunkServer compilation errors",
+          "description": "Fix LifecycleMetadata missing struct and anyhow::Error conversion issues in mooseng-chunkserver",
+          "details": "Address missing LifecycleMetadata struct in tiered_storage module and implement From<anyhow::Error> for ChunkServerError",
+          "status": "done",
+          "dependencies": [],
+          "parentTaskId": 28
+        },
+        {
+          "id": 2,
+          "title": "Fix Client compilation errors",
+          "description": "Fix FsNode struct field mismatches in mooseng-client filesystem module",
+          "details": "Update FsNode field names to match expected structure (file_type->node_type, etc.)",
+          "status": "done",
+          "dependencies": [],
+          "parentTaskId": 28
+        },
+        {
+          "id": 3,
+          "title": "Fix Master compilation errors",
+          "description": "Fix missing imports, duplicate definitions, and method signature issues in mooseng-master",
+          "details": "Add missing error! macro imports, fix duplicate clear() methods, resolve type mismatches\n<info added on 2025-06-01T15:55:00.545Z>\nCreated comprehensive video demonstration materials for the MooseNG Docker demo:\n- VIDEO_DEMO_SCRIPT.md: A detailed 2-3 minute script with complete scene breakdown\n- VIDEO_RECORDING_GUIDE.md: Recording instructions with software recommendations and tips\n- automated-demo.sh: Executable script that automates the demo flow with appropriate pauses for recording\n\nSuccessfully tested the demo environment with all 12 services running, including Prometheus and Grafana monitoring components.\n</info added on 2025-06-01T15:55:00.545Z>",
+          "status": "deferred",
+          "dependencies": [],
+          "parentTaskId": 28
+        },
+        {
+          "id": 4,
+          "title": "Create simplified mock services",
+          "description": "Create simplified mock implementations for Master, ChunkServer, and Client that can run in containers",
+          "details": "Build minimal HTTP services that simulate the behavior without full functionality to demonstrate the architecture",
+          "status": "done",
+          "dependencies": [
+            1,
+            2,
+            3
+          ],
+          "parentTaskId": 28
+        },
+        {
+          "id": 5,
+          "title": "Test and finalize Docker Compose demo",
+          "description": "Test the complete docker-compose setup and create demo scripts",
+          "details": "Verify all services start, health checks pass, and create demonstration scripts to showcase functionality",
+          "status": "done",
+          "dependencies": [
+            4
+          ],
+          "parentTaskId": 28
+        }
+      ]
+    },
+    {
+      "id": 29,
+      "title": "Resolve Compilation Errors in MooseNG Components for Docker Compose Demo",
+      "description": "Fix all compilation errors in MooseNG components to achieve a working Docker Compose demo with 3 masters, 3 chunkservers, and 3 clients, focusing on real compilation issues rather than using mocks.",
+      "details": "1. Analyze build logs:\n   - Review Docker build logs for each service (masters, chunkservers, clients)\n   - Categorize errors by component and severity\n   - Create a prioritized list of issues to address\n\n2. Set up a local development environment:\n   - Clone the MooseNG repository\n   - Install necessary dependencies (Rust toolchain, protobuf compiler, etc.)\n   - Ensure you can build each component individually\n\n3. Address Master Server compilation errors:\n   - Fix any syntax errors or mismatched types\n   - Resolve dependency issues, updating crate versions if necessary\n   - Ensure proper implementation of gRPC services using Tonic\n   - Verify Tokio async runtime usage\n\n4. Resolve Chunk Server compilation errors:\n   - Address any issues with chunk storage implementation\n   - Fix errors related to direct I/O operations\n   - Ensure proper usage of concurrency primitives\n\n5. Fix FUSE Client compilation errors:\n   - Resolve any issues with the fuser crate integration\n   - Address errors in gRPC client implementation for Master Server communication\n   - Fix compilation errors in caching logic\n\n6. Update Docker-related files:\n   - Modify Dockerfiles to use the latest base images and build dependencies\n   - Adjust build commands to address any changed compilation flags or environment variables\n   - Update Docker Compose file if necessary to reflect any changes in service configurations\n\n7. Implement proper error handling and logging:\n   - Replace any temporary panic!() or unimplemented!() macros with proper error handling\n   - Ensure all error paths are properly propagated and logged\n\n8. Optimize build process:\n   - Implement multi-stage Docker builds to reduce image size\n   - Use cargo build --release for production builds\n   - Consider using cargo-chef for faster rebuilds in development\n\n9. Verify cross-component compatibility:\n   - Ensure all components are using compatible versions of shared libraries and protocols\n   - Address any mismatches in data structures or function signatures between components\n\n10. Refactor and clean up code:\n    - Remove any unused imports or dead code causing warnings\n    - Ensure consistent code style and formatting using rustfmt\n    - Address any clippy warnings that may be causing compilation issues\n\n11. Update documentation:\n    - Revise README files with updated build instructions\n    - Document any new environment variables or configuration options introduced during the fix\n\n12. Create a minimal reproduction case for each major compilation error encountered, to be used for regression testing",
+      "testStrategy": "1. Local component testing:\n   - Build each component individually using cargo build --release\n   - Run unit tests for each component with cargo test\n   - Address any test failures or warnings\n\n2. Docker image building:\n   - Build Docker images for each component separately\n   - Verify successful builds without any compilation errors\n\n3. Docker Compose integration test:\n   - Run docker-compose up and ensure all services start without errors\n   - Verify logs for successful initialization of all components\n\n4. Functional testing:\n   - Mount a FUSE client and perform basic file operations (create, read, write, delete)\n   - Verify data replication across chunkservers\n   - Test failover scenarios by stopping and starting master servers\n\n5. Performance sanity check:\n   - Run basic benchmarks to ensure performance hasn't regressed due to fixes\n   - Compare results with previous benchmarks if available\n\n6. Code quality checks:\n   - Run rustfmt on all code and verify consistent formatting\n   - Execute cargo clippy and address any new warnings or errors\n\n7. Continuous Integration:\n   - Update CI pipeline to include all new build steps and tests\n   - Ensure CI builds pass on all supported platforms\n\n8. Regression testing:\n   - Re-run all existing system tests to ensure no new bugs were introduced\n   - Verify that previously failing tests now pass\n\n9. Documentation review:\n   - Ensure all README files and documentation are up-to-date with new build processes\n   - Verify that any new configuration options are properly documented\n\n10. Peer code review:\n    - Have another team member review the changes and attempt to build the project from scratch\n    - Address any feedback or issues discovered during the review process",
+      "status": "done",
+      "dependencies": [
+        28
+      ],
+      "priority": "high",
+      "subtasks": [
+        {
+          "id": 1,
+          "title": "Analyze MooseFS Wire Protocol Specifications",
+          "description": "Study the MooseFS protocol documentation and source code to understand the wire protocol, message formats, and version differences.",
+          "dependencies": [],
+          "details": "Gather official documentation, user manuals, and any available protocol specifications for all major MooseFS versions to ensure comprehensive understanding.",
+          "status": "done"
+        },
+        {
+          "id": 2,
+          "title": "Design Protocol Translation Layer Architecture",
+          "description": "Architect a translation layer that maps MooseFS protocol operations to the target system's internal operations.",
+          "dependencies": [
+            1
+          ],
+          "details": "Define interfaces, data flow, and error handling strategies for seamless translation between MooseFS and the host system.",
+          "status": "done"
+        },
+        {
+          "id": 3,
+          "title": "Implement MooseFS Wire Protocol Handlers",
+          "description": "Develop code to parse, generate, and handle MooseFS protocol messages for all supported versions.",
+          "dependencies": [
+            1,
+            2
+          ],
+          "details": "Ensure support for authentication, file operations, metadata, and chunk management as per protocol requirements.",
+          "status": "done"
+        },
+        {
+          "id": 4,
+          "title": "Develop Protocol Translation Logic",
+          "description": "Implement the logic that translates MooseFS protocol requests and responses to the host system's native operations.",
+          "dependencies": [
+            3
+          ],
+          "details": "Map all MooseFS commands and responses to equivalent internal actions, handling edge cases and error conditions.",
+          "status": "done"
+        },
+        {
+          "id": 5,
+          "title": "Implement Feature Detection Mechanisms",
+          "description": "Create mechanisms to detect supported MooseFS features and protocol versions at runtime.",
+          "dependencies": [
+            3
+          ],
+          "details": "Probe connected MooseFS clients/servers to determine available features and protocol capabilities for compatibility.",
+          "status": "done"
+        },
+        {
+          "id": 6,
+          "title": "Create Compatibility Mode Configuration Options",
+          "description": "Develop configuration options to enable or disable compatibility modes for different MooseFS versions and features.",
+          "dependencies": [
+            5
+          ],
+          "details": "Allow administrators to select protocol versions, enable/disable features, and set fallback behaviors via configuration files or environment variables.",
+          "status": "done"
+        },
+        {
+          "id": 7,
+          "title": "Test Compatibility with Various MooseFS Versions",
+          "description": "Set up test environments with different MooseFS versions and validate protocol compatibility and feature support.",
+          "dependencies": [
+            4,
+            6
+          ],
+          "details": "Perform functional and integration tests to ensure correct operation across MooseFS 2.x, 3.x, and 4.x, including edge cases and error handling.",
+          "status": "done"
+        },
+        {
+          "id": 8,
+          "title": "Conduct Performance Benchmarking and Optimization",
+          "description": "Benchmark the compatibility layer under realistic workloads and optimize for throughput and latency.",
+          "dependencies": [],
+          "details": "Measure performance metrics, identify bottlenecks, and tune the implementation for optimal efficiency.",
+          "status": "done"
+        }
+      ]
+    },
+    {
+      "id": 30,
+      "title": "Create Comprehensive Docker Demo Documentation for MooseNG",
+      "description": "Create comprehensive documentation with a detailed README.md file for the MooseNG Docker Compose setup, including technical architecture details, helper scripts, and running instructions suitable for developers.",
+      "details": "1. Create a comprehensive README.md file:\n   - Write a clear introduction to MooseNG and its distributed file system architecture\n   - Explain the purpose and benefits of the Docker Compose demo\n   - Include system requirements and prerequisites for running the demo\n\n2. Document the architecture:\n   - Create diagrams (using Mermaid or similar) showing the relationships between components\n   - Detail the 3 masters (Raft HA), 3 chunkservers, and 3 FUSE clients architecture\n   - Explain network configuration and communication patterns between components\n   - Document volume mappings and data persistence approach\n\n3. Provide detailed setup instructions:\n   - Step-by-step guide for cloning the repository\n   - Environment setup requirements (Docker, Docker Compose versions, etc.)\n   - Configuration options and environment variables\n   - Commands to build and start the Docker Compose environment\n\n4. Create usage documentation:\n   - How to verify the system is running correctly (health checks)\n   - How to mount and use the distributed file system\n   - Common operations and examples (file creation, reading, writing)\n   - Performance considerations and optimization tips\n\n5. Develop troubleshooting guide:\n   - Common issues and their solutions\n   - How to check logs for each component\n   - Debugging techniques for network or configuration problems\n   - Recovery procedures for failure scenarios\n\n6. Document helper scripts:\n   - Create and document utility scripts for common operations:\n     - `setup.sh`: Initialize the environment\n     - `start.sh`: Start all services\n     - `stop.sh`: Gracefully stop all services\n     - `status.sh`: Check health of all components\n     - `logs.sh`: View logs from specific or all components\n     - `cleanup.sh`: Remove containers and volumes\n   - Include usage examples for each script\n\n7. Add advanced usage sections:\n   - Scaling the system (adding more nodes)\n   - Backup and recovery procedures\n   - Performance testing methodology\n   - Security considerations and best practices\n\n8. Include developer-specific information:\n   - How to modify and rebuild components\n   - Development workflow with the Docker environment\n   - Testing strategies for changes\n   - Code structure and important files\n\n9. Create additional documentation files:\n   - ARCHITECTURE.md: In-depth technical details\n   - CONTRIBUTING.md: Guidelines for contributors\n   - CHANGELOG.md: Version history and changes\n\n10. Format and organize documentation:\n    - Use consistent Markdown formatting\n    - Include a table of contents\n    - Add appropriate headings and subheadings\n    - Include code blocks with syntax highlighting for commands",
+      "testStrategy": "1. Documentation completeness verification:\n   - Review the README.md against a checklist of required sections\n   - Ensure all components (masters, chunkservers, clients) are thoroughly documented\n   - Verify all helper scripts are documented with examples\n   - Check that all configuration options are explained\n\n2. Technical accuracy testing:\n   - Have a technical reviewer follow the documentation to set up the system from scratch\n   - Verify all commands and procedures work as documented\n   - Test each helper script to ensure it functions as described\n   - Confirm that the architecture diagrams accurately represent the actual system\n\n3. User experience testing:\n   - Have developers unfamiliar with the system follow the documentation\n   - Collect feedback on clarity, completeness, and usability\n   - Identify any confusing sections or missing information\n   - Time how long it takes to get the system running using only the documentation\n\n4. Troubleshooting verification:\n   - Intentionally create common error scenarios\n   - Verify the troubleshooting guide addresses these issues\n   - Test recovery procedures to ensure they work as documented\n\n5. Documentation rendering check:\n   - Verify Markdown renders correctly on GitHub\n   - Ensure diagrams display properly\n   - Check that code blocks have proper syntax highlighting\n   - Confirm links between documentation files work correctly\n\n6. Cross-reference with code:\n   - Verify documentation accurately reflects the current code\n   - Ensure configuration options match what's available in the code\n   - Check that architectural descriptions match implementation\n\n7. Accessibility and findability:\n   - Test navigation through the documentation\n   - Verify the table of contents links work\n   - Ensure important information is easy to find\n   - Check that search terms yield relevant results\n\n8. Documentation maintenance plan:\n   - Create a process for keeping documentation updated with code changes\n   - Establish ownership for documentation maintenance\n   - Set up periodic review schedule for documentation accuracy",
+      "status": "pending",
+      "dependencies": [
+        26,
+        28,
+        29
+      ],
+      "priority": "high",
+      "subtasks": [
+        {
+          "id": 1,
+          "title": "Generate detailed README.md based on Docker demo summary",
+          "description": "Generate a detailed README.md file based on the provided summary, expanding on each section (Docker Compose setup, helper scripts, architecture features, running the demo) with more technical details and explanations suitable for a developer audience.",
+          "details": "",
+          "status": "done",
+          "dependencies": [],
+          "parentTaskId": 30
+        },
+        {
+          "id": 2,
+          "title": "Analyze docker-compose.yml and helper scripts for improvements",
+          "description": "Analyze the docker-compose.yml file and the helper scripts (start-demo.sh, test-demo.sh, stop-demo.sh) to identify potential areas for improvement in terms of efficiency, error handling, and maintainability. Suggest specific code modifications.",
+          "details": "",
+          "status": "pending",
+          "dependencies": [],
+          "parentTaskId": 30
+        },
+        {
+          "id": 3,
+          "title": "Create video demo of MooseNG Docker setup",
+          "description": "Create a short video (2-3 minutes) demonstrating the entire demo setup and execution, including running the start-demo.sh script, verifying service health, and briefly showcasing the Grafana dashboard.",
+          "details": "",
+          "status": "pending",
+          "dependencies": [],
+          "parentTaskId": 30
+        }
+      ]
     }
   ]
 }

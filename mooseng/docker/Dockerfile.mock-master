@@ -1,0 +1,23 @@
+FROM python:3.11-alpine
+
+WORKDIR /app
+
+# Install dependencies
+COPY mock-services/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy mock service
+COPY mock-services/master-mock.py .
+
+# Make executable
+RUN chmod +x master-mock.py
+
+# Expose ports
+EXPOSE 9421 9422 9423 9424 9430
+
+# Health check
+HEALTHCHECK --interval=10s --timeout=5s --retries=3 \
+    CMD wget -q -O- http://localhost:9421/health || exit 1
+
+# Run with gunicorn for production-like behavior
+CMD ["gunicorn", "--bind", "0.0.0.0:9421", "--workers", "2", "--threads", "4", "master-mock:app"]

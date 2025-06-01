@@ -1,0 +1,1 @@
+Please work on MooseNG. Get a single `docker-compose.yml` demo going with 3 chunkservers, 3 masters, 3 clients. Divide and conquer.

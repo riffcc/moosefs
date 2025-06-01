@@ -770,19 +770,22 @@ impl StorageManager {
             "us-west-2".to_string(),
             100 * 1024 * 1024 * 1024, // 100GB cold tier
         );
+        let cold_object_storage = cold_config.object_storage.clone();
         tiered_storage_manager.add_tier_config(cold_config).await?;
         
         // Create movement engine
         let movement_engine = Arc::new(DataMovementEngine::new(tiered_storage_manager.clone()));
         
         // Create object storage backends for cold and archive tiers
-        let memory_backend = Arc::new(
-            ObjectStorageBackend::new(
-                StorageProvider::Memory,
-                cold_config.object_storage.clone().unwrap()
-            ).await?
-        );
-        self.object_backends.insert(StorageTier::Cold, memory_backend);
+        if let Some(object_storage_config) = cold_object_storage {
+            let memory_backend = Arc::new(
+                ObjectStorageBackend::new(
+                    StorageProvider::Memory,
+                    object_storage_config
+                ).await?
+            );
+            self.object_backends.insert(StorageTier::Cold, memory_backend);
+        }
         
         self.tiered_storage_manager = Some(tiered_storage_manager);
         self.movement_engine = Some(movement_engine);
@@ -867,7 +870,7 @@ impl StorageManager {
                 etag: None,
                 checksum: String::new(),
                 encryption: None,
-                lifecycle: crate::tiered_storage::LifecycleMetadata {
+                lifecycle: crate::object_storage::LifecycleMetadata {
                     storage_class: "STANDARD".to_string(),
                     transitions: Vec::new(),
                     expires_at: None,

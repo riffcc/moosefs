@@ -1,0 +1,501 @@
+# MooseNG Docker Compose - Improved Version with YAML Anchors and Better Organization
+# 3 Masters (with Raft consensus), 3 Chunkservers, 3 Clients
+
+version: '3.8'
+
+# Common configurations using YAML anchors
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+    labels: "service,component"
+
+x-master-common: &master-common
+  build:
+    context: .
+    dockerfile: docker/Dockerfile.mock-master
+  environment: &master-env
+    NODE_ROLE: master
+    CLUSTER_NODES: ${CLUSTER_NODES:-master-1:9421,master-2:9421,master-3:9421}
+    CLIENT_PORT: ${MASTER_CLIENT_PORT:-9421}
+    RAFT_PORT: ${MASTER_RAFT_PORT:-9422}
+    METRICS_PORT: ${MASTER_METRICS_PORT:-9423}
+    LOG_LEVEL: ${LOG_LEVEL:-info}
+  networks:
+    - mooseng-net
+  restart: unless-stopped
+  logging: *default-logging
+  healthcheck: &master-healthcheck
+    test: ["CMD", "curl", "-f", "http://localhost:${MASTER_CLIENT_PORT:-9421}/health"]
+    interval: 10s
+    timeout: 5s
+    retries: 3
+    start_period: 10s
+  deploy: &master-resources
+    resources:
+      limits:
+        cpus: '${MASTER_CPU_LIMIT:-2}'
+        memory: ${MASTER_MEMORY_LIMIT:-2G}
+      reservations:
+        cpus: '0.5'
+        memory: 512M
+
+x-chunkserver-common: &chunkserver-common
+  build:
+    context: .
+    dockerfile: docker/Dockerfile.mock-chunkserver
+  environment: &chunkserver-env
+    NODE_ROLE: chunkserver
+    MASTER_ENDPOINTS: ${MASTER_ENDPOINTS:-master-1:9421,master-2:9421,master-3:9421}
+    BIND_PORT: ${CHUNKSERVER_BIND_PORT:-9420}
+    METRICS_PORT: ${CHUNKSERVER_METRICS_PORT:-9425}
+    DATA_DIRS: ${CHUNKSERVER_DATA_DIRS:-/data/disk1,/data/disk2,/data/disk3,/data/disk4}
+    LOG_LEVEL: ${LOG_LEVEL:-info}
+  networks:
+    - mooseng-net
+  restart: unless-stopped
+  logging: *default-logging
+  healthcheck: &chunkserver-healthcheck
+    test: ["CMD", "curl", "-f", "http://localhost:${CHUNKSERVER_BIND_PORT:-9420}/health"]
+    interval: 10s
+    timeout: 5s
+    retries: 3
+    start_period: 20s
+  deploy: &chunkserver-resources
+    resources:
+      limits:
+        cpus: '${CHUNKSERVER_CPU_LIMIT:-4}'
+        memory: ${CHUNKSERVER_MEMORY_LIMIT:-4G}
+      reservations:
+        cpus: '1'
+        memory: 1G
+
+x-client-common: &client-common
+  build:
+    context: .
+    dockerfile: docker/Dockerfile.mock-client
+  environment: &client-env
+    NODE_ROLE: client
+    MASTER_ENDPOINTS: ${MASTER_ENDPOINTS:-master-1:9421,master-2:9421,master-3:9421}
+    MOUNT_POINT: ${CLIENT_MOUNT_POINT:-/mnt/mooseng}
+    METRICS_PORT: ${CLIENT_METRICS_PORT:-9427}
+    LOG_LEVEL: ${LOG_LEVEL:-info}
+    CACHE_SIZE: ${CLIENT_CACHE_SIZE:-1G}
+  privileged: true
+  cap_add:
+    - SYS_ADMIN
+  security_opt:
+    - apparmor:unconfined
+  devices:
+    - /dev/fuse
+  networks:
+    - mooseng-net
+  restart: unless-stopped
+  logging: *default-logging
+  deploy: &client-resources
+    resources:
+      limits:
+        cpus: '${CLIENT_CPU_LIMIT:-2}'
+        memory: ${CLIENT_MEMORY_LIMIT:-2G}
+      reservations:
+        cpus: '0.5'
+        memory: 512M
+
+services:
+  # Master Servers with Raft Consensus
+  master-1:
+    <<: *master-common
+    container_name: mooseng-master-1
+    hostname: master-1
+    environment:
+      <<: *master-env
+      NODE_ID: 1
+    ports:
+      - "${MASTER1_CLIENT_PORT:-9421}:9421"
+      - "${MASTER1_RAFT_PORT:-9422}:9422"
+      - "${MASTER1_METRICS_PORT:-9423}:9423"
+    volumes:
+      - master-1-data:/data
+    labels:
+      component: "master"
+      instance: "1"
+
+  master-2:
+    <<: *master-common
+    container_name: mooseng-master-2
+    hostname: master-2
+    environment:
+      <<: *master-env
+      NODE_ID: 2
+    ports:
+      - "${MASTER2_CLIENT_PORT:-9431}:9421"
+      - "${MASTER2_RAFT_PORT:-9432}:9422"
+      - "${MASTER2_METRICS_PORT:-9433}:9423"
+    volumes:
+      - master-2-data:/data
+    labels:
+      component: "master"
+      instance: "2"
+
+  master-3:
+    <<: *master-common
+    container_name: mooseng-master-3
+    hostname: master-3
+    environment:
+      <<: *master-env
+      NODE_ID: 3
+    ports:
+      - "${MASTER3_CLIENT_PORT:-9441}:9421"
+      - "${MASTER3_RAFT_PORT:-9442}:9422"
+      - "${MASTER3_METRICS_PORT:-9443}:9423"
+    volumes:
+      - master-3-data:/data
+    labels:
+      component: "master"
+      instance: "3"
+
+  # Chunk Servers
+  chunkserver-1:
+    <<: *chunkserver-common
+    container_name: mooseng-chunkserver-1
+    hostname: chunkserver-1
+    environment:
+      <<: *chunkserver-env
+      NODE_ID: 1
+    ports:
+      - "${CHUNKSERVER1_BIND_PORT:-9420}:9420"
+      - "${CHUNKSERVER1_METRICS_PORT:-9425}:9425"
+    volumes:
+      - chunkserver-1-disk1:/data/disk1
+      - chunkserver-1-disk2:/data/disk2
+      - chunkserver-1-disk3:/data/disk3
+      - chunkserver-1-disk4:/data/disk4
+    depends_on:
+      master-1:
+        condition: service_healthy
+      master-2:
+        condition: service_healthy
+      master-3:
+        condition: service_healthy
+    labels:
+      component: "chunkserver"
+      instance: "1"
+
+  chunkserver-2:
+    <<: *chunkserver-common
+    container_name: mooseng-chunkserver-2
+    hostname: chunkserver-2
+    environment:
+      <<: *chunkserver-env
+      NODE_ID: 2
+    ports:
+      - "${CHUNKSERVER2_BIND_PORT:-9450}:9420"
+      - "${CHUNKSERVER2_METRICS_PORT:-9455}:9425"
+    volumes:
+      - chunkserver-2-disk1:/data/disk1
+      - chunkserver-2-disk2:/data/disk2
+      - chunkserver-2-disk3:/data/disk3
+      - chunkserver-2-disk4:/data/disk4
+    depends_on:
+      master-1:
+        condition: service_healthy
+      master-2:
+        condition: service_healthy
+      master-3:
+        condition: service_healthy
+    labels:
+      component: "chunkserver"
+      instance: "2"
+
+  chunkserver-3:
+    <<: *chunkserver-common
+    container_name: mooseng-chunkserver-3
+    hostname: chunkserver-3
+    environment:
+      <<: *chunkserver-env
+      NODE_ID: 3
+    ports:
+      - "${CHUNKSERVER3_BIND_PORT:-9460}:9420"
+      - "${CHUNKSERVER3_METRICS_PORT:-9465}:9425"
+    volumes:
+      - chunkserver-3-disk1:/data/disk1
+      - chunkserver-3-disk2:/data/disk2
+      - chunkserver-3-disk3:/data/disk3
+      - chunkserver-3-disk4:/data/disk4
+    depends_on:
+      master-1:
+        condition: service_healthy
+      master-2:
+        condition: service_healthy
+      master-3:
+        condition: service_healthy
+    labels:
+      component: "chunkserver"
+      instance: "3"
+
+  # Client Instances
+  client-1:
+    <<: *client-common
+    container_name: mooseng-client-1
+    hostname: client-1
+    environment:
+      <<: *client-env
+      NODE_ID: 1
+    ports:
+      - "${CLIENT1_METRICS_PORT:-9427}:9427"
+    volumes:
+      - ./mnt/client-1:/mnt/mooseng:rshared
+      - client-1-cache:/cache
+    depends_on:
+      chunkserver-1:
+        condition: service_healthy
+      chunkserver-2:
+        condition: service_healthy
+      chunkserver-3:
+        condition: service_healthy
+    labels:
+      component: "client"
+      instance: "1"
+
+  client-2:
+    <<: *client-common
+    container_name: mooseng-client-2
+    hostname: client-2
+    environment:
+      <<: *client-env
+      NODE_ID: 2
+    ports:
+      - "${CLIENT2_METRICS_PORT:-9437}:9427"
+    volumes:
+      - ./mnt/client-2:/mnt/mooseng:rshared
+      - client-2-cache:/cache
+    depends_on:
+      chunkserver-1:
+        condition: service_healthy
+      chunkserver-2:
+        condition: service_healthy
+      chunkserver-3:
+        condition: service_healthy
+    labels:
+      component: "client"
+      instance: "2"
+
+  client-3:
+    <<: *client-common
+    container_name: mooseng-client-3
+    hostname: client-3
+    environment:
+      <<: *client-env
+      NODE_ID: 3
+    ports:
+      - "${CLIENT3_METRICS_PORT:-9447}:9427"
+    volumes:
+      - ./mnt/client-3:/mnt/mooseng:rshared
+      - client-3-cache:/cache
+    depends_on:
+      chunkserver-1:
+        condition: service_healthy
+      chunkserver-2:
+        condition: service_healthy
+      chunkserver-3:
+        condition: service_healthy
+    labels:
+      component: "client"
+      instance: "3"
+
+  # Monitoring Stack
+  prometheus:
+    image: prom/prometheus:${PROMETHEUS_VERSION:-v2.47.0}
+    container_name: mooseng-prometheus
+    hostname: prometheus
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-7d}'
+      - '--web.enable-lifecycle'
+    networks:
+      - mooseng-net
+    restart: unless-stopped
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    labels:
+      component: "monitoring"
+      service: "prometheus"
+
+  grafana:
+    image: grafana/grafana:${GRAFANA_VERSION:-10.1.0}
+    container_name: mooseng-grafana
+    hostname: grafana
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel
+      - GF_LOG_LEVEL=${LOG_LEVEL:-info}
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./docker/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./docker/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    networks:
+      - mooseng-net
+    restart: unless-stopped
+    logging: *default-logging
+    depends_on:
+      - prometheus
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    labels:
+      component: "monitoring"
+      service: "grafana"
+
+  # Web Dashboard
+  dashboard:
+    image: nginx:alpine
+    container_name: mooseng-dashboard
+    hostname: dashboard
+    ports:
+      - "${DASHBOARD_PORT:-8080}:80"
+    volumes:
+      - ./dashboard:/usr/share/nginx/html:ro
+    networks:
+      - mooseng-net
+    restart: unless-stopped
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 128M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+    labels:
+      component: "monitoring"
+      service: "dashboard"
+
+networks:
+  mooseng-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: ${NETWORK_SUBNET:-172.20.0.0/24}
+
+volumes:
+  # Master volumes
+  master-1-data:
+    labels:
+      component: "master"
+      instance: "1"
+  master-2-data:
+    labels:
+      component: "master"
+      instance: "2"
+  master-3-data:
+    labels:
+      component: "master"
+      instance: "3"
+  
+  # Chunkserver volumes (4 disks each)
+  chunkserver-1-disk1:
+    labels:
+      component: "chunkserver"
+      instance: "1"
+      disk: "1"
+  chunkserver-1-disk2:
+    labels:
+      component: "chunkserver"
+      instance: "1"
+      disk: "2"
+  chunkserver-1-disk3:
+    labels:
+      component: "chunkserver"
+      instance: "1"
+      disk: "3"
+  chunkserver-1-disk4:
+    labels:
+      component: "chunkserver"
+      instance: "1"
+      disk: "4"
+  chunkserver-2-disk1:
+    labels:
+      component: "chunkserver"
+      instance: "2"
+      disk: "1"
+  chunkserver-2-disk2:
+    labels:
+      component: "chunkserver"
+      instance: "2"
+      disk: "2"
+  chunkserver-2-disk3:
+    labels:
+      component: "chunkserver"
+      instance: "2"
+      disk: "3"
+  chunkserver-2-disk4:
+    labels:
+      component: "chunkserver"
+      instance: "2"
+      disk: "4"
+  chunkserver-3-disk1:
+    labels:
+      component: "chunkserver"
+      instance: "3"
+      disk: "1"
+  chunkserver-3-disk2:
+    labels:
+      component: "chunkserver"
+      instance: "3"
+      disk: "2"
+  chunkserver-3-disk3:
+    labels:
+      component: "chunkserver"
+      instance: "3"
+      disk: "3"
+  chunkserver-3-disk4:
+    labels:
+      component: "chunkserver"
+      instance: "3"
+      disk: "4"
+  
+  # Client cache volumes
+  client-1-cache:
+    labels:
+      component: "client"
+      instance: "1"
+  client-2-cache:
+    labels:
+      component: "client"
+      instance: "2"
+  client-3-cache:
+    labels:
+      component: "client"
+      instance: "3"
+  
+  # Monitoring volumes
+  prometheus-data:
+    labels:
+      component: "monitoring"
+      service: "prometheus"
+  grafana-data:
+    labels:
+      component: "monitoring"
+      service: "grafana"

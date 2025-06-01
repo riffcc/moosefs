@@ -9,6 +9,7 @@
 
 use std::collections::HashMap;
 use std::future::Future;
+use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -19,7 +20,7 @@ use futures::{Stream, StreamExt};
 use tokio::runtime::{Builder, Runtime};
 use tokio::sync::{broadcast, mpsc, oneshot, watch, Mutex, RwLock, Semaphore};
 use tokio::task::JoinHandle;
-use tokio::time::{interval, sleep, timeout};
+use tokio::time::{interval, sleep, timeout as tokio_timeout};
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
@@ -476,7 +477,7 @@ pub mod timeouts {
     where
         F: Future<Output = T>,
     {
-        timeout(duration, future)
+        tokio_timeout(duration, future)
             .await
             .map_err(|_| MooseNGError::Timeout.into())
     }
@@ -486,7 +487,7 @@ pub mod timeouts {
     where
         F: Future<Output = T>,
     {
-        timeout(duration, future).await.unwrap_or(default)
+        tokio_timeout(duration, future).await.unwrap_or(default)
     }
 }
 
@@ -533,7 +534,7 @@ impl ShutdownCoordinator {
         drop(tasks); // Release the lock
         
         for (name, handle) in task_handles {
-            match timeout(timeout_duration, handle).await {
+            match tokio_timeout(timeout_duration, handle).await {
                 Ok(Ok(Ok(()))) => info!("Task '{}' shutdown successfully", name),
                 Ok(Ok(Err(e))) => {
                     error!("Task '{}' failed during shutdown: {:?}", name, e);
@@ -575,14 +576,26 @@ pub struct MultiRegionScheduler {
 }
 
 /// Async task with region affinity
-#[derive(Debug)]
 pub struct AsyncTask {
     pub id: uuid::Uuid,
     pub preferred_region: Option<String>,
     pub priority: TaskPriority,
     pub max_execution_time: Duration,
     pub retry_policy: Option<RetryConfig>,
-    pub task: Box<dyn Future<Output = Result<()>> + Send + 'static>,
+    pub task: Pin<Box<dyn Future<Output = Result<()>> + Send + 'static>>,
+}
+
+impl std::fmt::Debug for AsyncTask {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AsyncTask")
+            .field("id", &self.id)
+            .field("preferred_region", &self.preferred_region)
+            .field("priority", &self.priority)
+            .field("max_execution_time", &self.max_execution_time)
+            .field("retry_policy", &self.retry_policy)
+            .field("task", &"<Future>")
+            .finish()
+    }
 }
 
 /// Task priority levels
@@ -725,6 +738,9 @@ impl MultiRegionScheduler {
             task.id = uuid::Uuid::new_v4();
         }
 
+        // Save the task ID before moving the task
+        let task_id = task.id;
+
         // Determine optimal region for execution
         let target_region = self.select_optimal_region(&task).await?;
         
@@ -733,7 +749,7 @@ impl MultiRegionScheduler {
         if let Some(queue) = queues.get(&target_region) {
             queue.send(task).await
                 .map_err(|_| MooseNGError::ResourceExhausted("Task queue full".into()))?;
-            Ok(task.id)
+            Ok(task_id)
         } else {
             Err(MooseNGError::InvalidParameter(format!("Unknown region: {}", target_region)).into())
         }
@@ -770,7 +786,7 @@ impl MultiRegionScheduler {
         
         // Apply timeout if specified
         let execution_result = if task.max_execution_time > Duration::ZERO {
-            timeout(task.max_execution_time, task.task).await
+            tokio_timeout(task.max_execution_time, task.task).await
         } else {
             Ok(task.task.await)
         };

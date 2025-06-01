@@ -1,0 +1,26 @@
+FROM python:3.11-alpine
+
+WORKDIR /app
+
+# Install dependencies
+COPY mock-services/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy mock service
+COPY mock-services/chunkserver-mock.py .
+
+# Make executable
+RUN chmod +x chunkserver-mock.py
+
+# Create data directories
+RUN mkdir -p /data1 /data2 /data3 /data4
+
+# Expose ports
+EXPOSE 9420 9425 9429
+
+# Health check
+HEALTHCHECK --interval=10s --timeout=5s --retries=3 \
+    CMD wget -q -O- http://localhost:9420/health || exit 1
+
+# Run with gunicorn
+CMD ["gunicorn", "--bind", "0.0.0.0:9420", "--workers", "2", "--threads", "4", "chunkserver-mock:app"]

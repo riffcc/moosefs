@@ -1,0 +1,63 @@
+MOOSENG DOCKER COMPOSE DEMO PROJECT
+
+OBJECTIVE:
+Create a comprehensive Docker Compose demo setup for MooseNG distributed file system with 3 masters, 3 chunkservers, and 3 clients in a fully functional configuration.
+
+REQUIREMENTS:
+
+1. DOCKER INFRASTRUCTURE
+   - Single docker-compose.yml file in mooseng directory
+   - All services properly networked and communicating
+   - Health checks for all services
+   - Volume management for persistent data
+   - Environment variable configuration
+
+2. MASTER SERVERS (3 instances)
+   - Master server with Raft consensus for HA
+   - Port mapping for gRPC and HTTP endpoints
+   - Shared metadata volume for state persistence
+   - Leader election and failover support
+   - Prometheus metrics exposure
+
+3. CHUNKSERVERS (3 instances)
+   - Each with dedicated storage volumes
+   - Automatic registration with masters
+   - Health monitoring and reporting
+   - Tiered storage support configuration
+   - Network optimization for data transfer
+
+4. CLIENTS (3 instances)
+   - FUSE mount capabilities
+   - Different mount points for each client
+   - Read/write test capabilities
+   - Performance monitoring integration
+   - CLI tool access
+
+5. MONITORING & OBSERVABILITY
+   - Prometheus integration for metrics
+   - Grafana dashboards for visualization
+   - Health check endpoints
+   - Log aggregation setup
+   - Performance metrics collection
+
+6. DEMO FEATURES
+   - Automated startup sequence
+   - Test data generation scripts
+   - Performance benchmarking setup
+   - Failure simulation capabilities
+   - Easy teardown and cleanup
+
+TECHNICAL CONSTRAINTS:
+- Use existing Rust codebase
+- Leverage existing Docker configurations where possible
+- Ensure compatibility with existing MooseFS protocol
+- Minimize resource usage for demo purposes
+- Support both development and demo modes
+
+SUCCESS CRITERIA:
+- All services start successfully with docker-compose up
+- Files can be written to one client and read from others
+- Master failover works correctly
+- Chunk replication functions properly
+- Monitoring dashboards show real-time metrics
+- Demo can run on a single machine with reasonable resources

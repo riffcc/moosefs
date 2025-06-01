@@ -25,7 +25,7 @@ pub use networking::{
 };
 pub use health::{
     HealthMonitor, HealthChecker, BasicHealthChecker, HealthCheckConfig,
-    HealthStatus, HealthCheckResult, SelfHealingAction, HealthAlert,
+    HealthCheckResult, SelfHealingAction, HealthAlert,
 };
 pub use compression::{
     CompressionEngine, CompressionConfig, CompressionAlgorithm, CompressionLevel,

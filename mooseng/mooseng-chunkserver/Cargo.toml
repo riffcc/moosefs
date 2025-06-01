@@ -14,6 +14,10 @@ mooseng-protocol = { path = "../mooseng-protocol" }
 tokio = { workspace = true, features = ["full"] }
 async-trait = { workspace = true }
 
+# Web framework for minimal server
+axum = "0.6"
+md5 = "0.7"
+
 # gRPC
 tonic = { workspace = true }
 prost = { workspace = true }
@@ -78,3 +82,7 @@ proptest = { workspace = true }
 
 [[bin]]
 name = "mooseng-chunkserver"
+
+[[bin]]
+name = "minimal-chunkserver"
+path = "src/bin/minimal-chunkserver.rs"

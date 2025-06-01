@@ -266,6 +266,18 @@ pub struct PredictedAccess {
     pub confidence: f64,
 }
 
+// Re-export LifecycleMetadata from object_storage module
+pub use crate::object_storage::LifecycleMetadata;
+
+/// Lifecycle transition rule
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LifecycleTransition {
+    /// Days after creation to transition
+    pub days: u32,
+    /// Target storage class
+    pub storage_class: String,
+}
+
 /// Tiered storage manager responsible for data classification and movement
 #[derive(Debug)]
 pub struct TieredStorageManager {

@@ -70,6 +70,12 @@ pub enum MooseNGError {
     #[error("Component not found: {0}")]
     ComponentNotFound(String),
 
+    #[error("Invalid parameter: {0}")]
+    InvalidParameter(String),
+
+    #[error("Internal error: {0}")]
+    Internal(String),
+
     #[error("Other error: {0}")]
     Other(String),
 }

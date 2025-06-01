@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{RwLock, broadcast};
 use tokio::time::{interval, timeout};
-use tracing::{debug, info, warn};
+use tracing::{debug, info, warn, error};
 
 use crate::raft::{
     node::RaftNode,

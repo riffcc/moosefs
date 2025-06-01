@@ -760,7 +760,7 @@ impl BenchmarkSummary {
                  self.config.chunk_count,
                  self.config.chunk_size,
                  self.config.iterations);
-        println!("Total benchmark time: {:?}\n", self.total_duration);
+        println!("Total benchmark time: {} μs\n", self.total_duration_micros);
 
         // Group results by operation type
         let mut operations: HashMap<String, Vec<&BenchmarkResult>> = HashMap::new();

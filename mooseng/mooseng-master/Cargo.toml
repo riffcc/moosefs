@@ -15,6 +15,10 @@ tokio = { workspace = true, features = ["full"] }
 async-stream = "0.3"
 async-trait = "0.1"
 
+# Web framework for minimal server
+axum = "0.6"
+tower-http = { version = "0.4", features = ["cors"] }
+
 # gRPC
 tonic = { workspace = true }
 prost = { workspace = true }
@@ -68,6 +72,10 @@ fastrand = "2.0"
 
 [[bin]]
 name = "mooseng-master"
+
+[[bin]]
+name = "minimal-master"
+path = "src/bin/minimal-master.rs"
 
 [[bench]]
 name = "raft_benchmarks"

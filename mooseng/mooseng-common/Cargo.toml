@@ -63,6 +63,9 @@ indexmap = { workspace = true }
 # Bit manipulation
 bitvec = { workspace = true }
 
+# System info
+num_cpus = "1.16"
+
 [dev-dependencies]
 criterion = { workspace = true }
 proptest = { workspace = true }

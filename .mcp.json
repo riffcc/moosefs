@@ -21,7 +21,7 @@
       "url": "https://mcp.deepwiki.com/sse"
     },
     "veda": {
-      "command": "veda-mcp-server"
+      "command": "veda --mcp-server"
     }
   }
 }

@@ -22,6 +22,7 @@ use std::time::{Duration, SystemTime};
 use tokio::sync::{RwLock, Semaphore};
 use tracing::{debug, info, warn, error, instrument};
 use bytes::Bytes;
+use futures::StreamExt;
 
 use crate::tiered_storage::{
     ObjectStorageConfig, CacheConfig, CredentialsConfig, LifecycleConfig
@@ -419,26 +420,19 @@ impl ObjectStorageBackend {
     
     /// List objects with pagination
     pub async fn list_objects(&self, prefix: Option<&str>) -> Result<Vec<ObjectMeta>> {
-        use futures::stream::StreamExt;
-        
-        let list_stream = if let Some(prefix) = prefix {
-            let path = ObjectPath::from(prefix);
-            self.store.list(Some(&path))
-        } else {
-            self.store.list(None)
-        };
+        let path = prefix.map(ObjectPath::from);
         
         let mut objects = Vec::new();
         
-        futures::pin_mut!(list_stream);
-        while let Some(result) = list_stream.next().await {
-            match result {
-                Ok(object_meta) => objects.push(object_meta),
-                Err(e) => {
-                    error!("Error listing objects: {}", e);
-                    return Err(anyhow!("List failed: {}", e));
-                }
-            }
+        // Use the list_with_delimiter method which returns a ListResult
+        let result = self.store.list_with_delimiter(path.as_ref()).await?;
+        
+        // Add objects from the result
+        objects.extend(result.objects);
+        
+        // Handle common prefixes if needed
+        for prefix in result.common_prefixes {
+            debug!("Found common prefix: {:?}", prefix);
         }
         
         Ok(objects)

@@ -31,10 +31,10 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "mfsmaster", "-t"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   # Chunkserver 1 with 4 storage folders
   chunkserver-1:
@@ -69,13 +69,14 @@ services:
       - moosefs-net
     restart: unless-stopped
     depends_on:
-      - master
+      master:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "mfschunkserver", "-t"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 15s
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   # Chunkserver 2 with 4 storage folders
   chunkserver-2:
@@ -110,13 +111,14 @@ services:
       - moosefs-net
     restart: unless-stopped
     depends_on:
-      - master
+      master:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "mfschunkserver", "-t"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 15s
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   # Chunkserver 3 with 4 storage folders
   chunkserver-3:
@@ -151,13 +153,14 @@ services:
       - moosefs-net
     restart: unless-stopped
     depends_on:
-      - master
+      master:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "mfschunkserver", "-t"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 15s
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   # Metalogger for metadata backup
   metalogger:
@@ -183,13 +186,14 @@ services:
       - moosefs-net
     restart: unless-stopped
     depends_on:
-      - master
+      master:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "mfsmetalogger", "-t"]
-      interval: 60s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
   # CGI Server for web interface
   cgiserver:
@@ -215,13 +219,14 @@ services:
       - moosefs-net
     restart: unless-stopped
     depends_on:
-      - master
+      master:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9425/mfs.cgi"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 15s
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   # Client example for mounting filesystem
   client:
@@ -244,10 +249,10 @@ services:
       - moosefs-net
     restart: unless-stopped
     depends_on:
-      - master
-      - chunkserver-1
-      - chunkserver-2
-      - chunkserver-3
+      master:
+        condition: service_healthy
+      chunkserver-1:
+        condition: service_healthy
     privileged: true
     devices:
       - /dev/fuse:/dev/fuse

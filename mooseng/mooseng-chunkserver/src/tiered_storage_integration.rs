@@ -171,7 +171,7 @@ impl TieredStorageIntegrationTest {
     }
     
     /// Test data classification functionality
-    async fn test_data_classification(&self) -> Result<()> {
+    pub async fn test_data_classification(&self) -> Result<()> {
         info!("Testing data classification");
         
         // Simulate different access patterns
@@ -261,7 +261,7 @@ impl TieredStorageIntegrationTest {
     }
     
     /// Test object storage operations
-    async fn test_object_storage(&self) -> Result<()> {
+    pub async fn test_object_storage(&self) -> Result<()> {
         info!("Testing object storage operations");
         
         for (i, backend) in self.object_backends.iter().enumerate() {
@@ -301,7 +301,7 @@ impl TieredStorageIntegrationTest {
     }
     
     /// Test end-to-end workflow
-    async fn test_end_to_end_workflow(&self) -> Result<()> {
+    pub async fn test_end_to_end_workflow(&self) -> Result<()> {
         info!("Testing end-to-end workflow");
         
         // Simulate a typical data lifecycle

@@ -1,0 +1,239 @@
+version: '3.8'
+
+services:
+  # Mock demo using basic images to demonstrate the architecture
+  # This will be replaced with real MooseNG components once they compile
+  
+  # Mock Master servers (using Redis as placeholder)
+  master-1:
+    image: redis:7-alpine
+    container_name: mooseng-mock-master-1
+    hostname: master-1
+    command: redis-server --port 9421
+    ports:
+      - "9421:9421"
+    networks:
+      - mooseng-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "9421", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  master-2:
+    image: redis:7-alpine
+    container_name: mooseng-mock-master-2
+    hostname: master-2
+    command: redis-server --port 9421
+    ports:
+      - "9431:9421"
+    networks:
+      - mooseng-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "9421", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  master-3:
+    image: redis:7-alpine
+    container_name: mooseng-mock-master-3
+    hostname: master-3
+    command: redis-server --port 9421
+    ports:
+      - "9441:9421"
+    networks:
+      - mooseng-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "9421", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Mock Chunk servers (using nginx with volumes)
+  chunkserver-1:
+    image: nginx:alpine
+    container_name: mooseng-mock-chunkserver-1
+    hostname: chunkserver-1
+    ports:
+      - "9420:80"
+    volumes:
+      - chunkserver-1-data1:/data1
+      - chunkserver-1-data2:/data2
+      - chunkserver-1-data3:/data3
+      - chunkserver-1-data4:/data4
+    networks:
+      - mooseng-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  chunkserver-2:
+    image: nginx:alpine
+    container_name: mooseng-mock-chunkserver-2
+    hostname: chunkserver-2
+    ports:
+      - "9450:80"
+    volumes:
+      - chunkserver-2-data1:/data1
+      - chunkserver-2-data2:/data2
+      - chunkserver-2-data3:/data3
+      - chunkserver-2-data4:/data4
+    networks:
+      - mooseng-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  chunkserver-3:
+    image: nginx:alpine
+    container_name: mooseng-mock-chunkserver-3
+    hostname: chunkserver-3
+    ports:
+      - "9460:80"
+    volumes:
+      - chunkserver-3-data1:/data1
+      - chunkserver-3-data2:/data2
+      - chunkserver-3-data3:/data3
+      - chunkserver-3-data4:/data4
+    networks:
+      - mooseng-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Mock Client mount points (using alpine with volumes)
+  client-1:
+    image: alpine:latest
+    container_name: mooseng-mock-client-1
+    hostname: client-1
+    command: ["sh", "-c", "mkdir -p /mnt/mooseng && sleep infinity"]
+    volumes:
+      - ./mnt/client-1:/mnt/mooseng:rw
+    networks:
+      - mooseng-net
+    restart: unless-stopped
+
+  client-2:
+    image: alpine:latest
+    container_name: mooseng-mock-client-2
+    hostname: client-2
+    command: ["sh", "-c", "mkdir -p /mnt/mooseng && sleep infinity"]
+    volumes:
+      - ./mnt/client-2:/mnt/mooseng:rw
+    networks:
+      - mooseng-net
+    restart: unless-stopped
+
+  client-3:
+    image: alpine:latest
+    container_name: mooseng-mock-client-3
+    hostname: client-3
+    command: ["sh", "-c", "mkdir -p /mnt/mooseng && sleep infinity"]
+    volumes:
+      - ./mnt/client-3:/mnt/mooseng:rw
+    networks:
+      - mooseng-net
+    restart: unless-stopped
+
+  # CLI container
+  cli:
+    image: alpine:latest
+    container_name: mooseng-mock-cli
+    hostname: cli
+    volumes:
+      - cli-home:/home/mooseng
+      - ./mnt:/mnt:rw
+    networks:
+      - mooseng-net
+    stdin_open: true
+    tty: true
+    command: ["/bin/sh"]
+
+  # Real monitoring components (these work as-is)
+  prometheus:
+    image: prom/prometheus:v2.47.0
+    container_name: mooseng-prometheus
+    hostname: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.enable-lifecycle'
+    networks:
+      - mooseng-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  grafana:
+    image: grafana/grafana:10.1.0
+    container_name: mooseng-grafana
+    hostname: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./docker/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./docker/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    networks:
+      - mooseng-net
+    restart: unless-stopped
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+networks:
+  mooseng-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24
+
+volumes:
+  # Chunk server data volumes
+  chunkserver-1-data1:
+  chunkserver-1-data2:
+  chunkserver-1-data3:
+  chunkserver-1-data4:
+  chunkserver-2-data1:
+  chunkserver-2-data2:
+  chunkserver-2-data3:
+  chunkserver-2-data4:
+  chunkserver-3-data1:
+  chunkserver-3-data2:
+  chunkserver-3-data3:
+  chunkserver-3-data4:
+  
+  # Other volumes
+  cli-home:
+  prometheus-data:
+  grafana-data:

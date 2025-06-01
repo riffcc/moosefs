@@ -1,0 +1,26 @@
+FROM python:3.11-alpine
+
+WORKDIR /app
+
+# Install dependencies
+COPY mock-services/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy mock service
+COPY mock-services/client-mock.py .
+
+# Make executable
+RUN chmod +x client-mock.py
+
+# Create mount point
+RUN mkdir -p /mnt/mooseng
+
+# Expose metrics port
+EXPOSE 9427
+
+# Health check
+HEALTHCHECK --interval=10s --timeout=5s --retries=3 \
+    CMD wget -q -O- http://localhost:9427/health || exit 1
+
+# Run with gunicorn
+CMD ["gunicorn", "--bind", "0.0.0.0:9427", "--workers", "1", "--threads", "2", "client-mock:app"]
