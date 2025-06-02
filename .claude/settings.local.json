@@ -1,0 +1,9 @@
+{
+  "enabledMcpjsonServers": [
+    "playwright",
+    "taskmaster-ai",
+    "deepwiki",
+    "veda"
+  ],
+  "enableAllProjectMcpServers": true
+}
