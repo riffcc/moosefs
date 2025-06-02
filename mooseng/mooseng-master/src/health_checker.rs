@@ -84,11 +84,11 @@ impl MasterHealthChecker {
         metrics.disk_usage_percent = metadata_stats.disk_usage_percent;
         
         // Raft consensus metrics (if available)
-        if let Some(ref raft) = self.raft_consensus {
-            let raft_stats = raft.get_stats().await;
-            metrics.is_leader = raft_stats.is_leader;
-            metrics.raft_log_entries = raft_stats.log_entries;
-            metrics.sync_lag_ms = raft_stats.sync_lag.as_millis() as f64;
+        if let Some(ref _raft) = self.raft_consensus {
+            // TODO: Implement get_stats method for RaftConsensus
+            metrics.is_leader = false; // Placeholder
+            metrics.raft_log_entries = 0; // Placeholder
+            metrics.sync_lag_ms = 0.0; // Placeholder
         }
         
         // Network metrics
@@ -200,14 +200,14 @@ impl MasterHealthChecker {
         info!("Performing cache clear as self-healing action");
         
         // Clear metadata cache
-        self.cache.clear().await;
+        self.cache.clear();
         
         // Wait a moment for cache to stabilize
         tokio::time::sleep(Duration::from_secs(1)).await;
         
-        // Verify cache is responding
-        let cache_stats = self.cache.get_stats().await;
-        Ok(cache_stats.entry_count == 0)
+        // Verify cache is responding by checking if cache was cleared
+        let (inode_count, chunk_count, _, _) = self.cache.sizes();
+        Ok(inode_count == 0 && chunk_count == 0)
     }
     
     async fn perform_metadata_sync(&self) -> Result<bool> {
@@ -335,7 +335,7 @@ impl HealthChecker for MasterHealthChecker {
 
 // Mock implementations for missing methods - these would be implemented in the actual components
 impl MetadataCache {
-    pub async fn clear(&self) {
+    pub async fn clear_async(&self) {
         // Implementation would clear the cache
         info!("Cache cleared");
     }

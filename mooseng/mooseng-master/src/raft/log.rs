@@ -337,17 +337,19 @@ impl RaftLog {
         }
         
         // Use buffered writer for batch operations
-        let mut writer = BufWriter::new(&mut self.log_file);
-        
-        for entry in entries {
-            let serialized = bincode::serialize(entry)?;
-            let entry_size = serialized.len() as u32;
+        {
+            let mut writer = BufWriter::new(&mut self.log_file);
             
-            writer.write_all(&entry_size.to_le_bytes())?;
-            writer.write_all(&serialized)?;
+            for entry in entries {
+                let serialized = bincode::serialize(entry)?;
+                let entry_size = serialized.len() as u32;
+                
+                writer.write_all(&entry_size.to_le_bytes())?;
+                writer.write_all(&serialized)?;
+            }
+            
+            writer.flush()?;
         }
-        
-        writer.flush()?;
         self.log_file.sync_data()?;
         
         Ok(())

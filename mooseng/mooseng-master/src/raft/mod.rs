@@ -47,7 +47,7 @@ pub struct RaftConsensus {
     election_manager: Arc<ElectionManager>,
     replication_manager: Arc<ReplicationManager>,
     snapshot_manager: Arc<SnapshotManager>,
-    safety_checker: Arc<RaftSafetyChecker>,
+    safety_checker: Arc<RwLock<RaftSafetyChecker>>,
     membership_manager: Arc<MembershipManager>,
     read_scaling_manager: Arc<RwLock<ReadScalingManager>>,
     resilience_manager: Arc<ResilienceManager>,
@@ -76,10 +76,10 @@ impl RaftConsensus {
             config.clone(),
         ));
         
-        let safety_checker = Arc::new(RaftSafetyChecker::new(
+        let safety_checker = Arc::new(RwLock::new(RaftSafetyChecker::new(
             node_id.clone(),
             config.clone(),
-        ));
+        )));
         
         let membership_manager = Arc::new(MembershipManager::new(
             node_id.clone(),
@@ -161,13 +161,15 @@ impl RaftConsensus {
     /// Perform comprehensive safety checks
     pub async fn check_safety(&self) -> Result<()> {
         let node = self.node.read().await;
-        self.safety_checker.check_safety_invariants(&node.state, &node.log)
+        let mut safety_checker = self.safety_checker.write().await;
+        safety_checker.check_safety_invariants(&node.state, &node.log)
     }
     
     /// Check if this node can safely start an election
     pub async fn can_start_election(&self) -> Result<bool> {
         let node = self.node.read().await;
-        self.safety_checker.can_start_election(&node.state, &node.log)
+        let safety_checker = self.safety_checker.read().await;
+        safety_checker.can_start_election(&node.state, &node.log)
     }
     
     /// Validate a vote request before processing
@@ -179,7 +181,8 @@ impl RaftConsensus {
         last_log_term: crate::raft::state::Term,
     ) -> Result<bool> {
         let node = self.node.read().await;
-        self.safety_checker.validate_vote_request(
+        let safety_checker = self.safety_checker.read().await;
+        safety_checker.validate_vote_request(
             &node.state,
             &node.log,
             candidate_term,

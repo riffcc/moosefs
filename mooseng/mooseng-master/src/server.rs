@@ -366,7 +366,7 @@ impl MasterServer {
                         let active_sessions = session_manager_health.get_active_session_count().await;
                         
                         // Check Raft leader status
-                        let is_leader = if let Some(ref raft) = raft_consensus_health {
+                        let is_leader: bool = if let Some(ref raft) = raft_consensus_health {
                             raft.is_leader().await
                         } else {
                             true // If HA is disabled, consider this node as leader

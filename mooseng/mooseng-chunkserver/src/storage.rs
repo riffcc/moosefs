@@ -2,8 +2,15 @@ use crate::{
     chunk::{Chunk, ChunkMetadata, ChecksumType},
     config::ChunkServerConfig,
     error::{ChunkServerError, Result},
-    block_allocator::{DynamicBlockAllocator, AllocationStrategy, AllocatedBlock, WorkloadHint},
+    // Import from library public exports
+    AllocationStrategy, DynamicBlockAllocator, AllocatedBlock, FreeSpaceInfo, WorkloadHint,
+    TieredStorageManager, TierConfig, StorageTier,
+    DataMovementEngine, MovementReason, MovementStats,
+    ObjectStorageBackend, StorageProvider, ChunkObjectMetadata,
 };
+// Import directly from modules for types not re-exported
+use crate::tiered_storage::PerformanceMetrics;
+use crate::object_storage::LifecycleMetadata;
 // TODO: Fix zero_copy module import
 // use crate::zero_copy::ZeroCopyTransfer;
 use mooseng_common::types::{ChunkId, ChunkVersion};
@@ -79,9 +86,9 @@ pub struct StorageStats {
 #[derive(Debug, Clone)]
 pub struct ComprehensiveStorageStats {
     pub primary_storage: StorageStats,
-    pub allocation: crate::block_allocator::FreeSpaceInfo,
-    pub tiered_storage: Option<crate::tiered_storage::PerformanceMetrics>,
-    pub movement: Option<crate::tier_movement::MovementStats>,
+    pub allocation: FreeSpaceInfo,
+    pub tiered_storage: Option<PerformanceMetrics>,
+    pub movement: Option<MovementStats>,
 }
 
 /// File-based chunk storage implementation with performance optimizations
@@ -382,7 +389,7 @@ impl FileStorage {
             ChunkServerError::Storage(format!("Failed to get filesystem stats: {}", e))
         })?;
         
-        let free_bytes = stats.blocks_available() * stats.block_size();
+        let free_bytes = stats.blocks_available() as u64 * stats.block_size() as u64;
         Ok(free_bytes)
     }
     
@@ -702,9 +709,9 @@ pub struct StorageManager {
     primary_storage: Arc<dyn ChunkStorage>,
     block_allocator: Arc<DynamicBlockAllocator>,
     // Tiered storage integration
-    tiered_storage_manager: Option<Arc<crate::tiered_storage::TieredStorageManager>>,
-    movement_engine: Option<Arc<crate::tier_movement::DataMovementEngine>>,
-    object_backends: std::collections::HashMap<crate::tiered_storage::StorageTier, Arc<crate::object_storage::ObjectStorageBackend>>,
+    tiered_storage_manager: Option<Arc<TieredStorageManager>>,
+    movement_engine: Option<Arc<DataMovementEngine>>,
+    object_backends: std::collections::HashMap<StorageTier, Arc<ObjectStorageBackend>>,
 }
 
 impl StorageManager {
@@ -724,7 +731,7 @@ impl StorageManager {
     pub async fn new_with_tiered_storage(
         primary_storage: Arc<dyn ChunkStorage>, 
         total_storage_size: u64,
-        tiered_config: Option<crate::tiered_storage::TierConfig>
+        tiered_config: Option<TierConfig>
     ) -> Result<Self> {
         let block_allocator = Arc::new(DynamicBlockAllocator::new(total_storage_size));
         let mut manager = Self { 
@@ -744,9 +751,7 @@ impl StorageManager {
     
     /// Initialize tiered storage components
     pub async fn initialize_tiered_storage(&mut self) -> Result<()> {
-        use crate::tiered_storage::{TieredStorageManager, TierConfig, StorageTier};
-        use crate::tier_movement::DataMovementEngine;
-        use crate::object_storage::{ObjectStorageBackend, StorageProvider};
+        // Types already imported at module level
         use std::path::PathBuf;
         
         // Create tiered storage manager
@@ -800,12 +805,12 @@ impl StorageManager {
     }
     
     /// Get the tiered storage manager
-    pub fn tiered_storage_manager(&self) -> Option<&Arc<crate::tiered_storage::TieredStorageManager>> {
+    pub fn tiered_storage_manager(&self) -> Option<&Arc<TieredStorageManager>> {
         self.tiered_storage_manager.as_ref()
     }
     
     /// Get the movement engine
-    pub fn movement_engine(&self) -> Option<&Arc<crate::tier_movement::DataMovementEngine>> {
+    pub fn movement_engine(&self) -> Option<&Arc<DataMovementEngine>> {
         self.movement_engine.as_ref()
     }
     
@@ -826,7 +831,7 @@ impl StorageManager {
                         movement_engine.schedule_movement(
                             chunk.id(),
                             target_tier,
-                            crate::tier_movement::MovementReason::AutomaticAccess
+                            MovementReason::AutomaticAccess
                         ).await?;
                     }
                 }
@@ -862,7 +867,7 @@ impl StorageManager {
             info!("Attempting to retrieve chunk {} v{} from tier {:?}", chunk_id, version, tier);
             
             // Generate object metadata (in practice, this would be stored)
-            let object_metadata = crate::object_storage::ChunkObjectMetadata {
+            let object_metadata = ChunkObjectMetadata {
                 chunk_id,
                 object_path: format!("chunks/{:016x}_v{:08x}", chunk_id, version),
                 size: 0, // Would be populated from stored metadata
@@ -870,7 +875,7 @@ impl StorageManager {
                 etag: None,
                 checksum: String::new(),
                 encryption: None,
-                lifecycle: crate::object_storage::LifecycleMetadata {
+                lifecycle: LifecycleMetadata {
                     storage_class: "STANDARD".to_string(),
                     transitions: Vec::new(),
                     expires_at: None,
@@ -884,7 +889,7 @@ impl StorageManager {
                         chunk_id,
                         version,
                         data,
-                        crate::chunk::ChecksumType::Blake3,
+                        ChecksumType::Blake3,
                         1,
                     );
                     
@@ -962,7 +967,7 @@ impl StorageManager {
     }
     
     /// Get free space information from the allocator
-    pub async fn get_allocation_stats(&self) -> Result<crate::block_allocator::FreeSpaceInfo> {
+    pub async fn get_allocation_stats(&self) -> Result<FreeSpaceInfo> {
         self.block_allocator.get_free_space_info().await
     }
 }

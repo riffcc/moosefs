@@ -1,4 +1,5 @@
 use anyhow::Result;
+use rand;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{RwLock, broadcast};
@@ -76,17 +77,24 @@ impl ElectionManager {
         let rpc = self.rpc.clone();
         let safety_checker = self.safety_checker.clone();
         let mut shutdown_rx = self.shutdown_tx.subscribe();
-        let timeout_gen = self.election_timeout_generator.as_ref();
         
         // Main election timer task
         tokio::spawn(async move {
             let mut check_interval = interval(Duration::from_millis(50));
             check_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             
+            // Create a simple timeout generator for the task
+            let timeout_gen = || {
+                let min_timeout = config.election_timeout_min_ms;
+                let max_timeout = config.election_timeout_max_ms;
+                let random_timeout = min_timeout + (rand::random::<u64>() % (max_timeout - min_timeout + 1));
+                Duration::from_millis(random_timeout)
+            };
+            
             loop {
                 tokio::select! {
                     _ = check_interval.tick() => {
-                        if let Err(e) = Self::check_election_timeout(&node, &config, &rpc, &safety_checker, timeout_gen).await {
+                        if let Err(e) = Self::check_election_timeout(&node, &config, &rpc, &safety_checker, &timeout_gen).await {
                             warn!("Election timeout check failed: {}", e);
                         }
                     }

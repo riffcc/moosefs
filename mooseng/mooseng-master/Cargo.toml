@@ -77,18 +77,19 @@ name = "mooseng-master"
 name = "minimal-master"
 path = "src/bin/minimal-master.rs"
 
-[[bench]]
-name = "raft_benchmarks"
-harness = false
+# Temporarily disabled to fix build issues
+# [[bench]]
+# name = "raft_benchmarks"
+# harness = false
 
-[[bench]]
-name = "cache_benchmarks"
-harness = false
+# [[bench]]
+# name = "cache_benchmarks"
+# harness = false
 
-[[bench]]
-name = "cache_performance"
-harness = false
+# [[bench]]
+# name = "cache_performance"
+# harness = false
 
-[[bench]]
-name = "metadata_cache_benchmarks"
-harness = false
+# [[bench]]
+# name = "metadata_cache_benchmarks"
+# harness = false

@@ -220,7 +220,7 @@ impl BlockReplicationManager {
         let command = self.block_operation_to_log_command(&request.operation)?;
         
         // Submit to Raft consensus
-        match self.raft.append_entry(command).await {
+        match self.raft.append_entry(command.clone()).await {
             Ok(log_index) => {
                 // Update pending operation with log index
                 let mut pending = self.pending_operations.lock().await;
@@ -430,9 +430,10 @@ impl BlockReplicationManager {
     /// Start the response processor
     async fn start_response_processor(&self) -> Result<()> {
         let pending = self.pending_operations.clone();
-        let mut response_rx = self.response_rx.lock().await.clone();
+        let response_rx = self.response_rx.clone();
         
         tokio::spawn(async move {
+            let mut response_rx = response_rx.lock().await;
             while let Some(response) = response_rx.recv().await {
                 // Find pending operation
                 let mut pending_guard = pending.lock().await;

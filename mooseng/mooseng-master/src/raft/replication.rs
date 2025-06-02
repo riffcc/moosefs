@@ -321,7 +321,7 @@ impl ReplicationManager {
             let peer_state = states_guard.get(peer).ok_or_else(|| anyhow::anyhow!("No state for peer {}", peer))?;
             let adaptive_batch_size = std::cmp::min(
                 peer_state.batch_size,
-                config.max_append_entries.unwrap_or(100)
+                config.max_append_entries.unwrap_or(100) as usize
             );
             drop(states_guard);
             

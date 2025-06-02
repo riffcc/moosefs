@@ -490,7 +490,7 @@ impl FailureManager {
         self.config
             .peer_regions
             .iter()
-            .min_by_key(|peer| (256 - peer.priority, peer.latency_ms))
+            .min_by_key(|peer| (255 - peer.priority, peer.latency_ms))
             .map(|peer| peer.region_id)
             .unwrap_or(1) // Default to region 1
     }

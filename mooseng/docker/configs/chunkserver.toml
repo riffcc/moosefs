@@ -13,7 +13,7 @@ reconnect_interval = ${MOOSENG_RECONNECT_INTERVAL:-5}
 heartbeat_interval = ${MOOSENG_HEARTBEAT_INTERVAL:-10}
 
 [storage]
-data_dirs = "${MOOSENG_DATA_DIRS:-/data1,/data2,/data3}"
+data_dirs = "${MOOSENG_DATA_DIRS:-/data/disk1,/data/disk2,/data/disk3,/data/disk4}"
 chunk_size_kb = ${MOOSENG_CHUNK_SIZE_KB:-64}
 max_chunks_per_dir = ${MOOSENG_MAX_CHUNKS_PER_DIR:-1000000}
 sync_on_write = ${MOOSENG_SYNC_ON_WRITE:-false}

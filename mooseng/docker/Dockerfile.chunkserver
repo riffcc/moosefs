@@ -18,16 +18,35 @@ COPY Cargo.toml Cargo.lock ./
 COPY mooseng-chunkserver/Cargo.toml ./mooseng-chunkserver/
 COPY mooseng-common/Cargo.toml ./mooseng-common/
 COPY mooseng-protocol/Cargo.toml ./mooseng-protocol/
+COPY mooseng-master/Cargo.toml ./mooseng-master/
+COPY mooseng-client/Cargo.toml ./mooseng-client/
+COPY mooseng-metalogger/Cargo.toml ./mooseng-metalogger/
+COPY mooseng-cli/Cargo.toml ./mooseng-cli/
+COPY mooseng-benchmarks/Cargo.toml ./mooseng-benchmarks/
 
-# Copy source code
+# Copy only necessary source code for chunkserver
 COPY mooseng-chunkserver/src ./mooseng-chunkserver/src
 COPY mooseng-common/src ./mooseng-common/src
 COPY mooseng-protocol/src ./mooseng-protocol/src
 COPY mooseng-protocol/proto ./mooseng-protocol/proto
 COPY mooseng-protocol/build.rs ./mooseng-protocol/
 
-# Build the application
-RUN cargo build --release --bin mooseng-chunkserver
+# Create stub source directories for other workspace members to satisfy Cargo
+RUN mkdir -p mooseng-master/src mooseng-client/src mooseng-metalogger/src mooseng-cli/src mooseng-benchmarks/src
+RUN echo "fn main() {}" > mooseng-master/src/main.rs
+RUN echo "fn main() {}" > mooseng-client/src/main.rs  
+RUN echo "fn main() {}" > mooseng-metalogger/src/main.rs
+RUN echo "fn main() {}" > mooseng-cli/src/main.rs
+RUN echo "pub fn bench() {}" > mooseng-benchmarks/src/lib.rs
+
+# Build dependencies only first (for better caching)
+RUN cargo build --release --bin mooseng-chunkserver --no-default-features 2>/dev/null || true
+
+# Build the application with optimizations
+RUN RUSTFLAGS="-C link-arg=-s" cargo build --release --bin mooseng-chunkserver
+
+# Strip binary for minimal size
+RUN strip /app/target/release/mooseng-chunkserver
 
 # Runtime stage
 FROM alpine:3.19
@@ -37,7 +56,8 @@ RUN apk add --no-cache \
     openssl \
     ca-certificates \
     tini \
-    fuse3
+    fuse3 \
+    netcat-openbsd
 
 # Create non-root user
 RUN addgroup -g 1000 mooseng && \
@@ -47,11 +67,11 @@ RUN addgroup -g 1000 mooseng && \
 RUN mkdir -p /var/lib/mooseng/chunks /var/log/mooseng /etc/mooseng && \
     chown -R mooseng:mooseng /var/lib/mooseng /var/log/mooseng /etc/mooseng
 
-# Create data directories
-RUN mkdir -p /data1 /data2 /data3 && \
-    chown -R mooseng:mooseng /data1 /data2 /data3
+# Create data directories (matches docker-compose volume structure)
+RUN mkdir -p /data/disk1 /data/disk2 /data/disk3 /data/disk4 && \
+    chown -R mooseng:mooseng /data
 
-# Copy the built binary
+# Copy the built binary (already stripped)
 COPY --from=builder /app/target/release/mooseng-chunkserver /usr/local/bin/
 
 # Copy configuration templates
@@ -74,7 +94,7 @@ EXPOSE 9420
 # Set environment variables
 ENV RUST_LOG=info
 ENV MOOSENG_CONFIG_PATH=/etc/mooseng/chunkserver.toml
-ENV MOOSENG_DATA_DIRS=/data1,/data2,/data3
+ENV MOOSENG_DATA_DIRS=/data/disk1,/data/disk2,/data/disk3,/data/disk4
 ENV MOOSENG_LOG_DIR=/var/log/mooseng
 
 # Use tini as init system

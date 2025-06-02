@@ -326,11 +326,12 @@ impl MultiregionOptimizedRaft {
     
     /// Cross-region log synchronization
     pub async fn synchronize_cross_region_log(&self, entry: LogEntry) -> Result<()> {
+        let priority = self.determine_sync_priority(&entry).await;
         let cross_region_entry = CrossRegionLogEntry {
             entry,
             source_region: self.multiregion_config.region_id,
             target_regions: self.get_target_regions().await,
-            priority: self.determine_sync_priority(&entry).await,
+            priority,
             timestamp: HLCTimestamp::now(),
             compressed_size: None,
         };

@@ -26,9 +26,16 @@ COPY mooseng-protocol/src ./mooseng-protocol/src
 COPY mooseng-protocol/proto ./mooseng-protocol/proto
 COPY mooseng-protocol/build.rs ./mooseng-protocol/
 
-# Build the application
-RUN cargo build --release --bin mooseng && \
-    cargo build --release --bin mooseng-admin
+# Build dependencies only first (for better caching)
+RUN cargo build --release --bin mooseng --no-default-features 2>/dev/null || true
+RUN cargo build --release --bin mooseng-admin --no-default-features 2>/dev/null || true
+
+# Build the application with optimizations
+RUN RUSTFLAGS="-C link-arg=-s" cargo build --release --bin mooseng && \
+    RUSTFLAGS="-C link-arg=-s" cargo build --release --bin mooseng-admin
+
+# Strip binaries for minimal size
+RUN strip /app/target/release/mooseng /app/target/release/mooseng-admin
 
 # Runtime stage
 FROM alpine:3.19
@@ -48,7 +55,7 @@ RUN addgroup -g 1000 mooseng && \
 RUN mkdir -p /etc/mooseng && \
     chown -R mooseng:mooseng /etc/mooseng
 
-# Copy the built binaries
+# Copy the built binaries (already stripped)
 COPY --from=builder /app/target/release/mooseng /usr/local/bin/
 COPY --from=builder /app/target/release/mooseng-admin /usr/local/bin/
 

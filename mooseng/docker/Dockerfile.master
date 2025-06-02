@@ -18,16 +18,42 @@ COPY Cargo.toml Cargo.lock ./
 COPY mooseng-master/Cargo.toml ./mooseng-master/
 COPY mooseng-common/Cargo.toml ./mooseng-common/
 COPY mooseng-protocol/Cargo.toml ./mooseng-protocol/
+COPY mooseng-chunkserver/Cargo.toml ./mooseng-chunkserver/
+COPY mooseng-client/Cargo.toml ./mooseng-client/
+COPY mooseng-metalogger/Cargo.toml ./mooseng-metalogger/
+COPY mooseng-cli/Cargo.toml ./mooseng-cli/
+COPY mooseng-benchmarks/Cargo.toml ./mooseng-benchmarks/
 
-# Copy source code
+# Copy only necessary source code for master
 COPY mooseng-master/src ./mooseng-master/src
 COPY mooseng-common/src ./mooseng-common/src
 COPY mooseng-protocol/src ./mooseng-protocol/src
 COPY mooseng-protocol/proto ./mooseng-protocol/proto
 COPY mooseng-protocol/build.rs ./mooseng-protocol/
 
-# Build the application
-RUN cargo build --release --bin mooseng-master
+# Create stub source directories for other workspace members to satisfy Cargo
+RUN mkdir -p mooseng-chunkserver/src mooseng-client/src mooseng-metalogger/src mooseng-cli/src mooseng-benchmarks/src
+RUN echo "fn main() {}" > mooseng-chunkserver/src/main.rs
+RUN echo "fn main() {}" > mooseng-client/src/main.rs  
+RUN echo "fn main() {}" > mooseng-metalogger/src/main.rs
+RUN echo "fn main() {}" > mooseng-cli/src/main.rs
+RUN echo "pub fn bench() {}" > mooseng-benchmarks/src/lib.rs
+
+# Create stub benchmark files for master
+RUN mkdir -p mooseng-master/benches
+RUN echo 'use criterion::{criterion_group, criterion_main}; fn dummy() {} criterion_group!(bench, dummy); criterion_main!(bench);' > mooseng-master/benches/raft_benchmarks.rs
+RUN echo 'use criterion::{criterion_group, criterion_main}; fn dummy() {} criterion_group!(bench, dummy); criterion_main!(bench);' > mooseng-master/benches/cache_benchmarks.rs
+RUN echo 'use criterion::{criterion_group, criterion_main}; fn dummy() {} criterion_group!(bench, dummy); criterion_main!(bench);' > mooseng-master/benches/cache_performance.rs
+RUN echo 'use criterion::{criterion_group, criterion_main}; fn dummy() {} criterion_group!(bench, dummy); criterion_main!(bench);' > mooseng-master/benches/metadata_cache_benchmarks.rs
+
+# Build dependencies only first (for better caching)
+RUN cargo build --release -p mooseng-master --bin mooseng-master --no-default-features 2>/dev/null || true
+
+# Build the application with optimizations
+RUN RUSTFLAGS="-C link-arg=-s" cargo build --release -p mooseng-master --bin mooseng-master
+
+# Strip binary for minimal size
+RUN strip /app/target/release/mooseng-master
 
 # Runtime stage
 FROM alpine:3.19
@@ -36,7 +62,8 @@ FROM alpine:3.19
 RUN apk add --no-cache \
     openssl \
     ca-certificates \
-    tini
+    tini \
+    netcat-openbsd
 
 # Create non-root user
 RUN addgroup -g 1000 mooseng && \
@@ -46,7 +73,7 @@ RUN addgroup -g 1000 mooseng && \
 RUN mkdir -p /var/lib/mooseng/master /var/log/mooseng /etc/mooseng && \
     chown -R mooseng:mooseng /var/lib/mooseng /var/log/mooseng /etc/mooseng
 
-# Copy the built binary
+# Copy the built binary (already stripped)
 COPY --from=builder /app/target/release/mooseng-master /usr/local/bin/
 
 # Copy configuration templates

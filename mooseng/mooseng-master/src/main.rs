@@ -8,14 +8,20 @@ use tracing_subscriber::EnvFilter;
 mod server;
 mod metadata;
 mod cache;
+mod cache_enhanced;
+mod cache_configuration;
+mod metadata_cache_manager;
+mod cached_metadata;
 mod filesystem;
 mod chunk_manager;
 mod session;
 mod storage_class;
 mod grpc_services;
-// TODO: Enable when raft module is fixed
-// mod raft;
+mod raft;
 mod multiregion;
+mod health_checker;
+mod block_replication;
+mod topology_discovery;
 
 use server::MasterServer;
 

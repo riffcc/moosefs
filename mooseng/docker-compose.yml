@@ -1,24 +1,24 @@
 # MooseNG Docker Compose - Unified Demo Setup
 # 3 Masters (with Raft consensus), 3 Chunkservers, 3 Clients
 
-version: '3.8'
-
 services:
   # Master Servers with Raft Consensus
   master-1:
     build:
       context: .
-      dockerfile: docker/Dockerfile.mock-master
+      dockerfile: docker/Dockerfile.master
     container_name: mooseng-master-1
     hostname: master-1
     environment:
-      - NODE_ID=1
-      - NODE_ROLE=master
-      - CLUSTER_NODES=master-1:9421,master-2:9421,master-3:9421
-      - CLIENT_PORT=9421
-      - RAFT_PORT=9422
-      - METRICS_PORT=9423
-      - LOG_LEVEL=info
+      - MOOSENG_NODE_ID=master-1
+      - MOOSENG_CLUSTER_ID=mooseng-cluster
+      - MOOSENG_RAFT_PEERS=master-1:9422,master-2:9422,master-3:9422
+      - MOOSENG_LISTEN_PORT=9421
+      - MOOSENG_GRPC_PORT=9422
+      - MOOSENG_METRICS_PORT=9423
+      - MOOSENG_LOG_LEVEL=info
+      - MOOSENG_DATA_DIR=/var/lib/mooseng/master
+      - MOOSENG_LOG_DIR=/var/log/mooseng
     ports:
       - "9421:9421"  # Client API
       - "9422:9422"  # Raft
@@ -29,26 +29,28 @@ services:
       - mooseng-net
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9421/health"]
-      interval: 10s
-      timeout: 5s
+      test: ["CMD", "/usr/local/bin/mooseng-master", "--health-check"]
+      interval: 30s
+      timeout: 10s
       retries: 3
-      start_period: 10s
+      start_period: 30s
 
   master-2:
     build:
       context: .
-      dockerfile: docker/Dockerfile.mock-master
+      dockerfile: docker/Dockerfile.master
     container_name: mooseng-master-2
     hostname: master-2
     environment:
-      - NODE_ID=2
-      - NODE_ROLE=master
-      - CLUSTER_NODES=master-1:9421,master-2:9421,master-3:9421
-      - CLIENT_PORT=9421
-      - RAFT_PORT=9422
-      - METRICS_PORT=9423
-      - LOG_LEVEL=info
+      - MOOSENG_NODE_ID=master-2
+      - MOOSENG_CLUSTER_ID=mooseng-cluster
+      - MOOSENG_RAFT_PEERS=master-1:9422,master-2:9422,master-3:9422
+      - MOOSENG_LISTEN_PORT=9421
+      - MOOSENG_GRPC_PORT=9422
+      - MOOSENG_METRICS_PORT=9423
+      - MOOSENG_LOG_LEVEL=info
+      - MOOSENG_DATA_DIR=/var/lib/mooseng/master
+      - MOOSENG_LOG_DIR=/var/log/mooseng
     ports:
       - "9431:9421"
       - "9432:9422"
@@ -59,26 +61,28 @@ services:
       - mooseng-net
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9421/health"]
-      interval: 10s
-      timeout: 5s
+      test: ["CMD", "/usr/local/bin/mooseng-master", "--health-check"]
+      interval: 30s
+      timeout: 10s
       retries: 3
-      start_period: 10s
+      start_period: 30s
 
   master-3:
     build:
       context: .
-      dockerfile: docker/Dockerfile.mock-master
+      dockerfile: docker/Dockerfile.master
     container_name: mooseng-master-3
     hostname: master-3
     environment:
-      - NODE_ID=3
-      - NODE_ROLE=master
-      - CLUSTER_NODES=master-1:9421,master-2:9421,master-3:9421
-      - CLIENT_PORT=9421
-      - RAFT_PORT=9422
-      - METRICS_PORT=9423
-      - LOG_LEVEL=info
+      - MOOSENG_NODE_ID=master-3
+      - MOOSENG_CLUSTER_ID=mooseng-cluster
+      - MOOSENG_RAFT_PEERS=master-1:9422,master-2:9422,master-3:9422
+      - MOOSENG_LISTEN_PORT=9421
+      - MOOSENG_GRPC_PORT=9422
+      - MOOSENG_METRICS_PORT=9423
+      - MOOSENG_LOG_LEVEL=info
+      - MOOSENG_DATA_DIR=/var/lib/mooseng/master
+      - MOOSENG_LOG_DIR=/var/log/mooseng
     ports:
       - "9441:9421"
       - "9442:9422"
@@ -89,27 +93,27 @@ services:
       - mooseng-net
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9421/health"]
-      interval: 10s
-      timeout: 5s
+      test: ["CMD", "/usr/local/bin/mooseng-master", "--health-check"]
+      interval: 30s
+      timeout: 10s
       retries: 3
-      start_period: 10s
+      start_period: 30s
 
   # Chunk Servers
   chunkserver-1:
     build:
       context: .
-      dockerfile: docker/Dockerfile.mock-chunkserver
+      dockerfile: docker/Dockerfile.chunkserver
     container_name: mooseng-chunkserver-1
     hostname: chunkserver-1
     environment:
-      - NODE_ID=1
-      - NODE_ROLE=chunkserver
-      - MASTER_ENDPOINTS=master-1:9421,master-2:9421,master-3:9421
-      - BIND_PORT=9420
-      - METRICS_PORT=9425
-      - DATA_DIRS=/data/disk1,/data/disk2,/data/disk3,/data/disk4
-      - LOG_LEVEL=info
+      - MOOSENG_SERVER_ID=chunkserver-1
+      - MOOSENG_MASTER_ADDRS=master-1:9421,master-2:9421,master-3:9421
+      - MOOSENG_LISTEN_PORT=9420
+      - MOOSENG_METRICS_PORT=9425
+      - MOOSENG_DATA_DIRS=/data/disk1,/data/disk2,/data/disk3,/data/disk4
+      - MOOSENG_LOG_LEVEL=info
+      - MOOSENG_LOG_DIR=/var/log/mooseng
     ports:
       - "9420:9420"
       - "9425:9425"
@@ -126,25 +130,26 @@ services:
       - master-2
       - master-3
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9420/health"]
-      interval: 10s
-      timeout: 5s
+      test: ["CMD", "/usr/local/bin/mooseng-chunkserver", "--health-check"]
+      interval: 30s
+      timeout: 10s
       retries: 3
+      start_period: 30s
 
   chunkserver-2:
     build:
       context: .
-      dockerfile: docker/Dockerfile.mock-chunkserver
+      dockerfile: docker/Dockerfile.chunkserver
     container_name: mooseng-chunkserver-2
     hostname: chunkserver-2
     environment:
-      - NODE_ID=2
-      - NODE_ROLE=chunkserver
-      - MASTER_ENDPOINTS=master-1:9421,master-2:9421,master-3:9421
-      - BIND_PORT=9420
-      - METRICS_PORT=9425
-      - DATA_DIRS=/data/disk1,/data/disk2,/data/disk3,/data/disk4
-      - LOG_LEVEL=info
+      - MOOSENG_SERVER_ID=chunkserver-2
+      - MOOSENG_MASTER_ADDRS=master-1:9421,master-2:9421,master-3:9421
+      - MOOSENG_LISTEN_PORT=9420
+      - MOOSENG_METRICS_PORT=9425
+      - MOOSENG_DATA_DIRS=/data/disk1,/data/disk2,/data/disk3,/data/disk4
+      - MOOSENG_LOG_LEVEL=info
+      - MOOSENG_LOG_DIR=/var/log/mooseng
     ports:
       - "9450:9420"
       - "9455:9425"
@@ -161,25 +166,26 @@ services:
       - master-2
       - master-3
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9420/health"]
-      interval: 10s
-      timeout: 5s
+      test: ["CMD", "/usr/local/bin/mooseng-chunkserver", "--health-check"]
+      interval: 30s
+      timeout: 10s
       retries: 3
+      start_period: 30s
 
   chunkserver-3:
     build:
       context: .
-      dockerfile: docker/Dockerfile.mock-chunkserver
+      dockerfile: docker/Dockerfile.chunkserver
     container_name: mooseng-chunkserver-3
     hostname: chunkserver-3
     environment:
-      - NODE_ID=3
-      - NODE_ROLE=chunkserver
-      - MASTER_ENDPOINTS=master-1:9421,master-2:9421,master-3:9421
-      - BIND_PORT=9420
-      - METRICS_PORT=9425
-      - DATA_DIRS=/data/disk1,/data/disk2,/data/disk3,/data/disk4
-      - LOG_LEVEL=info
+      - MOOSENG_SERVER_ID=chunkserver-3
+      - MOOSENG_MASTER_ADDRS=master-1:9421,master-2:9421,master-3:9421
+      - MOOSENG_LISTEN_PORT=9420
+      - MOOSENG_METRICS_PORT=9425
+      - MOOSENG_DATA_DIRS=/data/disk1,/data/disk2,/data/disk3,/data/disk4
+      - MOOSENG_LOG_LEVEL=info
+      - MOOSENG_LOG_DIR=/var/log/mooseng
     ports:
       - "9460:9420"
       - "9465:9425"
@@ -196,40 +202,36 @@ services:
       - master-2
       - master-3
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9420/health"]
-      interval: 10s
-      timeout: 5s
+      test: ["CMD", "/usr/local/bin/mooseng-chunkserver", "--health-check"]
+      interval: 30s
+      timeout: 10s
       retries: 3
+      start_period: 30s
 
   # Client Instances
   client-1:
     build:
       context: .
-      dockerfile: docker/Dockerfile.mock-client
+      dockerfile: docker/Dockerfile.client
     container_name: mooseng-client-1
     hostname: client-1
     environment:
-      - NODE_ID=1
-      - NODE_ROLE=client
-      - MASTER_ENDPOINTS=master-1:9421,master-2:9421,master-3:9421
-      - MOUNT_POINT=/mnt/mooseng
-      - METRICS_PORT=9427
-      - LOG_LEVEL=info
+      - MOOSENG_MASTER_ENDPOINTS=master-1:9421,master-2:9421,master-3:9421
+      - MOOSENG_MASTER_ADDRS=master-1:9421,master-2:9421,master-3:9421
+      - MOOSENG_MOUNT_POINT=/mnt/mooseng
+      - MOOSENG_LOG_LEVEL=info
+      - MOOSENG_LOG_DIR=/var/log/mooseng
+      - MOOSENG_CACHE_SIZE_MB=256
     ports:
       - "9427:9427"
     volumes:
-      - ./mnt/client-1:/mnt/mooseng:rshared
       - client-1-cache:/cache
-    privileged: true
-    cap_add:
-      - SYS_ADMIN
-    security_opt:
-      - apparmor:unconfined
-    devices:
-      - /dev/fuse
     networks:
       - mooseng-net
     restart: unless-stopped
+    privileged: true
+    devices:
+      - /dev/fuse:/dev/fuse
     depends_on:
       - master-1
       - master-2
@@ -241,31 +243,26 @@ services:
   client-2:
     build:
       context: .
-      dockerfile: docker/Dockerfile.mock-client
+      dockerfile: docker/Dockerfile.client
     container_name: mooseng-client-2
     hostname: client-2
     environment:
-      - NODE_ID=2
-      - NODE_ROLE=client
-      - MASTER_ENDPOINTS=master-1:9421,master-2:9421,master-3:9421
-      - MOUNT_POINT=/mnt/mooseng
-      - METRICS_PORT=9427
-      - LOG_LEVEL=info
+      - MOOSENG_MASTER_ENDPOINTS=master-1:9421,master-2:9421,master-3:9421
+      - MOOSENG_MASTER_ADDRS=master-1:9421,master-2:9421,master-3:9421
+      - MOOSENG_MOUNT_POINT=/mnt/mooseng
+      - MOOSENG_LOG_LEVEL=info
+      - MOOSENG_LOG_DIR=/var/log/mooseng
+      - MOOSENG_CACHE_SIZE_MB=256
     ports:
       - "9437:9427"
     volumes:
-      - ./mnt/client-2:/mnt/mooseng:rshared
       - client-2-cache:/cache
-    privileged: true
-    cap_add:
-      - SYS_ADMIN
-    security_opt:
-      - apparmor:unconfined
-    devices:
-      - /dev/fuse
     networks:
       - mooseng-net
     restart: unless-stopped
+    privileged: true
+    devices:
+      - /dev/fuse:/dev/fuse
     depends_on:
       - master-1
       - master-2
@@ -277,31 +274,26 @@ services:
   client-3:
     build:
       context: .
-      dockerfile: docker/Dockerfile.mock-client
+      dockerfile: docker/Dockerfile.client
     container_name: mooseng-client-3
     hostname: client-3
     environment:
-      - NODE_ID=3
-      - NODE_ROLE=client
-      - MASTER_ENDPOINTS=master-1:9421,master-2:9421,master-3:9421
-      - MOUNT_POINT=/mnt/mooseng
-      - METRICS_PORT=9427
-      - LOG_LEVEL=info
+      - MOOSENG_MASTER_ENDPOINTS=master-1:9421,master-2:9421,master-3:9421
+      - MOOSENG_MASTER_ADDRS=master-1:9421,master-2:9421,master-3:9421
+      - MOOSENG_MOUNT_POINT=/mnt/mooseng
+      - MOOSENG_LOG_LEVEL=info
+      - MOOSENG_LOG_DIR=/var/log/mooseng
+      - MOOSENG_CACHE_SIZE_MB=256
     ports:
       - "9447:9427"
     volumes:
-      - ./mnt/client-3:/mnt/mooseng:rshared
       - client-3-cache:/cache
-    privileged: true
-    cap_add:
-      - SYS_ADMIN
-    security_opt:
-      - apparmor:unconfined
-    devices:
-      - /dev/fuse
     networks:
       - mooseng-net
     restart: unless-stopped
+    privileged: true
+    devices:
+      - /dev/fuse:/dev/fuse
     depends_on:
       - master-1
       - master-2

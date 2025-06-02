@@ -507,7 +507,7 @@ impl OptimizedRaftConsensus {
     pub async fn validate_vote_request(
         &self,
         candidate_term: Term,
-        candidate_id: &str,
+        candidate_id: &NodeId,
         last_log_index: LogIndex,
         last_log_term: Term,
     ) -> Result<bool> {
@@ -532,7 +532,7 @@ impl OptimizedRaftConsensus {
         self.inner.needs_lease_renewal().await
     }
     
-    pub async fn grant_read_lease(&self, follower_id: &str) -> Result<ReadLease> {
+    pub async fn grant_read_lease(&self, follower_id: &NodeId) -> Result<ReadLease> {
         self.inner.grant_read_lease(follower_id).await
     }
     

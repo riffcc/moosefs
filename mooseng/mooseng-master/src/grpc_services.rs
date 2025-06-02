@@ -175,7 +175,7 @@ impl MasterService for MasterServiceImpl {
             req.mode as u16,
             1000, // Default uid
             1000, // Default gid  
-            req.storage_class_id,
+            req.storage_class_id.try_into().unwrap_or(1),
         ).await {
             Ok(inode_id) => {
                 // Get the created file's metadata

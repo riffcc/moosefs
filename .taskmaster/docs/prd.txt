@@ -1,0 +1,59 @@
+# MooseNG Docker Demo - Product Requirements Document
+
+## Project Overview
+Create a fully functional MooseNG distributed filesystem demo using Docker Compose with real compiled services (not mock services). The demo should showcase a production-ready distributed filesystem cluster.
+
+## Core Requirements
+
+### 1. Service Architecture
+- 3 Master servers for high availability and consensus
+- 3 Chunkservers for distributed storage
+- 3 Client instances for demonstrating concurrent access
+- All services must be real, compiled Rust implementations
+
+### 2. Docker Infrastructure
+- Single docker-compose.yml file for easy deployment
+- Proper service dependencies and startup ordering
+- Persistent volumes for data storage
+- Network isolation and service discovery
+- Health checks for all services
+
+### 3. Build System
+- Dockerfile for each service type (master, chunkserver, client)
+- Multi-stage builds for optimized container sizes
+- Rust compilation with proper dependencies
+- Configuration management for each service
+
+### 4. Service Implementation
+- Master servers with Raft consensus for metadata management
+- Chunkservers with storage management and replication
+- Clients with FUSE filesystem interface
+- Inter-service gRPC communication
+- Monitoring and health endpoints
+
+### 5. Configuration Management
+- TOML configuration files for each service
+- Environment variable overrides
+- Service discovery configuration
+- Storage class and replication policies
+
+### 6. Testing and Validation
+- Integration tests for service communication
+- File operation tests across the distributed filesystem
+- Failover and recovery testing
+- Performance benchmarking capabilities
+
+## Success Criteria
+- All services compile successfully from Rust source
+- Docker Compose brings up entire cluster without errors
+- Clients can mount and perform file operations
+- Data replication works across chunkservers
+- Master failover maintains cluster availability
+- Demo scripts showcase key functionality
+
+## Technical Constraints
+- Use existing MooseNG Rust codebase
+- Maintain compatibility with MooseFS protocol
+- Ensure production-ready code quality
+- Support concurrent client operations
+- Implement proper error handling and recovery

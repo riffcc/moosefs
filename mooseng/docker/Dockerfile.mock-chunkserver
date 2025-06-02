@@ -3,11 +3,11 @@ FROM python:3.11-alpine
 WORKDIR /app
 
 # Install dependencies
-COPY mock-services/requirements.txt .
+COPY docker/mock-services/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy mock service
-COPY mock-services/chunkserver-mock.py .
+COPY docker/mock-services/chunkserver-mock.py .
 
 # Make executable
 RUN chmod +x chunkserver-mock.py

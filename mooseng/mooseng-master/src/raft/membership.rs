@@ -144,8 +144,8 @@ impl MembershipManager {
         // Validate the proposed change
         self.validate_config_change(&change, &current_config)?;
 
-        // Create new configuration
-        let new_config = Self::apply_config_change(self, &current_config, &change)?;
+        // Create new configuration by applying the change
+        let new_config = self.create_new_config(&current_config, &change)?;
         
         // Create joint configuration
         let joint_config = JointConfiguration::new(current_config, new_config);
@@ -304,7 +304,7 @@ impl MembershipManager {
     }
 
     /// Apply configuration change to create new configuration
-    fn apply_config_change(
+    fn create_new_config(
         &self,
         current_config: &ClusterConfiguration,
         change: &ConfigChangeType,
