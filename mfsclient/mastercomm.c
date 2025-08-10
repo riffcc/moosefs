@@ -1123,12 +1123,34 @@ const uint8_t* fs_sendandreceive_any(threc *rec,uint32_t *received_cmd,uint32_t 
 
 int fs_resolve(uint8_t oninit,const char *bindhostname,const char *masterhostname,const char *masterportname) {
 #ifdef ENABLE_IPV6
+	// Handle IPv6 bracketed notation [address]
+	char cleaned_masterhostname[256];
+	if (masterhostname[0] == '[' && masterhostname[strlen(masterhostname)-1] == ']') {
+		// Strip brackets from IPv6 address
+		size_t len = strlen(masterhostname) - 2;
+		if (len >= sizeof(cleaned_masterhostname)) len = sizeof(cleaned_masterhostname) - 1;
+		strncpy(cleaned_masterhostname, masterhostname + 1, len);
+		cleaned_masterhostname[len] = '\0';
+		masterhostname = cleaned_masterhostname;
+	}
+	
 	// Check if master hostname looks like an IPv6 address (contains colons)
 	int is_ipv6_master = (strchr(masterhostname, ':') != NULL);
 	int is_ipv4_master = (strchr(masterhostname, '.') != NULL && strchr(masterhostname, ':') == NULL);
 	
 	// Handle bind hostname
 	if (bindhostname) {
+		// Handle IPv6 bracketed notation [address] for bind hostname
+		char cleaned_bindhostname[256];
+		if (bindhostname[0] == '[' && bindhostname[strlen(bindhostname)-1] == ']') {
+			// Strip brackets from IPv6 address
+			size_t len = strlen(bindhostname) - 2;
+			if (len >= sizeof(cleaned_bindhostname)) len = sizeof(cleaned_bindhostname) - 1;
+			strncpy(cleaned_bindhostname, bindhostname + 1, len);
+			cleaned_bindhostname[len] = '\0';
+			bindhostname = cleaned_bindhostname;
+		}
+		
 		int is_ipv6_bind = (strchr(bindhostname, ':') != NULL);
 		int is_ipv4_bind = (strchr(bindhostname, '.') != NULL && strchr(bindhostname, ':') == NULL);
 		
