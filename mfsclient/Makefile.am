@@ -54,6 +54,7 @@ mfsmount_SOURCES = \
 	../mfscommon/crc.c ../mfscommon/crc.h \
 	../mfscommon/md5.c ../mfscommon/md5.h \
 	../mfscommon/sockets.c ../mfscommon/sockets.h \
+	../mfscommon/sockets_ipv6.c ../mfscommon/sockets_ipv6.h \
 	../mfscommon/conncache.c ../mfscommon/conncache.h \
 	../mfscommon/lwthread.c ../mfscommon/lwthread.h \
 	../mfscommon/strerr.c ../mfscommon/strerr.h \
@@ -96,6 +97,7 @@ libmfsio_la_SOURCES = \
 	../mfscommon/crc.c ../mfscommon/crc.h \
 	../mfscommon/md5.c ../mfscommon/md5.h \
 	../mfscommon/sockets.c ../mfscommon/sockets.h \
+	../mfscommon/sockets_ipv6.c ../mfscommon/sockets_ipv6.h \
 	../mfscommon/conncache.c ../mfscommon/conncache.h \
 	../mfscommon/lwthread.c ../mfscommon/lwthread.h \
 	../mfscommon/strerr.c ../mfscommon/strerr.h \
@@ -134,6 +136,7 @@ mfstrashtool_SOURCES = \
 	../mfscommon/labelparser.c ../mfscommon/labelparser.h \
 	../mfscommon/clocks.c ../mfscommon/clocks.h \
 	../mfscommon/sockets.c ../mfscommon/sockets.h \
+	../mfscommon/sockets_ipv6.c ../mfscommon/sockets_ipv6.h \
 	../mfscommon/strerr.c ../mfscommon/strerr.h \
 	../mfscommon/mfslog.c ../mfscommon/mfslog.h \
 	../mfscommon/md5.c ../mfscommon/md5.h \
@@ -153,6 +156,7 @@ libmfstools_a_SOURCES = \
 	../mfscommon/timeparser.c ../mfscommon/timeparser.h \
 	../mfscommon/clocks.c ../mfscommon/clocks.h \
 	../mfscommon/sockets.c ../mfscommon/sockets.h \
+	../mfscommon/sockets_ipv6.c ../mfscommon/sockets_ipv6.h \
 	../mfscommon/strerr.c ../mfscommon/strerr.h \
 	../mfscommon/mfslog.c ../mfscommon/mfslog.h \
 	../mfscommon/md5.c ../mfscommon/md5.h \

@@ -11,6 +11,7 @@ mfsmetalogger_SOURCES = \
 	../mfscommon/crc.c ../mfscommon/crc.h \
 	../mfscommon/md5.c ../mfscommon/md5.h \
 	../mfscommon/sockets.c ../mfscommon/sockets.h \
+	../mfscommon/sockets_ipv6.c ../mfscommon/sockets_ipv6.h \
 	../mfscommon/strerr.c ../mfscommon/strerr.h \
 	../mfscommon/mfslog.c ../mfscommon/mfslog.h \
 	../mfscommon/datapack.h \
@@ -28,3 +29,8 @@ mfsmetalogger_CFLAGS =
 distclean-local: distclean-am
 	-rm -rf ./$(DEPDIR)
 	-rm -f Makefile
+
+# IPv6 Support
+if ENABLE_IPV6
+mfsmetalogger_CPPFLAGS += -DENABLE_IPV6
+endif

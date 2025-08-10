@@ -1,0 +1,148 @@
+version: '3.8'
+
+# Docker Compose for testing MooseFS with IPv6 support
+# Author: Benjamin Arntzen <zorlin@gmail.com>
+
+networks:
+  mfs-ipv6:
+    enable_ipv6: true
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.20.0.0/24
+        - subnet: 2001:db8:1::/64
+
+services:
+  mfsmaster:
+    build:
+      context: .
+      dockerfile: Dockerfile.ipv6
+    container_name: mfsmaster-ipv6
+    hostname: mfsmaster
+    networks:
+      mfs-ipv6:
+        ipv4_address: 172.20.0.10
+        ipv6_address: 2001:db8:1::10
+    volumes:
+      - mfs-master-data:/var/lib/mfs
+      - mfs-master-logs:/var/log/mfs
+    environment:
+      - MFS_COMPONENT=master
+    command: ["master"]
+    ports:
+      - "9419:9419"  # metalogger
+      - "9420:9420"  # chunkserver
+      - "9421:9421"  # client
+      - "9425:9425"  # web interface
+    healthcheck:
+      test: ["CMD", "mfsmaster", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mfschunk1:
+    build:
+      context: .
+      dockerfile: Dockerfile.ipv6
+    container_name: mfschunk1-ipv6
+    hostname: mfschunk1
+    networks:
+      mfs-ipv6:
+        ipv4_address: 172.20.0.11
+        ipv6_address: 2001:db8:1::11
+    volumes:
+      - mfs-chunk1-data:/var/lib/mfs
+      - mfs-chunk1-logs:/var/log/mfs
+    environment:
+      - MFS_COMPONENT=chunkserver
+      - MASTER_HOST=mfsmaster
+    command: ["chunkserver"]
+    depends_on:
+      - mfsmaster
+    healthcheck:
+      test: ["CMD", "mfschunkserver", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mfschunk2:
+    build:
+      context: .
+      dockerfile: Dockerfile.ipv6
+    container_name: mfschunk2-ipv6
+    hostname: mfschunk2
+    networks:
+      mfs-ipv6:
+        ipv4_address: 172.20.0.12
+        ipv6_address: 2001:db8:1::12
+    volumes:
+      - mfs-chunk2-data:/var/lib/mfs
+      - mfs-chunk2-logs:/var/log/mfs
+    environment:
+      - MFS_COMPONENT=chunkserver
+      - MASTER_HOST=2001:db8:1::10
+    command: ["chunkserver"]
+    depends_on:
+      - mfsmaster
+    healthcheck:
+      test: ["CMD", "mfschunkserver", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mfsclient:
+    build:
+      context: .
+      dockerfile: Dockerfile.ipv6
+    container_name: mfsclient-ipv6
+    hostname: mfsclient
+    networks:
+      mfs-ipv6:
+        ipv4_address: 172.20.0.20
+        ipv6_address: 2001:db8:1::20
+    environment:
+      - MFS_COMPONENT=client
+      - MASTER_IP=2001:db8:1::10
+    command: ["client"]
+    depends_on:
+      - mfsmaster
+      - mfschunk1
+      - mfschunk2
+    stdin_open: true
+    tty: true
+
+  # Test container with IPv6 tools
+  ipv6-tester:
+    image: alpine:latest
+    container_name: ipv6-tester
+    networks:
+      mfs-ipv6:
+        ipv4_address: 172.20.0.30
+        ipv6_address: 2001:db8:1::30
+    command: |
+      sh -c "
+        apk add --no-cache iproute2 iputils curl netcat-openbsd &&
+        echo 'IPv6 Test Container Ready' &&
+        echo 'IPv6 address:' &&
+        ip -6 addr show &&
+        echo '' &&
+        echo 'Testing connectivity to MFS Master:' &&
+        ping6 -c 3 2001:db8:1::10 &&
+        echo '' &&
+        echo 'Testing MFS ports on IPv6:' &&
+        nc -6 -zv 2001:db8:1::10 9420 &&
+        nc -6 -zv 2001:db8:1::10 9421 &&
+        echo '' &&
+        echo 'All tests completed!' &&
+        sleep infinity
+      "
+    depends_on:
+      - mfsmaster
+
+volumes:
+  mfs-master-data:
+  mfs-master-logs:
+  mfs-chunk1-data:
+  mfs-chunk1-logs:
+  mfs-chunk2-data:
+  mfs-chunk2-logs:

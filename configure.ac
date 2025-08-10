@@ -180,6 +180,17 @@ AC_CHECK_HEADERS([arpa/inet.h fcntl.h inttypes.h limits.h netdb.h netinet/in.h s
 # Checks for typedefs, structures, and compiler characteristics.
 AC_C_CONST
 AC_C_BIGENDIAN
+
+dnl IPv6 Support - Benjamin Arntzen <zorlin@gmail.com>
+AC_ARG_ENABLE([ipv6],
+    AS_HELP_STRING([--enable-ipv6], [Enable IPv6 support (experimental)]),
+    [enable_ipv6=$enableval],
+    [enable_ipv6=no])
+
+if test "x$enable_ipv6" = "xyes"; then
+    AC_DEFINE([ENABLE_IPV6], [1], [Define to 1 to enable IPv6 support])
+fi
+AM_CONDITIONAL([ENABLE_IPV6], [test "x$enable_ipv6" = "xyes"])
 AC_C_INLINE
 AC_C_VOLATILE
 AC_C_FLEXIBLE_ARRAY_MEMBER

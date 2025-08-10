@@ -59,6 +59,7 @@ mfsmaster_SOURCES = \
 	../mfscommon/md5.c ../mfscommon/md5.h \
 	../mfscommon/crc.c ../mfscommon/crc.h \
 	../mfscommon/sockets.c ../mfscommon/sockets.h \
+	../mfscommon/sockets_ipv6.c ../mfscommon/sockets_ipv6.h \
 	../mfscommon/charts.c ../mfscommon/charts.h \
 	../mfscommon/strerr.c ../mfscommon/strerr.h \
 	../mfscommon/memusage.c ../mfscommon/memusage.h \
@@ -95,6 +96,7 @@ mfssupervisor_SOURCES = \
 	mfssupervisor.c \
 	../mfscommon/mastersupervisor.c ../mfscommon/mastersupervisor.h \
 	../mfscommon/sockets.c ../mfscommon/sockets.h \
+	../mfscommon/sockets_ipv6.c ../mfscommon/sockets_ipv6.h \
 	../mfscommon/clocks.c ../mfscommon/clocks.h \
 	../mfscommon/strerr.c ../mfscommon/strerr.h \
 	../mfscommon/mfslog.c ../mfscommon/mfslog.h \
@@ -114,3 +116,8 @@ sbin_SCRIPTS = \
 distclean-local: distclean-am
 	-rm -rf ./$(DEPDIR)
 	-rm -f Makefile
+
+# IPv6 Support
+if ENABLE_IPV6
+mfsmaster_CPPFLAGS += -DENABLE_IPV6
+endif

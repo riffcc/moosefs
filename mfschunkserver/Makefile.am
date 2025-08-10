@@ -38,6 +38,7 @@ mfschunkserver_SOURCES = \
 	../mfscommon/lwthread.c ../mfscommon/lwthread.h \
 	../mfscommon/crc.c ../mfscommon/crc.h \
 	../mfscommon/sockets.c ../mfscommon/sockets.h \
+	../mfscommon/sockets_ipv6.c ../mfscommon/sockets_ipv6.h \
 	../mfscommon/conncache.c ../mfscommon/conncache.h \
 	../mfscommon/charts.c ../mfscommon/charts.h \
 	../mfscommon/memusage.c ../mfscommon/memusage.h \
@@ -76,3 +77,8 @@ mfschunkdbdump_SOURCES = \
 distclean-local: distclean-am
 	-rm -rf ./$(DEPDIR)
 	-rm -f Makefile
+
+# IPv6 Support
+if ENABLE_IPV6
+mfschunkserver_CPPFLAGS += -DENABLE_IPV6
+endif

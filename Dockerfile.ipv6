@@ -1,0 +1,154 @@
+# MooseFS with IPv6 Support
+# Author: Benjamin Arntzen <zorlin@gmail.com>
+
+FROM ubuntu:22.04 AS builder
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    autoconf \
+    automake \
+    libtool \
+    pkg-config \
+    zlib1g-dev \
+    libfuse3-dev \
+    python3 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy MooseFS source
+WORKDIR /build
+COPY . /build/
+
+# Configure and build MooseFS with IPv6 support
+RUN cd /build && \
+    autoreconf -fi && \
+    ./configure \
+        --prefix=/usr \
+        --sysconfdir=/etc \
+        --localstatedir=/var/lib \
+        --with-default-user=mfs \
+        --with-default-group=mfs \
+        --enable-ipv6 \
+        CFLAGS="-O2 -g -DENABLE_IPV6" \
+        CXXFLAGS="-O2 -g -DENABLE_IPV6" && \
+    make -j$(nproc) && \
+    make install
+
+# Runtime image
+FROM ubuntu:22.04
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    fuse3 \
+    python3 \
+    netcat-openbsd \
+    iproute2 \
+    iputils-ping \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy built MooseFS
+COPY --from=builder /usr /usr
+COPY --from=builder /etc/mfs /etc/mfs
+COPY --from=builder /var/lib/mfs /var/lib/mfs
+
+# Create MFS user
+RUN groupadd -r mfs && useradd -r -g mfs mfs && \
+    mkdir -p /var/lib/mfs /var/log/mfs /etc/mfs && \
+    chown -R mfs:mfs /var/lib/mfs /var/log/mfs /etc/mfs
+
+# IPv6 test script
+RUN cat > /usr/local/bin/test-ipv6.sh << 'EOF'
+#!/bin/bash
+# MooseFS IPv6 Test Script
+# Author: Benjamin Arntzen <zorlin@gmail.com>
+
+echo "=== MooseFS IPv6 Support Test ==="
+echo ""
+
+# Check IPv6 support
+if [ -f /proc/net/if_inet6 ]; then
+    echo "✓ IPv6 is enabled in kernel"
+else
+    echo "✗ IPv6 is not enabled in kernel"
+    exit 1
+fi
+
+# Show IPv6 addresses
+echo ""
+echo "IPv6 addresses:"
+ip -6 addr show
+
+# Configure based on component
+case "$MFS_COMPONENT" in
+    master)
+        echo ""
+        echo "Configuring MFS Master for IPv6..."
+        cat > /etc/mfs/mfsmaster.cfg << 'CONFIG'
+WORKING_USER = mfs
+WORKING_GROUP = mfs
+DATA_PATH = /var/lib/mfs
+EXPORTS_FILENAME = /etc/mfs/mfsexports.cfg
+MATOCS_LISTEN_HOST = 0.0.0.0
+MATOCL_LISTEN_HOST = 0.0.0.0
+MATOML_LISTEN_HOST = 0.0.0.0
+CONFIG
+        
+        cat > /etc/mfs/mfsexports.cfg << 'EXPORTS'
+# Allow all IPv6 and IPv4
+::/0                 /       rw,alldirs,admin,maproot=0:0
+0.0.0.0/0           /       rw,alldirs,admin,maproot=0:0
+EXPORTS
+        
+        # Initialize if needed
+        if [ ! -f /var/lib/mfs/metadata.mfs ]; then
+            mfsmaster -a
+        fi
+        
+        # Start master
+        exec mfsmaster -f
+        ;;
+        
+    chunkserver)
+        echo ""
+        echo "Configuring MFS Chunkserver for IPv6..."
+        cat > /etc/mfs/mfschunkserver.cfg << 'CONFIG'
+WORKING_USER = mfs
+WORKING_GROUP = mfs
+DATA_PATH = /var/lib/mfs
+HDD_CONF_FILENAME = /etc/mfs/mfshdd.cfg
+MASTER_HOST = ${MASTER_HOST:-mfsmaster}
+CSSERV_LISTEN_HOST = ::
+CONFIG
+        
+        cat > /etc/mfs/mfshdd.cfg << 'HDD'
+/var/lib/mfs/chunks
+HDD
+        
+        mkdir -p /var/lib/mfs/chunks
+        chown -R mfs:mfs /var/lib/mfs/chunks
+        
+        # Start chunkserver
+        exec mfschunkserver -f
+        ;;
+        
+    client)
+        echo ""
+        echo "MFS Client ready for IPv6 testing"
+        echo "Use: mfsmount /mnt/mfs -H [IPv6_ADDRESS]"
+        exec /bin/bash
+        ;;
+        
+    *)
+        echo "Set MFS_COMPONENT to: master, chunkserver, or client"
+        exit 1
+        ;;
+esac
+EOF
+RUN chmod +x /usr/local/bin/test-ipv6.sh
+
+# Expose ports
+EXPOSE 9419 9420 9421 9422 9425
+
+# Entry point
+ENTRYPOINT ["/usr/local/bin/test-ipv6.sh"]
