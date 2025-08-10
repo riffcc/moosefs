@@ -18,6 +18,7 @@ mfsgui_SOURCES = \
 	../mfscommon/crc.c ../mfscommon/crc.h \
 	../mfscommon/md5.c ../mfscommon/md5.h \
 	../mfscommon/sockets.c ../mfscommon/sockets.h \
+	../mfscommon/sockets_ipv6.c ../mfscommon/sockets_ipv6.h \
 	../mfscommon/strerr.c ../mfscommon/strerr.h \
 	../mfscommon/hash_begin.h ../mfscommon/hash_end.h \
 	../mfscommon/mfslog.c ../mfscommon/mfslog.h \

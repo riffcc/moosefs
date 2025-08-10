@@ -122,6 +122,16 @@ int tcp6resolve_compat(const char *hostname, const char *service, uint32_t *ip, 
 int tcp6numlisten_compat(int sock, uint32_t ip, uint16_t port, uint16_t queue);
 int tcp6numconnect_compat(int sock, uint32_t ip, uint16_t port);
 int tcp6getpeer_compat(int sock, uint32_t *ip, uint16_t *port);
+
+// Universal socket functions that work with both IPv4 and IPv6
+int univ_socket(void);
+int univ_resolve(const char *hostname, const char *service, struct sockaddr *addr, socklen_t *addrlen, int passiveflag);
+int univ_listen(int sock, const struct sockaddr *addr, socklen_t addrlen, int queue);
+int univ_accept(int sock);
+int univ_nonblock(int sock);
+int univ_nodelay(int sock);
+int univ_reuseaddr(int sock);
+int univ_close(int sock);
 #endif
 
 #endif /* _SOCKETS_IPV6_H_ */

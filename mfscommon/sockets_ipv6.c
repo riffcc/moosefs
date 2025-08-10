@@ -639,4 +639,65 @@ int tcp6getpeer_compat(int sock, uint32_t *ip, uint16_t *port) {
     return result;
 }
 
+/* Universal socket functions that work with both IPv4 and IPv6 */
+
+int univ_socket(void) {
+    // Create an IPv6 socket that can handle both IPv4 and IPv6
+    int sock = socket(AF_INET6, SOCK_STREAM, 0);
+    if (sock >= 0) {
+        // Disable IPv6-only mode to allow IPv4 connections too
+        int no = 0;
+        setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, &no, sizeof(no));
+    }
+    return sock;
+}
+
+int univ_resolve(const char *hostname, const char *service, struct sockaddr *addr, socklen_t *addrlen, int passiveflag) {
+    mfs_sockaddr msa;
+    if (mfs_sockaddr_resolve(&msa, hostname, service, SOCK_STREAM, passiveflag) < 0) {
+        return -1;
+    }
+    
+    if (msa.family == AF_INET) {
+        memcpy(addr, &msa.addr.v4, sizeof(struct sockaddr_in));
+        *addrlen = sizeof(struct sockaddr_in);
+    } else if (msa.family == AF_INET6) {
+        memcpy(addr, &msa.addr.v6, sizeof(struct sockaddr_in6));
+        *addrlen = sizeof(struct sockaddr_in6);
+    } else {
+        return -1;
+    }
+    
+    return 0;
+}
+
+int univ_listen(int sock, const struct sockaddr *addr, socklen_t addrlen, int queue) {
+    if (bind(sock, addr, addrlen) < 0) {
+        return -1;
+    }
+    return listen(sock, queue);
+}
+
+int univ_accept(int sock) {
+    return accept(sock, NULL, NULL);
+}
+
+int univ_nonblock(int sock) {
+    return descnonblock(sock);
+}
+
+int univ_nodelay(int sock) {
+    int yes = 1;
+    return setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, &yes, sizeof(yes));
+}
+
+int univ_reuseaddr(int sock) {
+    int yes = 1;
+    return setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
+}
+
+int univ_close(int sock) {
+    return close(sock);
+}
+
 #endif /* ENABLE_IPV6 */
