@@ -118,6 +118,9 @@ void matocsserv_getspace(uint64_t *totalspace,uint64_t *availspace,uint64_t *fre
 char* matocsserv_getstrip(void *e);
 int matocsserv_get_csdata(void *e,uint32_t clientip,uint32_t *servip,uint16_t *servport,uint32_t *servver,uint32_t *servlabelmask);
 void matocsserv_getservdata(void *e,uint32_t *ver,uint64_t *uspc,uint64_t *tspc,uint32_t *chunkcnt,uint64_t *tduspc,uint64_t *tdtspc,uint32_t *tdchunkcnt,uint32_t *errcnt,uint32_t *load,uint8_t *hlstatus,uint32_t *labelmask,uint8_t *mfrstatus);
+#ifdef ENABLE_IPV6
+int matocsserv_get_ipv6_addr(void *e,uint8_t *is_ipv6,uint32_t *ipv4_addr,uint8_t ipv6_addr[16]);
+#endif
 
 uint8_t matocsserv_csdb_force_disconnect(void *e,void *p);
 

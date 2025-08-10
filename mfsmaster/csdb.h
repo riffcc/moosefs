@@ -23,8 +23,15 @@
 
 #include <inttypes.h>
 #include "bio.h"
+#ifdef ENABLE_IPV6
+// Forward declaration for mfs_ip - actual include in .c files only
+typedef struct mfs_ip mfs_ip;
+#endif
 
 void* csdb_new_connection(uint32_t ip,uint16_t port,uint16_t csid,void *eptr);
+#ifdef ENABLE_IPV6
+void* csdb_new_connection_v6(const mfs_ip *ip_addr,uint16_t port,uint16_t csid,void *eptr);
+#endif
 void csdb_accept_server(void *v_csptr);
 uint16_t csdb_get_csid(void *v_csptr);
 void csdb_temporary_maintenance_mode(void *v_csptr);

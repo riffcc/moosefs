@@ -66,6 +66,9 @@
 #include "cfg.h"
 #include "main.h"
 #include "sockets.h"
+#ifdef ENABLE_IPV6
+#include "sockets_ipv6.h"
+#endif
 #include "mfslog.h"
 #include "massert.h"
 #include "clocks.h"
@@ -7411,7 +7414,7 @@ void matoclserv_reload(void) {
 		return;
 	}
 
-	newlsock = tcpsocket();
+	newlsock = MFS_TCP_SOCKET();
 	if (newlsock<0) {
 		mfs_log(MFSLOG_ERRNO_SYSLOG_STDERR,MFSLOG_WARNING,"main master server module: socket address has changed, but can't create new socket");
 		free(ListenHost);
@@ -7434,7 +7437,11 @@ void matoclserv_reload(void) {
 		tcpclose(newlsock);
 		return;
 	}
+#ifdef ENABLE_IPV6
+	if (tcp6strlisten(newlsock,ListenHost,ListenPort,100)<0) {
+#else
 	if (tcpnumlisten(newlsock,listenip,listenport,100)<0) {
+#endif
 		mfs_log(MFSLOG_ERRNO_SYSLOG_STDERR,MFSLOG_WARNING,"main master server module: socket address has changed, but can't listen on socket (%s:%s)",ListenHost,ListenPort);
 		free(ListenHost);
 		free(ListenPort);
@@ -7476,7 +7483,7 @@ int matoclserv_init(void) {
 
 	CreateFirstChunk = 0;
 
-	lsock = tcpsocket();
+	lsock = MFS_TCP_SOCKET();
 	if (lsock<0) {
 		mfs_log(MFSLOG_ERRNO_SYSLOG_STDERR,MFSLOG_ERR,"main master server module: can't create socket");
 		return -1;
@@ -7488,7 +7495,11 @@ int matoclserv_init(void) {
 		mfs_log(MFSLOG_ERRNO_SYSLOG_STDERR,MFSLOG_ERR,"main master server module: can't resolve %s:%s",ListenHost,ListenPort);
 		return -1;
 	}
+#ifdef ENABLE_IPV6
+	if (tcp6strlisten(lsock,ListenHost,ListenPort,100)<0) {
+#else
 	if (tcpnumlisten(lsock,listenip,listenport,100)<0) {
+#endif
 		mfs_log(MFSLOG_ERRNO_SYSLOG_STDERR,MFSLOG_ERR,"main master server module: can't listen on %s:%s",ListenHost,ListenPort);
 		return -1;
 	}

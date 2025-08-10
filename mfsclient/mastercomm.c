@@ -68,6 +68,9 @@
 # include "stats.h"
 #endif
 #include "sockets.h"
+#ifdef ENABLE_IPV6
+#include "sockets_ipv6.h"
+#endif
 #include "strerr.h"
 #include "md5.h"
 #include "datapack.h"
@@ -212,6 +215,14 @@ static uint32_t masterip=0;
 static uint16_t masterport=0;
 static char srcstrip[STRIPSIZE];
 static uint32_t srcip=0;
+#ifdef ENABLE_IPV6
+static char masterstrip_v6[STRIPSIZE_V6];
+static mfs_ip master_ip_addr;
+static uint8_t use_ipv6_master = 0;
+static char srcstrip_v6[STRIPSIZE_V6];
+static mfs_ip src_ip_addr;
+static uint8_t use_ipv6_src = 0;
+#endif
 
 static uint8_t fterm;
 
@@ -1111,6 +1122,107 @@ const uint8_t* fs_sendandreceive_any(threc *rec,uint32_t *received_cmd,uint32_t 
 }
 
 int fs_resolve(uint8_t oninit,const char *bindhostname,const char *masterhostname,const char *masterportname) {
+#ifdef ENABLE_IPV6
+	// Check if master hostname looks like an IPv6 address (contains colons)
+	int is_ipv6_master = (strchr(masterhostname, ':') != NULL);
+	int is_ipv4_master = (strchr(masterhostname, '.') != NULL && strchr(masterhostname, ':') == NULL);
+	
+	// Handle bind hostname
+	if (bindhostname) {
+		int is_ipv6_bind = (strchr(bindhostname, ':') != NULL);
+		int is_ipv4_bind = (strchr(bindhostname, '.') != NULL && strchr(bindhostname, ':') == NULL);
+		
+		if (is_ipv6_bind || (!is_ipv4_bind && !is_ipv6_bind)) {
+			// Try IPv6 first for IPv6 addresses or DNS hostnames
+			if (tcp6resolve(bindhostname, NULL, &src_ip_addr, NULL, 1) >= 0) {
+				use_ipv6_src = 1;
+				univ6makestrip(srcstrip_v6, &src_ip_addr);
+				srcip = 0;
+				strcpy(srcstrip, srcstrip_v6);
+			} else if (!is_ipv6_bind) {
+				// Fall back to IPv4 for DNS hostnames
+				if (tcpresolve(bindhostname, NULL, &srcip, NULL, 1) < 0) {
+					if (oninit) {
+						mfs_log(MFSLOG_SYSLOG_STDERR,MFSLOG_WARNING,"can't resolve source hostname (%s)",bindhostname);
+					} else {
+						mfs_log(MFSLOG_SYSLOG,MFSLOG_WARNING,"can't resolve source hostname (%s)",bindhostname);
+					}
+					return -1;
+				}
+				use_ipv6_src = 0;
+				univmakestrip(srcstrip, srcip);
+			} else {
+				// IPv6 address that couldn't be resolved
+				if (oninit) {
+					mfs_log(MFSLOG_SYSLOG_STDERR,MFSLOG_WARNING,"can't resolve source hostname (%s)",bindhostname);
+				} else {
+					mfs_log(MFSLOG_SYSLOG,MFSLOG_WARNING,"can't resolve source hostname (%s)",bindhostname);
+				}
+				return -1;
+			}
+		} else {
+			// IPv4 address
+			if (tcpresolve(bindhostname, NULL, &srcip, NULL, 1) < 0) {
+				if (oninit) {
+					mfs_log(MFSLOG_SYSLOG_STDERR,MFSLOG_WARNING,"can't resolve source hostname (%s)",bindhostname);
+				} else {
+					mfs_log(MFSLOG_SYSLOG,MFSLOG_WARNING,"can't resolve source hostname (%s)",bindhostname);
+				}
+				return -1;
+			}
+			use_ipv6_src = 0;
+			univmakestrip(srcstrip, srcip);
+		}
+	} else {
+		memset(&src_ip_addr, 0, sizeof(src_ip_addr));
+		srcip = 0;
+		use_ipv6_src = 0;
+	}
+
+	// Handle master hostname
+	if (is_ipv6_master || (!is_ipv4_master && !is_ipv6_master)) {
+		// Try IPv6 first for IPv6 addresses or DNS hostnames
+		if (tcp6resolve(masterhostname, masterportname, &master_ip_addr, &masterport, 0) >= 0) {
+			use_ipv6_master = 1;
+			univ6makestrip(masterstrip_v6, &master_ip_addr);
+			masterip = 0;
+			strcpy(masterstrip, masterstrip_v6);
+		} else if (!is_ipv6_master) {
+			// Fall back to IPv4 for DNS hostnames
+			if (tcpresolve(masterhostname, masterportname, &masterip, &masterport, 0) < 0) {
+				if (oninit) {
+					mfs_log(MFSLOG_SYSLOG_STDERR,MFSLOG_WARNING,"can't resolve master hostname and/or portname (%s:%s)",masterhostname,masterportname);
+				} else {
+					mfs_log(MFSLOG_SYSLOG,MFSLOG_WARNING,"can't resolve master hostname and/or portname (%s:%s)",masterhostname,masterportname);
+				}
+				return -1;
+			}
+			use_ipv6_master = 0;
+			univmakestrip(masterstrip, masterip);
+		} else {
+			// IPv6 address that couldn't be resolved
+			if (oninit) {
+				mfs_log(MFSLOG_SYSLOG_STDERR,MFSLOG_WARNING,"can't resolve master hostname and/or portname (%s:%s)",masterhostname,masterportname);
+			} else {
+				mfs_log(MFSLOG_SYSLOG,MFSLOG_WARNING,"can't resolve master hostname and/or portname (%s:%s)",masterhostname,masterportname);
+			}
+			return -1;
+		}
+	} else {
+		// IPv4 address
+		if (tcpresolve(masterhostname, masterportname, &masterip, &masterport, 0) < 0) {
+			if (oninit) {
+				mfs_log(MFSLOG_SYSLOG_STDERR,MFSLOG_WARNING,"can't resolve master hostname and/or portname (%s:%s)",masterhostname,masterportname);
+			} else {
+				mfs_log(MFSLOG_SYSLOG,MFSLOG_WARNING,"can't resolve master hostname and/or portname (%s:%s)",masterhostname,masterportname);
+			}
+			return -1;
+		}
+		use_ipv6_master = 0;
+		univmakestrip(masterstrip, masterip);
+	}
+#else
+	// IPv4 only (original code)
 	if (bindhostname) {
 		if (tcpresolve(bindhostname,NULL,&srcip,NULL,1)<0) {
 			if (oninit) {
@@ -1134,6 +1246,7 @@ int fs_resolve(uint8_t oninit,const char *bindhostname,const char *masterhostnam
 		return -1;
 	}
 	univmakestrip(masterstrip,masterip);
+#endif
 
 	return 0;
 }
@@ -1143,6 +1256,11 @@ const char* fs_get_current_srcstrip(void) {
 }
 
 const char* fs_get_current_masterstrip(void) {
+#ifdef ENABLE_IPV6
+	if (use_ipv6_master) {
+		return masterstrip_v6;
+	}
+#endif
 	return masterstrip;
 }
 
@@ -1207,7 +1325,15 @@ int fs_connect(uint8_t oninit,struct connect_args_t *cargs) {
 	regbuff = malloc(rleng);
 
 	do {
+#ifdef ENABLE_IPV6
+		if (use_ipv6_master) {
+			fd = tcp6socket();
+		} else {
+			fd = tcpsocket();
+		}
+#else
 		fd = tcpsocket();
+#endif
 		if (fd<0) {
 			free(regbuff);
 			return -1;
@@ -1232,7 +1358,21 @@ int fs_connect(uint8_t oninit,struct connect_args_t *cargs) {
 				return -1;
 			}
 		}
+#ifdef ENABLE_IPV6
+		int connection_failed = 0;
+		if (use_ipv6_master) {
+			if (tcp6numtoconnect(fd, &master_ip_addr, masterport, CONNECT_TIMEOUT) < 0) {
+				connection_failed = 1;
+			}
+		} else {
+			if (tcpnumtoconnect(fd, masterip, masterport, CONNECT_TIMEOUT) < 0) {
+				connection_failed = 1;
+			}
+		}
+		if (connection_failed) {
+#else
 		if (tcpnumtoconnect(fd,masterip,masterport,CONNECT_TIMEOUT)<0) {
+#endif
 			tcpclose(fd);
 			fd=-1;
 			if (oninit) {
@@ -1709,7 +1849,15 @@ void fs_reconnect(uint32_t minversion) {
 	univmakestrip(masterstrip,masterip);
 
 	do {
+#ifdef ENABLE_IPV6
+		if (use_ipv6_master) {
+			fd = tcp6socket();
+		} else {
+			fd = tcpsocket();
+		}
+#else
 		fd = tcpsocket();
+#endif
 		if (fd<0) {
 			return;
 		}
@@ -1724,7 +1872,21 @@ void fs_reconnect(uint32_t minversion) {
 				return;
 			}
 		}
+#ifdef ENABLE_IPV6
+		int connection_failed = 0;
+		if (use_ipv6_master) {
+			if (tcp6numtoconnect(fd, &master_ip_addr, masterport, CONNECT_TIMEOUT) < 0) {
+				connection_failed = 1;
+			}
+		} else {
+			if (tcpnumtoconnect(fd, masterip, masterport, CONNECT_TIMEOUT) < 0) {
+				connection_failed = 1;
+			}
+		}
+		if (connection_failed) {
+#else
 		if (tcpnumtoconnect(fd,masterip,masterport,CONNECT_TIMEOUT)<0) {
+#endif
 			mfs_log(MFSLOG_SYSLOG,MFSLOG_WARNING,"can't connect to master (\"%s\":\"%"PRIu16"\")",masterstrip,masterport);
 			tcpclose(fd);
 			fd=-1;

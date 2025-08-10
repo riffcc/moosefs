@@ -89,30 +89,37 @@ WORKING_USER = mfs
 WORKING_GROUP = mfs
 DATA_PATH = /var/lib/mfs
 EXPORTS_FILENAME = /etc/mfs/mfsexports.cfg
-MATOCS_LISTEN_HOST = 0.0.0.0
-MATOCL_LISTEN_HOST = 0.0.0.0
-MATOML_LISTEN_HOST = 0.0.0.0
+MATOCS_LISTEN_HOST = *
+MATOCL_LISTEN_HOST = *
+MATOML_LISTEN_HOST = *
 CONFIG
         
         cat > /etc/mfs/mfsexports.cfg << 'EXPORTS'
-# Allow all IPv6 and IPv4
-::/0                 /       rw,alldirs,admin,maproot=0:0
-0.0.0.0/0           /       rw,alldirs,admin,maproot=0:0
+# Allow all IPv4 and IPv6
+*                    /       rw,alldirs,admin,maproot=0:0
 EXPORTS
         
-        # Initialize if needed
-        if [ ! -f /var/lib/mfs/metadata.mfs ]; then
-            mfsmaster -a
-        fi
+        # Ensure proper ownership
+        chown -R mfs:mfs /var/lib/mfs /var/log/mfs /etc/mfs
         
-        # Start master
-        exec mfsmaster -f
+        # Remove any stale lockfile and bgsaver lock
+        rm -f /var/lib/mfs/.mfsmaster.lock /var/lib/mfs/.bgwriter.lock
+        
+        # Start master in foreground as mfs user
+        # Use -a flag if no metadata.mfs exists (will auto-restore from .back if present)
+        if [ ! -f /var/lib/mfs/metadata.mfs ]; then
+            echo "No metadata.mfs found - starting with auto-restore (-a flag)..."
+            exec su -s /bin/bash mfs -c "mfsmaster -f -a"
+        else
+            echo "Starting MFS master with existing metadata..."
+            exec su -s /bin/bash mfs -c "mfsmaster -f"
+        fi
         ;;
         
     chunkserver)
         echo ""
         echo "Configuring MFS Chunkserver for IPv6..."
-        cat > /etc/mfs/mfschunkserver.cfg << 'CONFIG'
+        cat > /etc/mfs/mfschunkserver.cfg << CONFIG
 WORKING_USER = mfs
 WORKING_GROUP = mfs
 DATA_PATH = /var/lib/mfs
@@ -135,12 +142,57 @@ HDD
     client)
         echo ""
         echo "MFS Client ready for IPv6 testing"
-        echo "Use: mfsmount /mnt/mfs -H [IPv6_ADDRESS]"
-        exec /bin/bash
+        echo "Master host: ${MASTER_HOST:-fd00::10}"
+        
+        # Create mount point
+        mkdir -p /mnt/mfs
+        
+        # Wait for master to be ready
+        echo "Waiting for master to be available..."
+        sleep 15
+        
+        # Mount MFS with IPv6
+        echo "Mounting MFS over IPv6..."
+        if mfsmount /mnt/mfs -H "${MASTER_HOST:-fd00::10}"; then
+            echo "✓ IPv6 MFS mount successful!"
+            echo "Mount details:"
+            df -h /mnt/mfs
+            ls -la /mnt/mfs/
+            
+            # Create test file
+            echo "Creating test file over IPv6..."
+            dd if=/dev/urandom of=/mnt/mfs/ipv6_test.dat bs=1M count=1 2>/dev/null
+            echo "✓ Test file created: $(ls -lh /mnt/mfs/ipv6_test.dat)"
+            
+            # Keep container running
+            echo "IPv6 MooseFS test completed successfully!"
+            tail -f /dev/null
+        else
+            echo "✗ IPv6 MFS mount failed!"
+            echo "Debugging info:"
+            ping6 -c 3 "${MASTER_HOST:-fd00::10}" || echo "Master not reachable"
+            exit 1
+        fi
+        ;;
+        
+    gui)
+        echo ""
+        echo "Configuring MFS GUI for IPv6..."
+        # Create GUI config with IPv6 binding
+        cat > /etc/mfs/mfsgui.cfg << 'GUICONFIG'
+WORKING_USER = mfs
+WORKING_GROUP = mfs
+DATA_PATH = /var/lib/mfs
+HTTP_LISTEN_HOST = ::
+HTTP_LISTEN_PORT = 9425
+GUICONFIG
+        chown -R mfs:mfs /etc/mfs /var/lib/mfs
+        # Start the GUI server in foreground
+        exec mfsgui -f
         ;;
         
     *)
-        echo "Set MFS_COMPONENT to: master, chunkserver, or client"
+        echo "Set MFS_COMPONENT to: master, chunkserver, client, or gui"
         exit 1
         ;;
 esac

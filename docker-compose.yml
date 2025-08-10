@@ -1,0 +1,261 @@
+version: '3.8'
+
+# MooseFS IPv6 Test Cluster
+# Author: Benjamin Arntzen <zorlin@gmail.com>
+# 
+# This setup creates a complete MooseFS cluster with IPv6 support:
+# - 1 Master server
+# - 3 Chunkservers
+# - 1 GUI server
+# - 2 Clients for testing
+#
+# All services communicate over IPv6 addresses
+
+services:
+  # MooseFS Master - Central metadata server
+  mfsmaster:
+    build:
+      context: .
+      dockerfile: Dockerfile.ipv6
+    container_name: mfs-master
+    hostname: mfsmaster
+    environment:
+      MFS_COMPONENT: master
+      MATOML_LISTEN_HOST: "::"
+      MATOCL_LISTEN_HOST: "::"
+      MATOCS_LISTEN_HOST: "::"
+    ports:
+      - "9419:9419"  # Metalogger connections
+      - "9420:9420"  # Chunkserver connections  
+      - "9421:9421"  # Client connections
+    volumes:
+      - master-data:/var/lib/mfs
+    networks:
+      mfs-network:
+        ipv6_address: fd00::10
+    healthcheck:
+      test: ["CMD", "nc", "-zv", "localhost", "9421"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MooseFS Chunkserver 1
+  mfschunkserver1:
+    build:
+      context: .
+      dockerfile: Dockerfile.ipv6
+    container_name: mfs-chunkserver1
+    hostname: mfschunkserver1
+    environment:
+      MFS_COMPONENT: chunkserver
+      MASTER_HOST: fd00::10
+      CSSERV_LISTEN_HOST: "::"
+    volumes:
+      - chunk1-data:/var/lib/mfs
+    networks:
+      mfs-network:
+        ipv6_address: fd00::21
+    depends_on:
+      mfsmaster:
+        condition: service_healthy
+
+  # MooseFS Chunkserver 2
+  mfschunkserver2:
+    build:
+      context: .
+      dockerfile: Dockerfile.ipv6
+    container_name: mfs-chunkserver2
+    hostname: mfschunkserver2
+    environment:
+      MFS_COMPONENT: chunkserver
+      MASTER_HOST: fd00::10
+      CSSERV_LISTEN_HOST: "::"
+    volumes:
+      - chunk2-data:/var/lib/mfs
+    networks:
+      mfs-network:
+        ipv6_address: fd00::22
+    depends_on:
+      mfsmaster:
+        condition: service_healthy
+
+  # MooseFS Chunkserver 3
+  mfschunkserver3:
+    build:
+      context: .
+      dockerfile: Dockerfile.ipv6
+    container_name: mfs-chunkserver3
+    hostname: mfschunkserver3
+    environment:
+      MFS_COMPONENT: chunkserver
+      MASTER_HOST: fd00::10
+      CSSERV_LISTEN_HOST: "::"
+    volumes:
+      - chunk3-data:/var/lib/mfs
+    networks:
+      mfs-network:
+        ipv6_address: fd00::23
+    depends_on:
+      mfsmaster:
+        condition: service_healthy
+
+  # MooseFS GUI - Web interface
+  mfsgui:
+    build:
+      context: .
+      dockerfile: Dockerfile.ipv6
+    container_name: mfs-gui
+    hostname: mfsgui
+    environment:
+      MFS_COMPONENT: gui
+      MASTER_HOST: fd00::10
+    ports:
+      - "9425:9425"  # Web GUI port
+    networks:
+      mfs-network:
+        ipv6_address: fd00::30
+    depends_on:
+      mfsmaster:
+        condition: service_healthy
+
+  # MooseFS Client 1 - For mounting and testing
+  mfsclient1:
+    build:
+      context: .
+      dockerfile: Dockerfile.ipv6
+    container_name: mfs-client1
+    hostname: mfsclient1
+    environment:
+      MFS_COMPONENT: client
+      MASTER_HOST: fd00::10
+    volumes:
+      - /dev/fuse:/dev/fuse:rw
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - apparmor:unconfined
+    devices:
+      - /dev/fuse
+    networks:
+      mfs-network:
+        ipv6_address: fd00::101
+    depends_on:
+      - mfschunkserver1
+      - mfschunkserver2
+      - mfschunkserver3
+    command: >
+      /bin/bash -c "
+        mkdir -p /mnt/mfs &&
+        echo 'Waiting for master to be ready...' &&
+        sleep 10 &&
+        echo 'Mounting MFS over IPv6...' &&
+        mfsmount /mnt/mfs -H fd00::10 &&
+        echo 'MFS mounted successfully!' &&
+        echo 'Testing IPv6 connectivity...' &&
+        ping6 -c 3 mfsmaster &&
+        ping6 -c 3 mfschunkserver1 &&
+        echo 'Creating test files...' &&
+        dd if=/dev/urandom of=/mnt/mfs/test_ipv6_1MB.dat bs=1M count=1 &&
+        echo 'IPv6 test successful!' &&
+        tail -f /dev/null
+      "
+
+  # MooseFS Client 2 - For additional testing
+  mfsclient2:
+    build:
+      context: .
+      dockerfile: Dockerfile.ipv6
+    container_name: mfs-client2
+    hostname: mfsclient2
+    environment:
+      MFS_COMPONENT: client
+      MASTER_HOST: fd00::10
+    volumes:
+      - /dev/fuse:/dev/fuse:rw
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - apparmor:unconfined
+    devices:
+      - /dev/fuse
+    networks:
+      mfs-network:
+        ipv6_address: fd00::102
+    depends_on:
+      - mfsclient1
+    command: >
+      /bin/bash -c "
+        mkdir -p /mnt/mfs &&
+        echo 'Waiting for master to be ready...' &&
+        sleep 15 &&
+        echo 'Mounting MFS over IPv6 (client 2)...' &&
+        mfsmount /mnt/mfs -H fd00::10 &&
+        echo 'MFS mounted successfully on client 2!' &&
+        echo 'Verifying files created by client 1...' &&
+        ls -la /mnt/mfs/ &&
+        echo 'Reading test file...' &&
+        md5sum /mnt/mfs/test_ipv6_1MB.dat &&
+        echo 'Creating additional test file...' &&
+        dd if=/dev/zero of=/mnt/mfs/test_ipv6_10MB.dat bs=1M count=10 &&
+        echo 'Client 2 IPv6 test successful!' &&
+        tail -f /dev/null
+      "
+
+  # Test runner - Validates IPv6 functionality
+  test-runner:
+    image: alpine:latest
+    container_name: mfs-test-runner
+    networks:
+      mfs-network:
+        ipv6_address: fd00::200
+    depends_on:
+      - mfsclient2
+    command: >
+      /bin/sh -c "
+        apk add --no-cache curl netcat-openbsd &&
+        echo 'Waiting for services to stabilize...' &&
+        sleep 20 &&
+        echo '=== MooseFS IPv6 Test Results ===' &&
+        echo '' &&
+        echo '1. Testing Master IPv6 connectivity:' &&
+        nc -6 -zv fd00::10 9421 &&
+        echo '✓ Master accepting connections on IPv6' &&
+        echo '' &&
+        echo '2. Testing Chunkservers IPv6 connectivity:' &&
+        nc -6 -zv fd00::21 9422 &&
+        nc -6 -zv fd00::22 9422 &&
+        nc -6 -zv fd00::23 9422 &&
+        echo '✓ All chunkservers accessible via IPv6' &&
+        echo '' &&
+        echo '3. Testing GUI IPv6 connectivity:' &&
+        nc -6 -zv fd00::30 9425 &&
+        echo '✓ GUI accessible via IPv6' &&
+        echo '' &&
+        echo '4. Checking GUI HTTP response:' &&
+        curl -6 -s -o /dev/null -w '%{http_code}' http://[fd00::30]:9425/ &&
+        echo '' &&
+        echo '✓ GUI responding to HTTP requests over IPv6' &&
+        echo '' &&
+        echo '==================================' &&
+        echo '✅ ALL IPv6 TESTS PASSED!' &&
+        echo '==================================' &&
+        echo '' &&
+        echo 'MooseFS is fully operational with IPv6 support.' &&
+        echo 'Author: Benjamin Arntzen <zorlin@gmail.com>' &&
+        tail -f /dev/null
+      "
+
+networks:
+  mfs-network:
+    driver: bridge
+    enable_ipv6: true
+    ipam:
+      driver: default
+      config:
+        - subnet: fd00::/64
+
+volumes:
+  master-data:
+  chunk1-data:
+  chunk2-data:
+  chunk3-data:

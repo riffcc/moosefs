@@ -282,7 +282,55 @@ class DataProvider:
 		if self.chunkservers==None:
 			self.chunkservers=[]
 			if self.master().has_feature(FEATURE_CSLIST_MODE):
-				data,length = self.master().command(CLTOMA_CSERV_LIST,MATOCL_CSERV_LIST,struct.pack(">B",1))
+				# Try mode 2 first for IPv6 support (94 bytes per record)
+				data,length = self.master().command(CLTOMA_CSERV_LIST,MATOCL_CSERV_LIST,struct.pack(">B",2))
+				# Check if we got IPv6 extended format (94 bytes per record for v4.35+)
+				if self.master().version_at_least(4,35,0) and (length%94)==0:
+					# IPv6 extended format - parse and return
+					n = length//94
+					for i in range(n):
+						d = data[i*94:(i+1)*94]
+						# First 77 bytes are the standard record
+						flags,v1,v2,v3,oip1,oip2,oip3,oip4,ip1,ip2,ip3,ip4,port,csid,used,total,chunks,tdused,tdtotal,tdchunks,errcnt,queue,gracetime,labels,mfrstatus,maintenanceto = struct.unpack(">BBBBBBBBBBBBHHQQLQQLLLLLBL",d[:77])
+						# Next 17 bytes are IPv6 extension: 1 byte family + 16 bytes address
+						ipv6_family, = struct.unpack(">B", d[77:78])
+						ipv6_addr = d[78:94]  # 16 bytes of address data
+						
+						# Create appropriate IP tuple based on family
+						if ipv6_family == 10:  # AF_INET6
+							# Convert 16 bytes to IPv6 tuple representation
+							ipv6_tuple = tuple(struct.unpack(">16B", ipv6_addr))
+							cs = ChunkServer((oip1,oip2,oip3,oip4),ipv6_tuple,self.donotresolve,port,csid,v1,v2,v3,flags,used,total,chunks,tdused,tdtotal,tdchunks,errcnt,queue,gracetime,labels,mfrstatus,maintenanceto,is_ipv6=True)
+						else:
+							# IPv4 or legacy format
+							cs = ChunkServer((oip1,oip2,oip3,oip4),(ip1,ip2,ip3,ip4),self.donotresolve,port,csid,v1,v2,v3,flags,used,total,chunks,tdused,tdtotal,tdchunks,errcnt,queue,gracetime,labels,mfrstatus,maintenanceto)
+						self.chunkservers.append(cs)
+					# IPv6 parsing completed - return early
+					if CSorder is None:
+						return self.chunkservers
+					# Apply sorting if needed
+					if   CSorder==0:  key=lambda cs: (cs.sortip,cs.port)
+					elif CSorder==1:  key=lambda cs: (cs.host)
+					elif CSorder==2:  key=lambda cs: (cs.sortip,cs.port)
+					elif CSorder==3:  key=lambda cs: (cs.port)
+					elif CSorder==4:  key=lambda cs: (cs.csid)
+					elif CSorder==5:  key=lambda cs: (cs.sortver)
+					elif CSorder==6:  key=lambda cs: (cs.gracetime,cs.queue)
+					elif CSorder==7:  key=lambda cs: (cs.used*1000000//cs.total if cs.total>0 else 0,cs.used)
+					elif CSorder==8:  key=lambda cs: (cs.total,cs.used)
+					elif CSorder==9:  key=lambda cs: (cs.chunks)
+					elif CSorder==10: key=lambda cs: (cs.tdused*1000000//cs.tdtotal if cs.tdtotal>0 else 0,cs.tdused)
+					elif CSorder==11: key=lambda cs: (cs.tdtotal,cs.tdused)
+					elif CSorder==12: key=lambda cs: (cs.tdchunks)
+					elif CSorder==13: key=lambda cs: (cs.errcnt)
+					else:             key=lambda cs: (cs.sortip,cs.port)
+					self.chunkservers.sort(key=key)
+					if CSrev:
+						self.chunkservers.reverse()		
+					return self.chunkservers
+				else:
+					# Fall back to mode 1 if mode 2 didn't work
+					data,length = self.master().command(CLTOMA_CSERV_LIST,MATOCL_CSERV_LIST,struct.pack(">B",1))
 			else:
 				data,length = self.master().command(CLTOMA_CSERV_LIST,MATOCL_CSERV_LIST)
 			cs = None
@@ -368,9 +416,14 @@ class DataProvider:
 		multiconn = MFSMultiConn()
 		for cs in self.get_chunkservers(None): # don't sort
 			if cs.port>0 and cs.is_connected():
-				hostip = "%u.%u.%u.%u" % cs.ip
+				# Use the strip property which handles both IPv4 and IPv6
+				hostip = cs.strip
 				hostkey = "%s:%u" % (hostip,cs.port)
-				sortip = "%03u.%03u.%03u.%03u:%05u" % (cs.ip[0],cs.ip[1],cs.ip[2],cs.ip[3],cs.port)
+				# For sorting, use sortip property or create a simple sort key
+				if hasattr(cs, 'sortip') and cs.sortip:
+					sortip = "%s:%05u" % (cs.sortip, cs.port)
+				else:
+					sortip = "%s:%05u" % (hostip, cs.port)
 				if HDdata=="ALL" or HDdata=="ERR" or HDdata=="NOK" or HDdata==hostkey:
 					hostlist.append((hostkey,hostip,sortip,cs.port,cs.version,cs.mfrstatus))
 					multiconn.register(hostip,cs.port) #register CS to send command to

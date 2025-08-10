@@ -95,9 +95,33 @@ int udp6read(int sock, mfs_ip *ip, uint16_t *port, void *buff, uint16_t leng);
 #ifdef ENABLE_IPV6
   #define MFS_TCP_SOCKET() tcp6socket()
   #define MFS_UDP_SOCKET() udp6socket()
+  
+  /* Legacy compatibility layer - redirect old functions to IPv6 versions */
+  #define tcpsocket() tcp6socket()
+  #define udpsocket() udp6socket()
+  #define tcpresolve(hostname, service, ip, port, passive) \
+    tcp6resolve_compat(hostname, service, ip, port, passive)
+  #define tcpnumlisten(sock, ip, port, queue) \
+    tcp6numlisten_compat(sock, ip, port, queue)
+  #define tcpstrlisten(sock, hostname, service, queue) \
+    tcp6strlisten(sock, hostname, service, queue)
+  #define tcpnumconnect(sock, ip, port) \
+    tcp6numconnect_compat(sock, ip, port)
+  #define tcpstrconnect(sock, hostname, service) \
+    tcp6strconnect(sock, hostname, service)
+  #define tcpgetpeer(sock, ip, port) \
+    tcp6getpeer_compat(sock, ip, port)
 #else
   #define MFS_TCP_SOCKET() tcpsocket()
   #define MFS_UDP_SOCKET() udpsocket()
+#endif
+
+/* Compatibility wrapper functions for legacy uint32_t IP addresses */
+#ifdef ENABLE_IPV6
+int tcp6resolve_compat(const char *hostname, const char *service, uint32_t *ip, uint16_t *port, int passiveflag);
+int tcp6numlisten_compat(int sock, uint32_t ip, uint16_t port, uint16_t queue);
+int tcp6numconnect_compat(int sock, uint32_t ip, uint16_t port);
+int tcp6getpeer_compat(int sock, uint32_t *ip, uint16_t *port);
 #endif
 
 #endif /* _SOCKETS_IPV6_H_ */

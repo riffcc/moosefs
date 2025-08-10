@@ -44,6 +44,9 @@
 #include "cfg.h"
 #include "main.h"
 #include "sockets.h"
+#ifdef ENABLE_IPV6
+#include "sockets_ipv6.h"
+#endif
 #include "hddspacemgr.h"
 #include "mfslog.h"
 #include "massert.h"
@@ -127,6 +130,11 @@ typedef struct masterconn {
 	uint16_t timeout;
 	uint8_t masteraddrvalid;
 	uint8_t registerstate;
+#ifdef ENABLE_IPV6
+	mfs_ip master_ipv6;     // IPv6 address storage
+	mfs_ip bind_ipv6;       // IPv6 bind address storage  
+	uint8_t use_ipv6;       // Flag indicating IPv6 is being used
+#endif
 
 	uint8_t gotrndblob;
 	uint8_t rndblob[32];
@@ -1472,6 +1480,45 @@ void masterconn_connected(masterconn *eptr) {
 int masterconn_initconnect(masterconn *eptr) {
 	int status;
 	if (eptr->masteraddrvalid==0) {
+#ifdef ENABLE_IPV6
+		// Try IPv6-aware resolution first
+		if (tcp6resolve(MasterHost,MasterPort,&eptr->master_ipv6,&eptr->masterport,0)>=0) {
+			if (eptr->master_ipv6.family == AF_INET6) {
+				// IPv6 address resolved
+				eptr->use_ipv6 = 1;
+				eptr->masterip = 0; // Clear legacy field
+				
+				// Try to resolve bind address 
+				if (BindHost && tcp6resolve(BindHost,NULL,&eptr->bind_ipv6,NULL,1)>=0) {
+					eptr->bindip = (eptr->bind_ipv6.family == AF_INET) ? eptr->bind_ipv6.addr.v4 : 0;
+				} else {
+					memset(&eptr->bind_ipv6, 0, sizeof(eptr->bind_ipv6));
+					eptr->bindip = 0;
+				}
+			} else if (eptr->master_ipv6.family == AF_INET) {
+				// IPv4 address resolved via IPv6 function
+				eptr->use_ipv6 = 0;
+				eptr->masterip = eptr->master_ipv6.addr.v4;
+				
+				// Check for localhost
+				if ((eptr->masterip&0xFF000000)==0x7F000000) {
+					mfs_log(MFSLOG_SYSLOG_STDERR,MFSLOG_WARNING,"master connection module: localhost (%u.%u.%u.%u) can't be used for connecting with master (use ip address of network controller)",(eptr->masterip>>24)&0xFF,(eptr->masterip>>16)&0xFF,(eptr->masterip>>8)&0xFF,eptr->masterip&0xFF);
+					return -1;
+				}
+				
+				// Try to resolve bind address
+				if (BindHost && tcp6resolve(BindHost,NULL,&eptr->bind_ipv6,NULL,1)>=0 && eptr->bind_ipv6.family == AF_INET) {
+					eptr->bindip = eptr->bind_ipv6.addr.v4;
+				} else {
+					eptr->bindip = 0;
+				}
+			}
+		} else {
+			mfs_log(MFSLOG_SYSLOG_STDERR,MFSLOG_WARNING,"master connection module: can't resolve master host/port (%s:%s)",MasterHost,MasterPort);
+			return -1;
+		}
+#else
+		// Legacy IPv4-only resolution
 		uint32_t mip,bip;
 		uint16_t mport;
 		if (tcpresolve(BindHost,NULL,&bip,NULL,1)<0) {
@@ -1490,9 +1537,10 @@ int masterconn_initconnect(masterconn *eptr) {
 			mfs_log(MFSLOG_SYSLOG_STDERR,MFSLOG_WARNING,"master connection module: can't resolve master host/port (%s:%s)",MasterHost,MasterPort);
 			return -1;
 		}
+#endif
 	}
 	eptr->masteraddrvalid = 0;
-	eptr->sock=tcpsocket();
+	eptr->sock = MFS_TCP_SOCKET();
 	if (eptr->sock<0) {
 		mfs_log(MFSLOG_ERRNO_SYSLOG_STDERR,MFSLOG_WARNING,"master connection module: create socket error");
 		return -1;
@@ -1503,6 +1551,33 @@ int masterconn_initconnect(masterconn *eptr) {
 		eptr->sock = -1;
 		return -1;
 	}
+#ifdef ENABLE_IPV6
+	// Handle binding for both IPv4 and IPv6
+	if (eptr->use_ipv6) {
+		if (eptr->bind_ipv6.family != 0) {
+			if (tcp6numbind(eptr->sock, &eptr->bind_ipv6, 0)<0) {
+				mfs_log(MFSLOG_ERRNO_SYSLOG_STDERR,MFSLOG_WARNING,"master connection module: can't bind socket to given IPv6 address");
+				tcpclose(eptr->sock);
+				eptr->sock = -1;
+				return -1;
+			}
+		}
+		status = tcp6numconnect(eptr->sock, &eptr->master_ipv6, eptr->masterport);
+	} else {
+		if (eptr->bindip>0) {
+			mfs_ip bind_ip;
+			ipv4_to_mfs_ip(&bind_ip, eptr->bindip);
+			if (tcp6numbind(eptr->sock, &bind_ip, 0)<0) {
+				mfs_log(MFSLOG_ERRNO_SYSLOG_STDERR,MFSLOG_WARNING,"master connection module: can't bind socket to given IPv4 address");
+				tcpclose(eptr->sock);
+				eptr->sock = -1;
+				return -1;
+			}
+		}
+		status = tcp6numconnect(eptr->sock, &eptr->master_ipv6, eptr->masterport);
+	}
+#else
+	// Legacy IPv4 binding and connection
 	if (eptr->bindip>0) {
 		if (tcpnumbind(eptr->sock,eptr->bindip,0)<0) {
 			mfs_log(MFSLOG_ERRNO_SYSLOG_STDERR,MFSLOG_WARNING,"master connection module: can't bind socket to given ip");
@@ -1512,6 +1587,7 @@ int masterconn_initconnect(masterconn *eptr) {
 		}
 	}
 	status = tcpnumconnect(eptr->sock,eptr->masterip,eptr->masterport);
+#endif
 	if (status<0) {
 		mfs_log(MFSLOG_ERRNO_SYSLOG_STDERR,MFSLOG_WARNING,"master connection module: connect failed");
 		tcpclose(eptr->sock);
@@ -1933,11 +2009,24 @@ void masterconn_info(FILE *fd) {
 	fprintf(fd,"master address is valid: %u\n",eptr->masteraddrvalid);
 	fprintf(fd,"working timeout: %u\n",eptr->timeout);
 
+#ifdef ENABLE_IPV6
+	if (eptr->use_ipv6) {
+		univ6makestrip(strip, &eptr->bind_ipv6);
+		fprintf(fd,"socket bind ip: %s\n",strip);
+		univ6makestripport(stripport, &eptr->master_ipv6, eptr->masterport);
+		fprintf(fd,"resolved ip:port number: %s\n",stripport);
+	} else {
+		univmakestrip(strip,eptr->bindip);
+		fprintf(fd,"socket bind ip: %s\n",strip);
+		univmakestripport(stripport,eptr->masterip,eptr->masterport);
+		fprintf(fd,"resolved ip:port number: %s\n",stripport);
+	}
+#else
 	univmakestrip(strip,eptr->bindip);
 	fprintf(fd,"socket bind ip: %s\n",strip);
-
 	univmakestripport(stripport,eptr->masterip,eptr->masterport);
 	fprintf(fd,"resolved ip:port number: %s\n",stripport);
+#endif
 	fprintf(fd,"registered state: %s\n",masterconn_regstate(eptr->registerstate));
 	fprintf(fd,"socket mode: %s\n",masterconn_socketmode(eptr->mode));
 	fprintf(fd,"connection counter: %u\n",eptr->conncnt);
@@ -2116,6 +2205,11 @@ int masterconn_init(void) {
 	eptr->mode = FREE;
 	eptr->pdescpos = -1;
 	eptr->conncnt = 0;
+#ifdef ENABLE_IPV6
+	memset(&eptr->master_ipv6, 0, sizeof(eptr->master_ipv6));
+	memset(&eptr->bind_ipv6, 0, sizeof(eptr->bind_ipv6));
+	eptr->use_ipv6 = 0;
+#endif
 	if (Timeout>0) {
 		eptr->timeout = Timeout;
 	} else {

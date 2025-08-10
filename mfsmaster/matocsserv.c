@@ -47,6 +47,9 @@
 #include "cfg.h"
 #include "main.h"
 #include "sockets.h"
+#ifdef ENABLE_IPV6
+#include "sockets_ipv6.h"
+#endif
 #include "chunks.h"
 #include "random.h"
 #include "sizestr.h"
@@ -132,6 +135,11 @@ typedef struct matocsserventry {
 
 	char *servdesc;			// string version of ip and port X.X.X.X:N
 	uint32_t peerip;		// original peer ip (before all remaps)
+#ifdef ENABLE_IPV6
+	mfs_ip peer_ipv6;		// IPv6 peer address
+	mfs_ip serv_ipv6;		// IPv6 server address
+	uint8_t use_ipv6;		// flag indicating IPv6 is being used
+#endif
 	uint32_t version;		// chunkserver version
 	uint32_t servip;		// ip to coonnect to
 	uint16_t servport;		// port to connect to
@@ -2636,22 +2644,52 @@ void matocsserv_register(matocsserventry *eptr,const uint8_t *data,uint32_t leng
 			eptr->todelchunkscount = get32bit(&data);
 			if (eptr->servip==0) {
 				eptr->servip = eptr->peerip;
+#ifdef ENABLE_IPV6
+				if (eptr->use_ipv6 && eptr->serv_ipv6.family == 0) {
+					eptr->serv_ipv6 = eptr->peer_ipv6;
+				}
+#endif
 			}
 			eptr->servip = matocsserv_remap_ip(eptr->servip);
 			if (eptr->servdesc) {
 				free(eptr->servdesc);
 			}
+#ifdef ENABLE_IPV6
+			if (eptr->use_ipv6) {
+				// For IPv6 connections, use the actual peer address with port
+				eptr->servdesc = univ6allocstripport(&eptr->peer_ipv6, eptr->servport);
+			} else {
+				eptr->servdesc = univallocstripport(eptr->servip,eptr->servport);
+			}
+#else
 			eptr->servdesc = univallocstripport(eptr->servip,eptr->servport);
+#endif
 			if (((eptr->servip)&0xFF000000) == 0x7F000000) {
 				mfs_log(MFSLOG_SYSLOG,MFSLOG_WARNING,"chunkserver connected using localhost (%s) - you cannot use localhost for communication between chunkserver and master", eptr->servdesc);
 				eptr->mode = KILL;
 				return;
 			}
+#ifdef ENABLE_IPV6
+			if (eptr->use_ipv6) {
+				if ((eptr->csptr=csdb_new_connection_v6(&eptr->peer_ipv6,eptr->servport,csid,eptr))==NULL) {
+					mfs_log(MFSLOG_SYSLOG,MFSLOG_WARNING,"can't accept chunkserver %s",eptr->servdesc);
+					eptr->mode = KILL;
+					return;
+				}
+			} else {
+				if ((eptr->csptr=csdb_new_connection(eptr->servip,eptr->servport,csid,eptr))==NULL) {
+					mfs_log(MFSLOG_SYSLOG,MFSLOG_WARNING,"can't accept chunkserver %s",eptr->servdesc);
+					eptr->mode = KILL;
+					return;
+				}
+			}
+#else
 			if ((eptr->csptr=csdb_new_connection(eptr->servip,eptr->servport,csid,eptr))==NULL) {
 				mfs_log(MFSLOG_SYSLOG,MFSLOG_WARNING,"can't accept chunkserver %s",eptr->servdesc);
 				eptr->mode = KILL;
 				return;
 			}
+#endif
 			us = (double)(eptr->usedspace)/(double)(1024*1024*1024);
 			ts = (double)(eptr->totalspace)/(double)(1024*1024*1024);
 			mfs_log(MFSLOG_SYSLOG,MFSLOG_INFO,"chunkserver %s register begin, usedspace: %"PRIu64" (%.2lf GiB), totalspace: %"PRIu64" (%.2lf GiB)",eptr->servdesc,eptr->usedspace,us,eptr->totalspace,ts);
@@ -3456,11 +3494,28 @@ void matocsserv_serve(struct pollfd *pdesc) {
 			eptr->outputhead = NULL;
 			eptr->outputtail = &(eptr->outputhead);
 
+#ifdef ENABLE_IPV6
+			if (tcp6getpeer(eptr->sock, &eptr->peer_ipv6, NULL) >= 0) {
+				eptr->use_ipv6 = 1;
+				eptr->peerip = mfs_ip_to_ipv4(&eptr->peer_ipv6); // For backward compatibility
+				eptr->servdesc = univ6allocstrip(&eptr->peer_ipv6);
+			} else {
+				eptr->use_ipv6 = 0;
+				eptr->peerip = 0;
+				eptr->servdesc = strdup("unknown");
+			}
+#else
 			tcpgetpeer(eptr->sock,&(eptr->peerip),NULL);
 			eptr->servdesc = univallocstripport(eptr->peerip,0);
+#endif
 			eptr->version = 0;
 			eptr->servip = 0;
 			eptr->servport = 0;
+#ifdef ENABLE_IPV6
+			if (eptr->use_ipv6) {
+				eptr->serv_ipv6 = eptr->peer_ipv6; // Default to peer address
+			}
+#endif
 			if (ForceTimeout>0) {
 				eptr->timeout = ForceTimeout;
 			} else {
@@ -3801,7 +3856,7 @@ void matocsserv_reload(void) {
 		return;
 	}
 
-	newlsock = tcpsocket();
+	newlsock = MFS_TCP_SOCKET();
 	if (newlsock<0) {
 		mfs_log(MFSLOG_ERRNO_SYSLOG_STDERR,MFSLOG_WARNING,"master <-> chunkservers module: socket address has changed, but can't create new socket");
 		free(ListenHost);
@@ -3824,7 +3879,11 @@ void matocsserv_reload(void) {
 		tcpclose(newlsock);
 		return;
 	}
+#ifdef ENABLE_IPV6
+	if (tcp6strlisten(newlsock,ListenHost,ListenPort,100)<0) {
+#else
 	if (tcpnumlisten(newlsock,listenip,listenport,100)<0) {
+#endif
 		mfs_log(MFSLOG_ERRNO_SYSLOG_STDERR,MFSLOG_WARNING,"master <-> chunkservers module: socket address has changed, but can't listen on socket (%s:%s)",ListenHost,ListenPort);
 		free(ListenHost);
 		free(ListenPort);
@@ -3851,7 +3910,7 @@ int matocsserv_init(void) {
 	ListenHost = cfg_getstr("MATOCS_LISTEN_HOST","*");
 	ListenPort = cfg_getstr("MATOCS_LISTEN_PORT",DEFAULT_MASTER_CS_PORT);
 
-	lsock = tcpsocket();
+	lsock = MFS_TCP_SOCKET();
 	if (lsock<0) {
 		mfs_log(MFSLOG_ERRNO_SYSLOG_STDERR,MFSLOG_ERR,"master <-> chunkservers module: can't create socket");
 		return -1;
@@ -3863,7 +3922,11 @@ int matocsserv_init(void) {
 		mfs_log(MFSLOG_ERRNO_SYSLOG_STDERR,MFSLOG_ERR,"master <-> chunkservers module: can't resolve %s:%s",ListenHost,ListenPort);
 		return -1;
 	}
+#ifdef ENABLE_IPV6
+	if (tcp6strlisten(lsock,ListenHost,ListenPort,100)<0) {
+#else
 	if (tcpnumlisten(lsock,listenip,listenport,100)<0) {
+#endif
 		mfs_log(MFSLOG_ERRNO_SYSLOG_STDERR,MFSLOG_ERR,"master <-> chunkservers module: can't listen on %s:%s",ListenHost,ListenPort);
 		return -1;
 	}

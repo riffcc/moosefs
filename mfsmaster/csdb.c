@@ -41,6 +41,9 @@
 #include "metadata.h"
 #include "multilan.h"
 #include "sockets.h"
+#ifdef ENABLE_IPV6
+#include "sockets_ipv6.h"
+#endif
 
 #define CSDB_OP_ADD 0
 #define CSDB_OP_DEL 1
@@ -67,7 +70,7 @@ static uint32_t SecondsToRemoveUnusedCS;
 #define MAINTENANCE_TMP 2
 
 typedef struct csdbentry {
-	uint32_t ip;
+	uint32_t ip;			// IPv4 address (legacy/backward compatibility)
 	uint16_t port;
 	uint16_t csid;
 	uint16_t number;
@@ -77,6 +80,10 @@ typedef struct csdbentry {
 	uint32_t disconnection_time;
 	uint8_t maintenance;
 //	uint8_t fastreplication;
+#ifdef ENABLE_IPV6
+	mfs_ip ip_addr;			// Unified IPv4/IPv6 address
+	uint8_t use_ipv6;		// Flag indicating IPv6 is being used
+#endif
 	void *eptr;
 	struct csdbentry *next;
 } csdbentry;
@@ -218,6 +225,11 @@ void* csdb_new_connection(uint32_t ip,uint16_t port,uint16_t csid,void *eptr) {
 		}
 		csidptr->ip = ip;
 		csidptr->port = port;
+#ifdef ENABLE_IPV6
+		// Update IPv6 fields for existing entry
+		ipv4_to_mfs_ip(&csidptr->ip_addr, ip);
+		csidptr->use_ipv6 = 0;
+#endif
 			changelog("%"PRIu32"|CSDBOP(%u,%"PRIu32",%"PRIu16",%"PRIu16")",main_time(),CSDB_OP_NEWIPPORT,ip,port,csidptr->csid);
 		csidptr->eptr = eptr;
 		disconnected_servers--;
@@ -231,6 +243,11 @@ void* csdb_new_connection(uint32_t ip,uint16_t port,uint16_t csid,void *eptr) {
 	passert(csptr);
 	csptr->ip = ip;
 	csptr->port = port;
+#ifdef ENABLE_IPV6
+	// Initialize IPv6 fields for backward compatibility
+	ipv4_to_mfs_ip(&csptr->ip_addr, ip);
+	csptr->use_ipv6 = 0;
+#endif
 	if (csid>0) {
 		if (csdbtab[csid]==NULL) {
 			csdbtab[csid] = csptr;
@@ -252,6 +269,132 @@ void* csdb_new_connection(uint32_t ip,uint16_t port,uint16_t csid,void *eptr) {
 	changelog("%"PRIu32"|CSDBOP(%u,%"PRIu32",%"PRIu16",%"PRIu16")",main_time(),CSDB_OP_ADD,ip,port,csptr->csid);
 	return csptr;
 }
+
+#ifdef ENABLE_IPV6
+void* csdb_new_connection_v6(const mfs_ip *ip_addr,uint16_t port,uint16_t csid,void *eptr) {
+	uint32_t hash;
+	csdbentry *csptr,**cspptr,*csidptr;
+	char strip[STRIPSIZE_V6];
+	char strtmpip[STRIPSIZE_V6];
+	uint32_t ipv4_for_hash;
+
+	univ6makestrip(strip, ip_addr);
+	
+	// For backward compatibility, extract IPv4 for hashing if it's an IPv4 address
+	if (ip_addr->family == AF_INET) {
+		ipv4_for_hash = ip_addr->addr.v4;
+	} else {
+		// For IPv6, use a simple hash of first 4 bytes
+		ipv4_for_hash = ((uint32_t*)ip_addr->addr.v6)[0];
+	}
+
+	if (csid>0) {
+		csidptr = csdbtab[csid];
+	} else {
+		csidptr = NULL;
+	}
+	
+	// Check if found using csid and addresses match
+	if (csidptr && mfs_ip_equal(&csidptr->ip_addr, ip_addr) && csidptr->port == port) {
+		if (csidptr->eptr!=NULL) {
+			mfs_log(MFSLOG_SYSLOG,MFSLOG_NOTICE,"csdb: found cs using ip:port and csid (%s:%"PRIu16",%"PRIu16"), but server is still connected",strip,port,csid);
+			return NULL;
+		}
+		csidptr->eptr = eptr;
+		disconnected_servers--;
+		if (csidptr->maintenance!=MAINTENANCE_OFF) {
+			disconnected_servers_in_maintenance--;
+		}
+		mfs_log(MFSLOG_SYSLOG,MFSLOG_INFO,"csdb: found cs using ip:port and csid (%s:%"PRIu16",%"PRIu16")",strip,port,csid);
+		return csidptr;
+	}
+	
+	hash = CSDBHASHFN(ipv4_for_hash,port);
+	for (csptr = csdbhash[hash] ; csptr ; csptr = csptr->next) { // slow find using (ip+port)
+		if (csptr->use_ipv6 && mfs_ip_equal(&csptr->ip_addr, ip_addr) && csptr->port == port) {
+			if (csptr->eptr!=NULL) {
+				mfs_log(MFSLOG_SYSLOG,MFSLOG_NOTICE,"csdb: found cs using ip:port (%s:%"PRIu16",%"PRIu16"), but server is still connected",strip,port,csid);
+				return NULL;
+			}
+			csptr->eptr = eptr;
+			disconnected_servers--;
+			if (csptr->maintenance!=MAINTENANCE_OFF) {
+				disconnected_servers_in_maintenance--;
+			}
+			return csptr;
+		}
+	}
+	
+	if (csidptr && csidptr->eptr==NULL) { // ip+port not found, but found csid - change ip+port
+		if (csidptr->use_ipv6) {
+			univ6makestrip(strtmpip, &csidptr->ip_addr);
+		} else {
+			univmakestrip(strtmpip, csidptr->ip);
+		}
+		mfs_log(MFSLOG_SYSLOG,MFSLOG_NOTICE,"csdb: found cs using csid (%s:%"PRIu16",%"PRIu16") - previous ip:port (%s:%"PRIu16")",strip,port,csid,strtmpip,csidptr->port);
+		
+		// Remove from old hash bucket
+		uint32_t old_hash = csidptr->use_ipv6 ? 
+			CSDBHASHFN(((uint32_t*)csidptr->ip_addr.addr.v6)[0], csidptr->port) :
+			CSDBHASHFN(csidptr->ip, csidptr->port);
+		cspptr = csdbhash + old_hash;
+		while ((csptr=*cspptr)) {
+			if (csptr == csidptr) {
+				*cspptr = csptr->next;
+				csptr->next = csdbhash[hash];
+				csdbhash[hash] = csptr;
+				break;
+			} else {
+				cspptr = &(csptr->next);
+			}
+		}
+		
+		// Update address information
+		csidptr->ip_addr = *ip_addr;
+		csidptr->use_ipv6 = 1;
+		csidptr->ip = mfs_ip_to_ipv4(ip_addr); // For backward compatibility
+		csidptr->port = port;
+		
+		changelog("%"PRIu32"|CSDBOP(%u,%"PRIu32",%"PRIu16",%"PRIu16")",main_time(),CSDB_OP_NEWIPPORT,csidptr->ip,port,csidptr->csid);
+		csidptr->eptr = eptr;
+		disconnected_servers--;
+		if (csidptr->maintenance!=MAINTENANCE_OFF) {
+			disconnected_servers_in_maintenance--;
+		}
+		return csidptr;
+	}
+	
+	mfs_log(MFSLOG_SYSLOG,MFSLOG_INFO,"csdb: server not found (%s:%"PRIu16",%"PRIu16"), add it to database",strip,port,csid);
+	csptr = malloc(sizeof(csdbentry));
+	passert(csptr);
+	
+	// Set both IPv6 and legacy IPv4 fields
+	csptr->ip_addr = *ip_addr;
+	csptr->use_ipv6 = 1;
+	csptr->ip = mfs_ip_to_ipv4(ip_addr); // For backward compatibility
+	csptr->port = port;
+	
+	if (csid>0) {
+		if (csdbtab[csid]==NULL) {
+			csdbtab[csid] = csptr;
+		} else {
+			csid = 0;
+		}
+	}
+	csptr->csid = csid;
+	csptr->heavyloadts = 0;
+	csptr->maintenance_timeout = 0;
+	csptr->maintenance = MAINTENANCE_OFF;
+	csptr->disconnection_time = main_time();
+	csptr->load = 0;
+	csptr->eptr = eptr;
+	csptr->next = csdbhash[hash];
+	csdbhash[hash] = csptr;
+	servers++;
+	changelog("%"PRIu32"|CSDBOP(%u,%"PRIu32",%"PRIu16",%"PRIu16")",main_time(),CSDB_OP_ADD,csptr->ip,port,csptr->csid);
+	return csptr;
+}
+#endif
 
 void csdb_temporary_maintenance_mode(void *v_csptr) {
 	csdbentry *csptr = (csdbentry*)v_csptr;
@@ -332,7 +475,16 @@ uint32_t csdb_servlist_data(uint8_t mode,uint8_t *ptr,uint32_t clientip) {
 	uint32_t i;
 	uint32_t recsize;
 
+#ifdef ENABLE_IPV6
+	if (mode == 2) {
+		// IPv6 extended mode: add 17 bytes (16 for IPv6 address + 1 for address family)
+		recsize = 94; // 77 + 17
+	} else {
+		recsize = (mode==0)?73:77;
+	}
+#else
 	recsize = (mode==0)?73:77;
+#endif
 	i=0;
 	for (hash=0 ; hash<CSDBHASHSIZE ; hash++) {
 		for (csptr = csdbhash[hash] ; csptr ; csptr = csptr->next) {
@@ -401,6 +553,33 @@ uint32_t csdb_servlist_data(uint8_t mode,uint8_t *ptr,uint32_t clientip) {
 				if (mode>0) {
 					put32bit(&ptr,maintenance_timeout);
 				}
+#ifdef ENABLE_IPV6
+				if (mode == 2) {
+					// Add IPv6 extension fields
+					if (csptr->use_ipv6) {
+						put8bit(&ptr, csptr->ip_addr.family); // Address family (AF_INET or AF_INET6)
+						if (csptr->ip_addr.family == AF_INET6) {
+							// Put 16 bytes of IPv6 address
+							for (int j = 0; j < 16; j++) {
+								put8bit(&ptr, csptr->ip_addr.addr.v6[j]);
+							}
+						} else {
+							// Put IPv4 address followed by 12 zeros
+							put32bit(&ptr, csptr->ip_addr.addr.v4);
+							for (int j = 0; j < 12; j++) {
+								put8bit(&ptr, 0);
+							}
+						}
+					} else {
+						// Legacy IPv4-only entry
+						put8bit(&ptr, AF_INET);
+						put32bit(&ptr, csptr->ip);
+						for (int j = 0; j < 12; j++) {
+							put8bit(&ptr, 0);
+						}
+					}
+				}
+#endif
 				if (csptr->eptr==NULL) {
 					*p |= CSERV_FLAG_DISCONNECTED;
 				}
@@ -928,7 +1107,25 @@ int csdb_load(bio *fd,uint8_t mver,int ignoreflag) {
 		}
 		hash = CSDBHASHFN(ip,port);
 		for (csptr = csdbhash[hash] ; csptr ; csptr = csptr->next) {
+#ifdef ENABLE_IPV6
+			// Proper duplicate detection for both IPv4 and IPv6
+			int is_duplicate = 0;
+			if (ip != 0) {
+				// IPv4 entry - check IPv4 address and port
+				if (csptr->ip == ip && csptr->port == port) {
+					is_duplicate = 1;
+				}
+			} else {
+				// IPv6 entry (ip == 0) - check port and ensure different CSID
+				// Since IPv6 addresses aren't stored in metadata, we rely on CSID uniqueness
+				if (csptr->ip == 0 && csptr->port == port && csptr->csid == csid) {
+					is_duplicate = 1;
+				}
+			}
+			if (is_duplicate) {
+#else
 			if (csptr->ip == ip && csptr->port == port) {
+#endif
 				if (nl) {
 					fputc('\n',stderr);
 					nl=0;
@@ -970,6 +1167,18 @@ int csdb_load(bio *fd,uint8_t mver,int ignoreflag) {
 		csptr->maintenance_timeout = maintenance_timeout;
 		csptr->disconnection_time = main_time();
 //		csptr->fastreplication = fastreplication;
+#ifdef ENABLE_IPV6
+		// Initialize IPv6 fields for entries loaded from metadata
+		if (ip == 0) {
+			csptr->use_ipv6 = 1;
+			// IPv6 address will be set when chunkserver connects
+			memset(&csptr->ip_addr, 0, sizeof(csptr->ip_addr));
+		} else {
+			csptr->use_ipv6 = 0;
+			csptr->ip_addr.family = AF_INET;
+			csptr->ip_addr.addr.v4 = ip;
+		}
+#endif
 		csptr->next = csdbhash[hash];
 		csdbhash[hash] = csptr;
 		servers++;

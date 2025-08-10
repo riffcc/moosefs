@@ -40,6 +40,9 @@
 #include "main.h"
 #include "clocks.h"
 #include "sockets.h"
+#ifdef ENABLE_IPV6
+#include "sockets_ipv6.h"
+#endif
 #include "hddspacemgr.h"
 #include "masterconn.h"
 #include "charts.h"
@@ -1032,7 +1035,7 @@ void csserv_reload(void) {
 		return;
 	}
 
-	newlsock = tcpsocket();
+	newlsock = MFS_TCP_SOCKET();
 	if (newlsock<0) {
 		mfs_log(MFSLOG_ERRNO_SYSLOG_STDERR,MFSLOG_WARNING,"main server module: socket address has changed, but can't create new socket");
 		free(newListenHost);
@@ -1043,7 +1046,11 @@ void csserv_reload(void) {
 	tcpnodelay(newlsock);
 	tcpreuseaddr(newlsock);
 	tcpresolve(newListenHost,newListenPort,&newmylistenip,&newmylistenport,1);
+#ifdef ENABLE_IPV6
+	if (tcp6strlisten(newlsock,ListenHost,ListenPort,100)<0) {
+#else
 	if (tcpnumlisten(newlsock,newmylistenip,newmylistenport,100)<0) {
+#endif
 		mfs_log(MFSLOG_ERRNO_SYSLOG_STDERR,MFSLOG_WARNING,"main server module: socket address has changed, but can't listen on socket (%s:%s)",ListenHost,ListenPort);
 		free(newListenHost);
 		free(newListenPort);
@@ -1069,7 +1076,7 @@ int csserv_init(void) {
 	ListenHost = cfg_getstr("CSSERV_LISTEN_HOST","*");
 	ListenPort = cfg_getstr("CSSERV_LISTEN_PORT",DEFAULT_CS_DATA_PORT);
 
-	lsock = tcpsocket();
+	lsock = MFS_TCP_SOCKET();
 	if (lsock<0) {
 		mfs_log(MFSLOG_ERRNO_SYSLOG_STDERR,MFSLOG_ERR,"main server module: can't create socket");
 		return -1;
@@ -1078,7 +1085,11 @@ int csserv_init(void) {
 	tcpnodelay(lsock);
 	tcpreuseaddr(lsock);
 	tcpresolve(ListenHost,ListenPort,&mylistenip,&mylistenport,1);
+#ifdef ENABLE_IPV6
+	if (tcp6strlisten(lsock,ListenHost,ListenPort,100)<0) {
+#else
 	if (tcpnumlisten(lsock,mylistenip,mylistenport,100)<0) {
+#endif
 		mfs_log(MFSLOG_ERRNO_SYSLOG_STDERR,MFSLOG_ERR,"main server module: can't listen on socket");
 		return -1;
 	}

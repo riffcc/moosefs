@@ -97,7 +97,7 @@ char* univ6allocstripport(const mfs_ip *ip, uint16_t port) {
     return strdup(stripport);
 }
 
-/* -------------- IP Format Conversion -------------- */
+/* -------------- mfs_ip Utility Functions -------------- */
 
 void ipv4_to_mfs_ip(mfs_ip *mip, uint32_t ipv4) {
     mip->family = AF_INET;
@@ -108,28 +108,54 @@ uint32_t mfs_ip_to_ipv4(const mfs_ip *mip) {
     if (mip->family == AF_INET) {
         return mip->addr.v4;
     }
-    return 0;
+    return 0; // Can't convert IPv6 to IPv4
 }
 
 int mfs_ip_is_v4(const mfs_ip *mip) {
-    return mip->family == AF_INET;
+    return (mip->family == AF_INET);
 }
 
 int mfs_ip_is_v6(const mfs_ip *mip) {
-    return mip->family == AF_INET6;
+    return (mip->family == AF_INET6);
 }
 
 int mfs_ip_equal(const mfs_ip *a, const mfs_ip *b) {
     if (a->family != b->family) {
         return 0;
     }
+    
     if (a->family == AF_INET) {
-        return a->addr.v4 == b->addr.v4;
+        return (a->addr.v4 == b->addr.v4);
     } else if (a->family == AF_INET6) {
-        return memcmp(a->addr.v6, b->addr.v6, 16) == 0;
+        return (memcmp(a->addr.v6, b->addr.v6, 16) == 0);
     }
+    
     return 0;
 }
+
+/* -------------- TCP IPv6 Functions -------------- */
+
+int tcp6socket(void) {
+    int sock = socket(AF_INET6, SOCK_STREAM, 0);
+    if (sock >= 0) {
+        // Enable dual-stack (IPv4 and IPv6 on same socket)
+        int zero = 0;
+        setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, &zero, sizeof(zero));
+    }
+    return sock;
+}
+
+int udp6socket(void) {
+    int sock = socket(AF_INET6, SOCK_DGRAM, 0);
+    if (sock >= 0) {
+        // Enable dual-stack (IPv4 and IPv6 on same socket)
+        int zero = 0;
+        setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, &zero, sizeof(zero));
+    }
+    return sock;
+}
+
+/* -------------- IP Format Conversion -------------- */
 
 /* -------------- Socket Address Helpers -------------- */
 
@@ -211,16 +237,6 @@ static int mfs_sockaddr_resolve(mfs_sockaddr *msa, const char *hostname, const c
 
 /* ----------------- TCP IPv6 ----------------- */
 
-int tcp6socket(void) {
-    int sock = socket(AF_INET6, SOCK_STREAM, 0);
-    if (sock >= 0) {
-        // Enable dual-stack (IPv4 and IPv6 on same socket)
-        int zero = 0;
-        setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, &zero, sizeof(zero));
-    }
-    return sock;
-}
-
 int tcp6resolve(const char *hostname, const char *service, mfs_ip *ip, uint16_t *port, int passiveflag) {
     mfs_sockaddr msa;
     if (mfs_sockaddr_resolve(&msa, hostname, service, SOCK_STREAM, passiveflag) < 0) {
@@ -269,7 +285,15 @@ int tcp6numconnect(int sock, const mfs_ip *ip, uint16_t port) {
     if (mfs_sockaddr_fill(&msa, ip, port) < 0) {
         return -1;
     }
-    return connect(sock, &msa.addr.generic, msa.addrlen);
+    int result = connect(sock, &msa.addr.generic, msa.addrlen);
+    if (result >= 0) {
+        return 0;  // Immediate connection success
+    }
+    // Handle non-blocking socket case - IPv6 FIX APPLIED
+    if (errno == EINPROGRESS) {
+        return 1;  // Connection in progress (non-blocking socket)
+    }
+    return -1;  // Actual connection error
 }
 
 int tcp6numtoconnect(int sock, const mfs_ip *ip, uint16_t port, uint32_t msecto) {
@@ -462,16 +486,6 @@ int tcp6getmyaddr(int sock, mfs_ip *ip, uint16_t *port) {
 
 /* ----------------- UDP IPv6 ----------------- */
 
-int udp6socket(void) {
-    int sock = socket(AF_INET6, SOCK_DGRAM, 0);
-    if (sock >= 0) {
-        // Enable dual-stack (IPv4 and IPv6 on same socket)
-        int zero = 0;
-        setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, &zero, sizeof(zero));
-    }
-    return sock;
-}
-
 int udp6resolve(const char *hostname, const char *service, mfs_ip *ip, uint16_t *port, int passiveflag) {
     mfs_sockaddr msa;
     if (mfs_sockaddr_resolve(&msa, hostname, service, SOCK_DGRAM, passiveflag) < 0) {
@@ -552,3 +566,77 @@ int udp6read(int sock, mfs_ip *ip, uint16_t *port, void *buff, uint16_t leng) {
     
     return ret;
 }
+
+/* -------------- Legacy Compatibility Wrappers -------------- */
+
+#ifdef ENABLE_IPV6
+
+int tcp6resolve_compat(const char *hostname, const char *service, uint32_t *ip, uint16_t *port, int passiveflag) {
+    mfs_ip mip;
+    int result = tcp6resolve(hostname, service, &mip, port, passiveflag);
+    
+    if (result == 0 && ip != NULL) {
+        if (mip.family == AF_INET) {
+            *ip = mip.addr.v4;
+        } else {
+            // For IPv6 addresses, we can't represent them in uint32_t
+            // Return 0 (any address) to indicate IPv6 - caller should use IPv6 functions
+            *ip = 0;
+        }
+    }
+    
+    return result;
+}
+
+int tcp6numlisten_compat(int sock, uint32_t ip, uint16_t port, uint16_t queue) {
+    mfs_ip mip;
+    
+    if (ip == 0xFFFFFFFF) {
+        // Special case: listen on all IPv6 interfaces
+        mip.family = AF_INET6;
+        memset(mip.addr.v6, 0, 16);
+    } else {
+        // IPv4 address
+        mip.family = AF_INET;
+        mip.addr.v4 = ip;
+    }
+    
+    if (tcp6numbind(sock, &mip, port) < 0) {
+        return -1;
+    }
+    
+    return listen(sock, queue);
+}
+
+int tcp6numconnect_compat(int sock, uint32_t ip, uint16_t port) {
+    mfs_ip mip;
+    
+    if (ip == 0) {
+        // ip=0 from resolve indicates IPv6 - not supported in compat mode
+        errno = EINVAL;
+        return -1;
+    }
+    
+    mip.family = AF_INET;
+    mip.addr.v4 = ip;
+    
+    return tcp6numconnect(sock, &mip, port);
+}
+
+int tcp6getpeer_compat(int sock, uint32_t *ip, uint16_t *port) {
+    mfs_ip mip;
+    int result = tcp6getpeer(sock, &mip, port);
+    
+    if (result == 0 && ip != NULL) {
+        if (mip.family == AF_INET) {
+            *ip = mip.addr.v4;
+        } else {
+            // IPv6 address - use special value
+            *ip = 0xFFFFFFFF;
+        }
+    }
+    
+    return result;
+}
+
+#endif /* ENABLE_IPV6 */

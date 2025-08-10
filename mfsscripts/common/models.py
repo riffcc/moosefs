@@ -268,13 +268,30 @@ class MemoryUsage:
 		self.memusage = memusage
 
 class ChunkServer:
-	def __init__(self,oip,ip,donotresolve,port,csid,v1,v2,v3,flags,used,total,chunks,tdused,tdtotal,tdchunks,errcnt,queue,gracetime,labels,mfrstatus,maintenanceto):
+	def __init__(self,oip,ip,donotresolve,port,csid,v1,v2,v3,flags,used,total,chunks,tdused,tdtotal,tdchunks,errcnt,queue,gracetime,labels,mfrstatus,maintenanceto,is_ipv6=False):
 		self.oip = oip
 		self.ip = ip
+		self.is_ipv6 = is_ipv6
 		self.version = (v1,v2,v3)
-		self.stroip = "%u.%u.%u.%u" % oip
-		self.strip = "%u.%u.%u.%u" % ip
-		self.sortip = "%03u_%03u_%03u_%03u" % ip
+		# Handle IPv6 address display
+		if is_ipv6 and len(ip) == 16:
+			# Convert 16-byte IPv6 address to readable format
+			import socket
+			self.strip = socket.inet_ntop(socket.AF_INET6, bytes(ip))
+			self.sortip = self.strip  # Use IPv6 string for sorting
+			# For IPv6, use the actual IPv6 address as stroip too
+			self.stroip = self.strip
+		else:
+			# IPv4 format
+			self.stroip = "%u.%u.%u.%u" % oip
+			if len(ip) == 4:
+				self.strip = "%u.%u.%u.%u" % ip
+				self.sortip = "%03u_%03u_%03u_%03u" % ip
+			else:
+				# Fallback for unexpected formats
+				self.strip = str(ip)
+				self.sortip = str(ip)
+		
 		self.strver,self.sortver,self.pro = version_str_sort_pro((v1,v2,v3))
 		self.host = resolve(self.strip, donotresolve)
 		self.port = port

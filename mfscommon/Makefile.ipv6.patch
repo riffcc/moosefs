@@ -1,0 +1,21 @@
+--- Makefile.am.orig	2025-01-09
++++ Makefile.am	2025-01-09
+@@ -20,6 +20,7 @@
+ 	random.c random.h \
+ 	sizestr.h \
+ 	sockets.c sockets.h \
++	sockets_ipv6.c sockets_ipv6.h \
+ 	squeue.c squeue.h \
+ 	statsdump.c strerr.c strerr.h \
+ 	timeparser.c timeparser.h \
+@@ -40,6 +41,10 @@
+ AM_CPPFLAGS = -DAPPNAME=$(APPNAME) -I$(top_srcdir)/mfscommon
+ AM_LDFLAGS = $(PTHREAD_LIBS) -lm
+ 
++# IPv6 support (optional)
++if ENABLE_IPV6
++AM_CPPFLAGS += -DENABLE_IPV6
++endif
++
+ # Additional libraries for specific modules
+ if BUILD_CLIENT
