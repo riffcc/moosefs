@@ -25,6 +25,10 @@
 #include <stdlib.h>
 #include <pthread.h>
 #include <inttypes.h>
+#include <string.h>
+#ifdef ENABLE_IPV6
+#include <sys/socket.h>
+#endif
 
 #include "labelparser.h"
 #include "csorder.h"
@@ -191,33 +195,77 @@ uint32_t csorder_sort(cspri chain[100],uint8_t csdataver,const uint8_t *csdata,u
 	cp = csdata;
 	cpe = csdata+csdatasize;
 	i = 0;
-	while (cp<cpe && i<100) {
-		chain[i].ip = get32bit(&cp);
-		chain[i].port = get16bit(&cp);
-		if (csdataver>0) {
+	
+#ifdef ENABLE_IPV6
+	if (csdataver == 3) {
+		// IPv6 protocol - variable size entries
+		// Format: family:8 ip:(32 for IPv4, 128 for IPv6) port:16 cs_ver:32 labelmask:32
+		while (cp<cpe && i<100) {
+			uint8_t family = get8bit(&cp);
+			if (family == AF_INET6) {
+				// IPv6 address - store it in the IPv6 fields
+				memcpy(chain[i].ipv6, cp, 16);
+				cp += 16;
+				chain[i].ip = 0;  // Mark as IPv6 by setting IPv4 to 0
+				chain[i].is_ipv6 = 1;
+			} else if (family == AF_INET) {
+				// IPv4 address
+				chain[i].ip = get32bit(&cp);
+				chain[i].is_ipv6 = 0;
+				memset(chain[i].ipv6, 0, 16);
+			} else {
+				// Unknown family, skip
+				break;
+			}
+			chain[i].port = get16bit(&cp);
 			chain[i].version = get32bit(&cp);
-		} else {
-			chain[i].version = 0;
-		}
-		if (csdataver>1) {
 			chain[i].labelmask = get32bit(&cp);
-		} else {
-			chain[i].labelmask = 0;
+			chain[i].priority = csorder_calc(chain[i].labelmask);
+			chain[i].priority <<= 24;
+			if (writeflag) {
+				chain[i].priority += i;
+			} else {
+				chain[i].priority += csdb_getopcnt(chain[i].ip,chain[i].port);
+			}
+			i++;
 		}
-		chain[i].priority = csorder_calc(chain[i].labelmask);
-		chain[i].priority <<= 24;
-		if (writeflag) {
-			chain[i].priority += i;
-		} else {
-			chain[i].priority += csdb_getopcnt(chain[i].ip,chain[i].port);
+		// Don't sort for csdataver==3 with IPv6 (matches old EC behavior)
+	} else {
+#endif
+		// Old IPv4-only protocol
+		while (cp<cpe && i<100) {
+			chain[i].ip = get32bit(&cp);
+			chain[i].port = get16bit(&cp);
+#ifdef ENABLE_IPV6
+			chain[i].is_ipv6 = 0;
+			memset(chain[i].ipv6, 0, 16);
+#endif
+			if (csdataver>0) {
+				chain[i].version = get32bit(&cp);
+			} else {
+				chain[i].version = 0;
+			}
+			if (csdataver>1) {
+				chain[i].labelmask = get32bit(&cp);
+			} else {
+				chain[i].labelmask = 0;
+			}
+			chain[i].priority = csorder_calc(chain[i].labelmask);
+			chain[i].priority <<= 24;
+			if (writeflag) {
+				chain[i].priority += i;
+			} else {
+				chain[i].priority += csdb_getopcnt(chain[i].ip,chain[i].port);
+			}
+//			csorder_log_chain_element(i,chain+i);
+			i++;
 		}
-//		csorder_log_chain_element(i,chain+i);
-		i++;
+		if (csdataver!=3) { // 3 - data split into eight parts - do not sort them !!!
+			qsort(chain,i,sizeof(cspri),csorder_cmp);
+		}
+#ifdef ENABLE_IPV6
 	}
-//	mfs_log(MFSLOG_SYSLOG,MFSLOG_DEBUG,"csorder_sort: sort using: %s",make_label_expr(labelsbuff,labelscnt,labelmasks));
-	if (csdataver!=3) { // 3 - data split into eight parts - do not sort them !!!
-		qsort(chain,i,sizeof(cspri),csorder_cmp);
-	}
+#endif
 //	for (j=0 ; j<i ; j++) {
 //		csorder_log_chain_element(j,chain+j);
 //	}

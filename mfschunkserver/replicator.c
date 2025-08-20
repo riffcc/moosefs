@@ -36,6 +36,9 @@
 #include "MFSCommunication.h"
 #include "hddspacemgr.h"
 #include "sockets.h"
+#ifdef ENABLE_IPV6
+#include "sockets_ipv6.h"
+#endif
 #include "crc.h"
 #include "mfslog.h"
 #include "datapack.h"
@@ -75,7 +78,11 @@ typedef struct _repsrc {
 	uint32_t version;
 	uint16_t blocks;
 
+#ifdef ENABLE_IPV6
+	mfs_ip srcip;  // IPv6-capable source IP
+#else
 	uint32_t ip;
+#endif
 	uint16_t port;
 
 	uint8_t *datapackets[4];
@@ -431,7 +438,11 @@ static int rep_concurrent_connect(replication *r) {
 		newconnection = 0;
 		for (i=0 ; i<r->srccnt ; i++) {
 			if (r->repsources[i].mode==IDLE) {
+#ifdef ENABLE_IPV6
+				s = tcp6socket();
+#else
 				s = tcpsocket();
+#endif
 				if (s<0) {
 					mfs_log(MFSLOG_SYSLOG_STDERR,MFSLOG_WARNING,"replicator: socket error");
 					connect_state = STATE_ERROR;
@@ -449,7 +460,11 @@ static int rep_concurrent_connect(replication *r) {
 				//	}
 				// }
 				r->repsources[i].sock = s;
+#ifdef ENABLE_IPV6
+				cres = tcp6numconnect(s,&r->repsources[i].srcip,r->repsources[i].port);
+#else
 				cres = tcpnumconnect(s,r->repsources[i].ip,r->repsources[i].port);
+#endif
 				if (cres<0) {
 					tcpclose(s);
 					r->repsources[i].sock = -1;
@@ -589,7 +604,20 @@ static void rep_cleanup(replication *r) {
 	}
 }
 
+#ifdef ENABLE_IPV6
+// Internal version that accepts mfs_ip directly
+static uint8_t replicate_internal(repmodeenum rmode,uint64_t chunkid,uint32_t version,uint8_t partno,uint8_t parts,const mfs_ip srcip[MAX_EC_PARTS],const uint16_t srcport[MAX_EC_PARTS],const uint64_t srcchunkid[MAX_EC_PARTS]);
+
+uint8_t replicate_v6(repmodeenum rmode,uint64_t chunkid,uint32_t version,uint8_t partno,uint8_t parts,const mfs_ip srcip[MAX_EC_PARTS],const uint16_t srcport[MAX_EC_PARTS],const uint64_t srcchunkid[MAX_EC_PARTS]) {
+	return replicate_internal(rmode, chunkid, version, partno, parts, srcip, srcport, srcchunkid);
+}
+#endif
+
+#ifdef ENABLE_IPV6
+static uint8_t replicate_internal(repmodeenum rmode,uint64_t chunkid,uint32_t version,uint8_t partno,uint8_t parts,const mfs_ip srcip[MAX_EC_PARTS],const uint16_t srcport[MAX_EC_PARTS],const uint64_t srcchunkid[MAX_EC_PARTS]) {
+#else
 uint8_t replicate(repmodeenum rmode,uint64_t chunkid,uint32_t version,uint8_t partno,uint8_t parts,const uint32_t srcip[MAX_EC_PARTS],const uint16_t srcport[MAX_EC_PARTS],const uint64_t srcchunkid[MAX_EC_PARTS]) {
+#endif
 	uint8_t status,i,nonzero;
 	replication r;
 	uint8_t srccnt,lastsrccnt,readsrccnt;
@@ -673,7 +701,11 @@ uint8_t replicate(repmodeenum rmode,uint64_t chunkid,uint32_t version,uint8_t pa
 		r.repsources[i].mode = IDLE;
 		r.repsources[i].chunkid = srcchunkid[i];
 		r.repsources[i].version = version;
+#ifdef ENABLE_IPV6
+		r.repsources[i].srcip = srcip[i];  // Direct assignment of mfs_ip
+#else
 		r.repsources[i].ip = srcip[i];
+#endif
 		r.repsources[i].port = srcport[i];
 		r.repsources[i].sock = -1;
 		r.repsources[i].packet = NULL;
@@ -731,7 +763,11 @@ uint8_t replicate(repmodeenum rmode,uint64_t chunkid,uint32_t version,uint8_t pa
 		type = get32bit(&rptr);
 		size = get32bit(&rptr);
 		rptr = r.repsources[i].packet;
+#ifdef ENABLE_IPV6
+		ip = mfs_ip_to_ipv4(&r.repsources[i].srcip);
+#else
 		ip = r.repsources[i].ip;
+#endif
 		if (rptr==NULL || type!=CSTOAN_CHUNK_BLOCKS || size!=15) {
 			mfs_log(MFSLOG_SYSLOG,MFSLOG_WARNING,"replicator,get # of blocks: got wrong answer (type:0x%08"PRIX32"/size:0x%08"PRIX32") from (%u.%u.%u.%u:%"PRIu16")",type,size,(ip>>24)&0xFF,(ip>>16)&0xFF,(ip>>8)&0xFF,ip&0xFF,r.repsources[i].port);
 			rep_cleanup(&r);
@@ -914,7 +950,11 @@ uint8_t replicate(repmodeenum rmode,uint64_t chunkid,uint32_t version,uint8_t pa
 				type = get32bit(&rptr);
 				size = get32bit(&rptr);
 				rptr = r.repsources[i].packet;
-				ip = r.repsources[i].ip;
+		#ifdef ENABLE_IPV6
+		ip = mfs_ip_to_ipv4(&r.repsources[i].srcip);
+#else
+		ip = r.repsources[i].ip;
+#endif
 				switch (rmode) {
 					case SIMPLE:
 						expectedblocknum = b;
@@ -1019,7 +1059,11 @@ uint8_t replicate(repmodeenum rmode,uint64_t chunkid,uint32_t version,uint8_t pa
 				type = get32bit(&rptr);
 				size = get32bit(&rptr);
 				rptr = r.repsources[i].packet;
-				ip = r.repsources[i].ip;
+		#ifdef ENABLE_IPV6
+		ip = mfs_ip_to_ipv4(&r.repsources[i].srcip);
+#else
+		ip = r.repsources[i].ip;
+#endif
 				if (rptr==NULL || type!=CSTOCL_READ_STATUS || size!=9) {
 					mfs_log(MFSLOG_SYSLOG,MFSLOG_WARNING,"replicator,check status: got wrong answer (type:0x%08"PRIX32"/size:0x%08"PRIX32") from (%u.%u.%u.%u:%"PRIu16")",type,size,(ip>>24)&0xFF,(ip>>16)&0xFF,(ip>>8)&0xFF,ip&0xFF,r.repsources[i].port);
 					rep_cleanup(&r);
@@ -1157,3 +1201,17 @@ uint8_t replicate(repmodeenum rmode,uint64_t chunkid,uint32_t version,uint8_t pa
 	rep_cleanup(&r);
 	return MFS_STATUS_OK;
 }
+
+#ifdef ENABLE_IPV6
+// IPv4 compatibility wrapper
+uint8_t replicate(repmodeenum rmode,uint64_t chunkid,uint32_t version,uint8_t partno,uint8_t parts,const uint32_t srcip[MAX_EC_PARTS],const uint16_t srcport[MAX_EC_PARTS],const uint64_t srcchunkid[MAX_EC_PARTS]) {
+	mfs_ip srcip_v6[MAX_EC_PARTS];
+	uint8_t i;
+	
+	for (i = 0; i < MAX_EC_PARTS; i++) {
+		ipv4_to_mfs_ip(&srcip_v6[i], srcip[i]);
+	}
+	
+	return replicate_internal(rmode, chunkid, version, partno, parts, srcip_v6, srcport, srcchunkid);
+}
+#endif

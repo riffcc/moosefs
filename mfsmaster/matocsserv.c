@@ -1677,6 +1677,25 @@ int matocsserv_get_csdata(void *e,uint32_t clientip,uint32_t *servip,uint16_t *s
 	return -1;
 }
 
+#ifdef ENABLE_IPV6
+int matocsserv_get_ipv6_addr(void *e,uint8_t *is_ipv6,uint32_t *ipv4_addr,uint8_t ipv6_addr[16]) {
+	matocsserventry *eptr = (matocsserventry *)e;
+	if (eptr->mode!=KILL) {
+		if (eptr->use_ipv6 && eptr->serv_ipv6.family == AF_INET6) {
+			*is_ipv6 = 1;
+			*ipv4_addr = 0;
+			memcpy(ipv6_addr, eptr->serv_ipv6.addr.v6, 16);
+		} else {
+			*is_ipv6 = 0;
+			*ipv4_addr = eptr->servip;
+			memset(ipv6_addr, 0, 16);
+		}
+		return 0;
+	}
+	return -1;
+}
+#endif
+
 void matocsserv_getservdata(void *e,uint32_t *ver,uint64_t *uspc,uint64_t *tspc,uint32_t *chunkcnt,uint64_t *tduspc,uint64_t *tdtspc,uint32_t *tdchunkcnt,uint32_t *errcnt,uint32_t *load,uint8_t *hlstatus,uint32_t *labelmask,uint8_t *mfrstatus) {
 	matocsserventry *eptr = (matocsserventry *)e;
 	if (eptr->mode!=KILL) {
@@ -1998,11 +2017,58 @@ int matocsserv_send_replicatechunk(void *e,uint64_t chunkid,uint8_t ecid,uint32_
 	}
 	if (dsteptr->mode!=KILL && srceptr->mode!=KILL) {
 //		dsteptr->dist = 0;
-		data = matocsserv_create_packet(dsteptr,MATOCS_REPLICATE,8+4+4+2);
-		put64bit(&data,dstchunkid);
-		put32bit(&data,version);
-		put32bit(&data,srceptr->servip);
-		put16bit(&data,srceptr->servport);
+#ifdef ENABLE_IPV6
+		// Check if destination supports IPv6 and source has IPv6 address
+		if (dsteptr->version >= 0x040701 && srceptr->use_ipv6) {  // Version 4.7.1+ supports IPv6
+			// Send IPv6 version of the command
+			if (srceptr->serv_ipv6.family == AF_INET6) {
+				data = matocsserv_create_packet(dsteptr,MATOCS_REPLICATE_V6,8+4+1+16+2);
+				put64bit(&data,dstchunkid);
+				put32bit(&data,version);
+				put8bit(&data,AF_INET6);  // family
+				put8bit(&data,srceptr->serv_ipv6.addr.v6[0]);
+				put8bit(&data,srceptr->serv_ipv6.addr.v6[1]);
+				put8bit(&data,srceptr->serv_ipv6.addr.v6[2]);
+				put8bit(&data,srceptr->serv_ipv6.addr.v6[3]);
+				put8bit(&data,srceptr->serv_ipv6.addr.v6[4]);
+				put8bit(&data,srceptr->serv_ipv6.addr.v6[5]);
+				put8bit(&data,srceptr->serv_ipv6.addr.v6[6]);
+				put8bit(&data,srceptr->serv_ipv6.addr.v6[7]);
+				put8bit(&data,srceptr->serv_ipv6.addr.v6[8]);
+				put8bit(&data,srceptr->serv_ipv6.addr.v6[9]);
+				put8bit(&data,srceptr->serv_ipv6.addr.v6[10]);
+				put8bit(&data,srceptr->serv_ipv6.addr.v6[11]);
+				put8bit(&data,srceptr->serv_ipv6.addr.v6[12]);
+				put8bit(&data,srceptr->serv_ipv6.addr.v6[13]);
+				put8bit(&data,srceptr->serv_ipv6.addr.v6[14]);
+				put8bit(&data,srceptr->serv_ipv6.addr.v6[15]);
+				put16bit(&data,srceptr->servport);
+			} else if (srceptr->serv_ipv6.family == AF_INET) {
+				// IPv4 in IPv6 packet format
+				data = matocsserv_create_packet(dsteptr,MATOCS_REPLICATE_V6,8+4+1+4+2);
+				put64bit(&data,dstchunkid);
+				put32bit(&data,version);
+				put8bit(&data,AF_INET);  // family
+				put32bit(&data,srceptr->servip);
+				put16bit(&data,srceptr->servport);
+			} else {
+				// Fallback to IPv4 for backward compatibility
+				data = matocsserv_create_packet(dsteptr,MATOCS_REPLICATE,8+4+4+2);
+				put64bit(&data,dstchunkid);
+				put32bit(&data,version);
+				put32bit(&data,srceptr->servip);
+				put16bit(&data,srceptr->servport);
+			}
+		} else
+#endif
+		{
+			// Original IPv4-only code
+			data = matocsserv_create_packet(dsteptr,MATOCS_REPLICATE,8+4+4+2);
+			put64bit(&data,dstchunkid);
+			put32bit(&data,version);
+			put32bit(&data,srceptr->servip);
+			put16bit(&data,srceptr->servport);
+		}
 		matocsserv_replication_begin(dstchunkid,version,dsteptr,1,&src,(ecid==0)?FULL_REPLICATION_WEIGHT:EC_REPLICATION_WEIGHT,(ecid==0)?FULL_REPLICATION_WEIGHT:EC_REPLICATION_WEIGHT,REPTYPE_SIMPLE,reason);
 	}
 	return 0;
@@ -2021,14 +2087,56 @@ int matocsserv_send_replicatechunk_split(void *e,uint64_t chunkid,uint8_t ecid,u
 		return -1;
 	}
 	if (dsteptr->mode!=KILL && srceptr->mode!=KILL) {
-		data = matocsserv_create_packet(dsteptr,MATOCS_REPLICATE_SPLIT,8+4+4+2+8+1+1);
-		put64bit(&data,dstchunkid);
-		put32bit(&data,version);
-		put32bit(&data,srceptr->servip);
-		put16bit(&data,srceptr->servport);
-		PUT_CHUNKID_AND_ECID(&data,chunkid,srcecid);
-		put8bit(&data,partno);
-		put8bit(&data,parts);
+#ifdef ENABLE_IPV6
+		// Check if destination supports IPv6 and source has IPv6 address
+		if (dsteptr->version >= 0x040701 && srceptr->use_ipv6) {  // Version 4.7.1+ supports IPv6
+			if (srceptr->serv_ipv6.family == AF_INET6) {
+				data = matocsserv_create_packet(dsteptr,MATOCS_REPLICATE_SPLIT_V6,8+4+1+16+2+8+1+1);
+				put64bit(&data,dstchunkid);
+				put32bit(&data,version);
+				put8bit(&data,AF_INET6);  // family
+				for (int i=0; i<16; i++) {
+					put8bit(&data,srceptr->serv_ipv6.addr.v6[i]);
+				}
+				put16bit(&data,srceptr->servport);
+				PUT_CHUNKID_AND_ECID(&data,chunkid,srcecid);
+				put8bit(&data,partno);
+				put8bit(&data,parts);
+			} else if (srceptr->serv_ipv6.family == AF_INET) {
+				// IPv4 in IPv6 packet format
+				data = matocsserv_create_packet(dsteptr,MATOCS_REPLICATE_SPLIT_V6,8+4+1+4+2+8+1+1);
+				put64bit(&data,dstchunkid);
+				put32bit(&data,version);
+				put8bit(&data,AF_INET);  // family
+				put32bit(&data,srceptr->servip);
+				put16bit(&data,srceptr->servport);
+				PUT_CHUNKID_AND_ECID(&data,chunkid,srcecid);
+				put8bit(&data,partno);
+				put8bit(&data,parts);
+			} else {
+				// Fallback to IPv4
+				data = matocsserv_create_packet(dsteptr,MATOCS_REPLICATE_SPLIT,8+4+4+2+8+1+1);
+				put64bit(&data,dstchunkid);
+				put32bit(&data,version);
+				put32bit(&data,srceptr->servip);
+				put16bit(&data,srceptr->servport);
+				PUT_CHUNKID_AND_ECID(&data,chunkid,srcecid);
+				put8bit(&data,partno);
+				put8bit(&data,parts);
+			}
+		} else
+#endif
+		{
+			// Original IPv4-only code
+			data = matocsserv_create_packet(dsteptr,MATOCS_REPLICATE_SPLIT,8+4+4+2+8+1+1);
+			put64bit(&data,dstchunkid);
+			put32bit(&data,version);
+			put32bit(&data,srceptr->servip);
+			put16bit(&data,srceptr->servport);
+			PUT_CHUNKID_AND_ECID(&data,chunkid,srcecid);
+			put8bit(&data,partno);
+			put8bit(&data,parts);
+		}
 		matocsserv_replication_begin(dstchunkid,version,dsteptr,1,&src,EC_REPLICATION_WEIGHT,EC_REPLICATION_WEIGHT,REPTYPE_SPLIT,reason);
 	}
 	return 0;

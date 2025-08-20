@@ -46,6 +46,9 @@
 #include "mfslog.h"
 #include "massert.h"
 #include "sockets.h"
+#ifdef ENABLE_IPV6
+#include "sockets_ipv6.h"
+#endif
 #include "mime.h"
 #include "children.h"
 
@@ -112,8 +115,13 @@ static off_t requests_leng;
 static uint32_t Timeout;
 static char *ListenHost;
 static char *ListenPort;
+#ifdef ENABLE_IPV6
+static struct sockaddr_storage listen_addr;
+static socklen_t listen_addrlen;
+#else
 static uint32_t listenip; 
 static uint16_t listenport;
+#endif
 
 static int lsock;
 static uint32_t lsockpdescpos;
@@ -1422,12 +1430,24 @@ void mfscgiserv_desc(struct pollfd *pdesc,uint32_t *ndesc) {
 void mfscgiserv_serve(struct pollfd *pdesc) {
 	int ns;
 	if (pdesc[lsockpdescpos].revents & POLLIN) {
+#ifdef ENABLE_IPV6
+		ns=univ_accept(lsock);
+#else
 		ns=tcpaccept(lsock);
+#endif
 		if (ns<0) {
 			mfs_log(MFSLOG_SYSLOG_STDERR,MFSLOG_WARNING,"guiserv: accept error");
 		} else {
+#ifdef ENABLE_IPV6
+			univ_nonblock(ns);
+#else
 			tcpnonblock(ns);
+#endif
+#ifdef ENABLE_IPV6
+			univ_nodelay(ns);
+#else
 			tcpnodelay(ns);
+#endif
 			mfscgiserv_handle_newconn(ns);
 		}
 	}
@@ -1477,16 +1497,26 @@ void mfscgiserv_reload_common(void) {
 
 void mfscgiserv_reload(void) {
 	char *oldListenHost,*oldListenPort;
+#ifdef ENABLE_IPV6
+	struct sockaddr_storage old_listen_addr;
+	socklen_t old_listen_addrlen;
+#else
 	uint32_t oldlistenip;
 	uint16_t oldlistenport;
+#endif
 	int newlsock;
 
 	mfscgiserv_reload_common();
 
 	oldListenHost = ListenHost;
 	oldListenPort = ListenPort;
+#ifdef ENABLE_IPV6
+	old_listen_addr = listen_addr;
+	old_listen_addrlen = listen_addrlen;
+#else
 	oldlistenip = listenip;
 	oldlistenport = listenport;
+#endif
 
 	ListenHost = cfg_getstr("GUISERV_LISTEN_HOST","*");
 	ListenPort = cfg_getstr("GUISERV_LISTEN_PORT",DEFAULT_GUI_HTTP_PORT);
@@ -1498,7 +1528,11 @@ void mfscgiserv_reload(void) {
 		return;
 	}
 
+#ifdef ENABLE_IPV6
+	newlsock = univ_socket();
+#else
 	newlsock = tcpsocket();
+#endif
 	if (newlsock<0) {
 		mfs_log(MFSLOG_ERRNO_SYSLOG_STDERR,MFSLOG_WARNING,"guiserv: socket address has changed, but can't create new socket");
 		free(ListenHost);
@@ -1507,29 +1541,55 @@ void mfscgiserv_reload(void) {
 		ListenPort = oldListenPort;
 		return;
 	}
+#ifdef ENABLE_IPV6
+	univ_nonblock(newlsock);
+	univ_nodelay(newlsock);
+	univ_reuseaddr(newlsock);
+#else
 	tcpnonblock(newlsock);
 	tcpnodelay(newlsock);
 	tcpreuseaddr(newlsock);
+#endif
+#ifdef ENABLE_IPV6
+	if (univ_resolve(ListenHost,ListenPort,(struct sockaddr*)&listen_addr,&listen_addrlen,1)<0) {
+#else
 	if (tcpresolve(ListenHost,ListenPort,&listenip,&listenport,1)<0) {
+#endif
 		mfs_log(MFSLOG_ERRNO_SYSLOG_STDERR,MFSLOG_WARNING,"guiserv: socket address has changed, but can't be resolved (%s:%s)",ListenHost,ListenPort);
 		free(ListenHost);
 		free(ListenPort);
 		ListenHost = oldListenHost;
 		ListenPort = oldListenPort;
+#ifdef ENABLE_IPV6
+		listen_addr = old_listen_addr;
+		listen_addrlen = old_listen_addrlen;
+		univ_close(newlsock);
+#else
 		listenip = oldlistenip;
 		listenport = oldlistenport;
 		tcpclose(newlsock);
+#endif
 		return;
 	}
+#ifdef ENABLE_IPV6
+	if (univ_listen(newlsock,(struct sockaddr*)&listen_addr,listen_addrlen,100)<0) {
+#else
 	if (tcpnumlisten(newlsock,listenip,listenport,100)<0) {
+#endif
 		mfs_log(MFSLOG_ERRNO_SYSLOG_STDERR,MFSLOG_WARNING,"guiserv: socket address has changed, but can't listen on socket (%s:%s)",ListenHost,ListenPort);
 		free(ListenHost);
 		free(ListenPort);
 		ListenHost = oldListenHost;
 		ListenPort = oldListenPort;
+#ifdef ENABLE_IPV6
+		listen_addr = old_listen_addr;
+		listen_addrlen = old_listen_addrlen;
+		univ_close(newlsock);
+#else
 		listenip = oldlistenip;
 		listenport = oldlistenport;
 		tcpclose(newlsock);
+#endif
 		return;
 	}
 	if (tcpsetacceptfilter(newlsock)<0 && errno!=ENOTSUP) {
@@ -1538,13 +1598,21 @@ void mfscgiserv_reload(void) {
 	mfs_log(MFSLOG_SYSLOG_STDERR,MFSLOG_INFO,"guiserv: socket address has changed, now listen on %s:%s",ListenHost,ListenPort);
 	free(oldListenHost);
 	free(oldListenPort);
+#ifdef ENABLE_IPV6
+	univ_close(lsock);
+#else
 	tcpclose(lsock);
+#endif
 	lsock = newlsock;
 }
 
 void mfscgiserv_term(void) {
 	mfs_log(MFSLOG_SYSLOG,MFSLOG_INFO,"guiserv: closing %s:%s",ListenHost,ListenPort);
+#ifdef ENABLE_IPV6
+	univ_close(lsock);
+#else
 	tcpclose(lsock);
+#endif
 
 	free(ListenHost);
 	free(ListenPort);
@@ -1587,19 +1655,34 @@ int mfscgiserv_init(void) {
 	ListenHost = cfg_getstr("GUISERV_LISTEN_HOST","*");
 	ListenPort = cfg_getstr("GUISERV_LISTEN_PORT",DEFAULT_GUI_HTTP_PORT);
 
+#ifdef ENABLE_IPV6
+	lsock = univ_socket();
+#else
 	lsock = tcpsocket();
+#endif
 	if (lsock<0) {
 		mfs_log(MFSLOG_ERRNO_SYSLOG_STDERR,MFSLOG_ERR,"guiserv: can't create socket");
 		return -1;
 	}
+#ifdef ENABLE_IPV6
+	univ_nonblock(lsock);
+	univ_nodelay(lsock);
+	univ_reuseaddr(lsock);
+	if (univ_resolve(ListenHost,ListenPort,(struct sockaddr*)&listen_addr,&listen_addrlen,1)<0) {
+#else
 	tcpnonblock(lsock);
 	tcpnodelay(lsock);
 	tcpreuseaddr(lsock);
 	if (tcpresolve(ListenHost,ListenPort,&listenip,&listenport,1)<0) {
+#endif
 		mfs_log(MFSLOG_ERRNO_SYSLOG_STDERR,MFSLOG_ERR,"guiserv: can't resolve %s:%s",ListenHost,ListenPort);
 		return -1;
 	}
+#ifdef ENABLE_IPV6
+	if (univ_listen(lsock,(struct sockaddr*)&listen_addr,listen_addrlen,100)<0) {
+#else
 	if (tcpnumlisten(lsock,listenip,listenport,100)<0) {
+#endif
 		mfs_log(MFSLOG_ERRNO_SYSLOG_STDERR,MFSLOG_ERR,"guiserv: can't listen on %s:%s",ListenHost,ListenPort);
 		return -1;
 	}

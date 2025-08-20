@@ -46,6 +46,9 @@
 #include "hddspacemgr.h"
 #include "replicator.h"
 #include "masterconn.h"
+#ifdef ENABLE_IPV6
+#include "sockets_ipv6.h"
+#endif
 
 #define JHASHSIZE 0x400
 #define JHASHPOS(id) ((id)&0x3FF)
@@ -139,7 +142,11 @@ typedef struct _chunk_rp_args {
 	uint32_t version;
 	uint8_t partno; // SPLIT
 	uint8_t parts; // SPLIT,RECOVER,JOIN
+#ifdef ENABLE_IPV6
+	mfs_ip srcip[MAX_EC_PARTS];    // IPv6-capable source IPs
+#else
 	uint32_t srcip[MAX_EC_PARTS];
+#endif
 	uint16_t srcport[MAX_EC_PARTS];
 	uint64_t srcchunkid[MAX_EC_PARTS];
 } chunk_rp_args;
@@ -388,28 +395,44 @@ void* job_worker(void *arg) {
 				if (jstate==JSTATE_DISABLED) {
 					status = MFS_ERROR_NOTDONE;
 				} else {
+#ifdef ENABLE_IPV6
+					status = replicate_v6(SIMPLE,rpargs->chunkid,rpargs->version,rpargs->partno,rpargs->parts,rpargs->srcip,rpargs->srcport,rpargs->srcchunkid);
+#else
 					status = replicate(SIMPLE,rpargs->chunkid,rpargs->version,rpargs->partno,rpargs->parts,rpargs->srcip,rpargs->srcport,rpargs->srcchunkid);
+#endif
 				}
 				break;
 			case OP_REPLICATE_SPLIT:
 				if (jstate==JSTATE_DISABLED) {
 					status = MFS_ERROR_NOTDONE;
 				} else {
+#ifdef ENABLE_IPV6
+					status = replicate_v6(SPLIT,rpargs->chunkid,rpargs->version,rpargs->partno,rpargs->parts,rpargs->srcip,rpargs->srcport,rpargs->srcchunkid);
+#else
 					status = replicate(SPLIT,rpargs->chunkid,rpargs->version,rpargs->partno,rpargs->parts,rpargs->srcip,rpargs->srcport,rpargs->srcchunkid);
+#endif
 				}
 				break;
 			case OP_REPLICATE_RECOVER:
 				if (jstate==JSTATE_DISABLED) {
 					status = MFS_ERROR_NOTDONE;
 				} else {
+#ifdef ENABLE_IPV6
+					status = replicate_v6(RECOVER,rpargs->chunkid,rpargs->version,rpargs->partno,rpargs->parts,rpargs->srcip,rpargs->srcport,rpargs->srcchunkid);
+#else
 					status = replicate(RECOVER,rpargs->chunkid,rpargs->version,rpargs->partno,rpargs->parts,rpargs->srcip,rpargs->srcport,rpargs->srcchunkid);
+#endif
 				}
 				break;
 			case OP_REPLICATE_JOIN:
 				if (jstate==JSTATE_DISABLED) {
 					status = MFS_ERROR_NOTDONE;
 				} else {
+#ifdef ENABLE_IPV6
+					status = replicate_v6(JOIN,rpargs->chunkid,rpargs->version,rpargs->partno,rpargs->parts,rpargs->srcip,rpargs->srcport,rpargs->srcchunkid);
+#else
 					status = replicate(JOIN,rpargs->chunkid,rpargs->version,rpargs->partno,rpargs->parts,rpargs->srcip,rpargs->srcport,rpargs->srcchunkid);
+#endif
 				}
 				break;
 			case OP_GETINFO:
@@ -846,11 +869,31 @@ uint32_t job_replicate_simple(void (*callback)(uint8_t status,void *extra),void 
 	memset(args,0,sizeof(chunk_rp_args));
 	args->chunkid = chunkid;
 	args->version = version;
+#ifdef ENABLE_IPV6
+	ipv4_to_mfs_ip(&args->srcip[0], srcip);
+#else
 	args->srcip[0] = srcip;
+#endif
 	args->srcport[0] = srcport;
 	args->srcchunkid[0] = chunkid;
 	return job_new(jp,OP_REPLICATE_SIMPLE,chunkid,args,callback,extra,MFS_ERROR_NOTDONE,JOB_MODE_LIMITED_QUEUE);
 }
+
+#ifdef ENABLE_IPV6
+uint32_t job_replicate_simple_v6(void (*callback)(uint8_t status,void *extra),void *extra,uint64_t chunkid,uint32_t version,const mfs_ip *srcip,uint16_t srcport) {
+	jobpool* jp = lp_pool;
+	chunk_rp_args *args;
+	args = malloc(sizeof(chunk_rp_args));
+	passert(args);
+	memset(args,0,sizeof(chunk_rp_args));
+	args->chunkid = chunkid;
+	args->version = version;
+	args->srcip[0] = *srcip;
+	args->srcport[0] = srcport;
+	args->srcchunkid[0] = chunkid;
+	return job_new(jp,OP_REPLICATE_SIMPLE,chunkid,args,callback,extra,MFS_ERROR_NOTDONE,JOB_MODE_LIMITED_QUEUE);
+}
+#endif
 
 uint32_t job_replicate_split(void (*callback)(uint8_t status,void *extra),void *extra,uint64_t chunkid,uint32_t version,uint32_t srcip,uint16_t srcport,uint64_t srcchunkid,uint8_t partno,uint8_t parts) {
 	jobpool* jp = lp_pool;
@@ -860,7 +903,11 @@ uint32_t job_replicate_split(void (*callback)(uint8_t status,void *extra),void *
 	memset(args,0,sizeof(chunk_rp_args));
 	args->chunkid = chunkid;
 	args->version = version;
+#ifdef ENABLE_IPV6
+	ipv4_to_mfs_ip(&args->srcip[0], srcip);
+#else
 	args->srcip[0] = srcip;
+#endif
 	args->srcport[0] = srcport;
 	args->srcchunkid[0] = srcchunkid;
 	args->partno = partno;
@@ -879,7 +926,11 @@ uint32_t job_replicate_recover(void (*callback)(uint8_t status,void *extra),void
 	args->version = version;
 	args->parts = parts;
 	for (i=0 ; i<parts ; i++) {
+#ifdef ENABLE_IPV6
+		ipv4_to_mfs_ip(&args->srcip[i], srcip[i]);
+#else
 		args->srcip[i] = srcip[i];
+#endif
 		args->srcport[i] = srcport[i];
 		args->srcchunkid[i] = srcchunkid[i];
 	}
@@ -897,7 +948,11 @@ uint32_t job_replicate_join(void (*callback)(uint8_t status,void *extra),void *e
 	args->version = version;
 	args->parts = parts;
 	for (i=0 ; i<parts ; i++) {
+#ifdef ENABLE_IPV6
+		ipv4_to_mfs_ip(&args->srcip[i], srcip[i]);
+#else
 		args->srcip[i] = srcip[i];
+#endif
 		args->srcport[i] = srcport[i];
 		args->srcchunkid[i] = srcchunkid[i];
 	}

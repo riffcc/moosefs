@@ -1079,6 +1079,32 @@
 #define MATOCS_REPLICATE (PROTO_BASE+150)
 // chunkid:64 version:32 ip:32 port:16
 
+// IPv6 Extensions - Using 800+ range to avoid conflicts
+// 0x0320 - Extended version with IPv6 support
+#define MATOCS_REPLICATE_V6 (PROTO_BASE+800)
+// chunkid:64 version:32 family:8 ip:(32 for IPv4, 128 for IPv6) port:16
+
+// 0x0321
+#define MATOCS_REPLICATE_SPLIT_V6 (PROTO_BASE+801)
+// chunkid:64 version:32 family:8 ip:(32 for IPv4, 128 for IPv6) port:16 srcchunkid:64 partno:8 parts:8
+
+// 0x0322
+#define MATOCS_REPLICATE_RECOVER_V6 (PROTO_BASE+802)
+// chunkid:64 version:32 matrix:4*32 parts:8 parts * [family:8 ip:(32 for IPv4, 128 for IPv6) port:16 srcchunkid:64]
+
+// 0x0323
+#define MATOCS_REPLICATE_JOIN_V6 (PROTO_BASE+803)
+// chunkid:64 version:32 parts:8 parts * [family:8 ip:(32 for IPv4, 128 for IPv6) port:16 srcchunkid:64]
+
+// IPv6 client communication extensions
+// 0x0324
+#define MATOCL_FUSE_WRITE_CHUNK_V6 (PROTO_BASE+804)
+// msgid:32 protocolid:8 length:64 chunkid:64 version:32 N * [ family:8 ip:(32 for IPv4, 128 for IPv6) port:16 cs_ver:32 labelmask:32 ]
+
+// 0x0325
+#define MATOCL_FUSE_READ_CHUNK_V6 (PROTO_BASE+805)
+// msgid:32 protocolid:8 length:64 chunkid:64 version:32 N * [ family:8 ip:(32 for IPv4, 128 for IPv6) port:16 cs_ver:32 labelmask:32 ]
+
 // 0x0097
 #define CSTOMA_REPLICATE (PROTO_BASE+151)
 // chunkid:64 version:32 status:8

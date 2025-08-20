@@ -116,7 +116,10 @@ typedef struct matoclserventry {
 	in_packetstruct *inputhead,**inputtail;
 	out_packetstruct *outputhead,**outputtail;
 	uint32_t version;
-	uint32_t peerip;
+#ifdef ENABLE_IPV6
+	mfs_ip peerip_v6;		// IPv6-capable peer address
+#endif
+	uint32_t peerip;		// Legacy IPv4 field for compatibility
 	char *strip;
 	uint16_t timeout;
 
@@ -283,7 +286,12 @@ static inline int matoclserv_fuse_write_chunk_common(matoclserventry *eptr,uint3
 	uint32_t version;
 	uint8_t split;
 	uint8_t count;
-	uint8_t cs_data[100*14];
+#ifdef ENABLE_IPV6
+	// With IPv6, each entry can be up to 27 bytes (1+16+2+4+4)
+	uint8_t cs_data[100*27];
+#else
+	uint8_t cs_data[100*27];  // Match function signature even for non-IPv6
+#endif
 
 	if (sessions_get_disables(eptr->sesdata)&DISABLE_WRITE) {
 		status = MFS_ERROR_EPERM;
@@ -341,6 +349,16 @@ static inline int matoclserv_fuse_write_chunk_common(matoclserventry *eptr,uint3
 		swchunkshash[i] = swc;
 	} else {	// return status immediately
 		dcm_modify(inode,sessions_get_id(eptr->sesdata));
+#ifdef ENABLE_IPV6
+		// Try mode 3 (IPv6) first for newer clients
+		if (eptr->version>=VERSION2INT(3,0,10)) {
+			status = chunk_get_version_and_csdata(3,chunkid,eptr->peerip,&version,&count,cs_data,&split);
+		} else if (eptr->version>=VERSION2INT(1,7,32)) {
+			status = chunk_get_version_and_csdata(1,chunkid,eptr->peerip,&version,&count,cs_data,&split);
+		} else {
+			status = chunk_get_version_and_csdata(0,chunkid,eptr->peerip,&version,&count,cs_data,&split);
+		}
+#else
 		if (eptr->version>=VERSION2INT(3,0,10)) {
 			status = chunk_get_version_and_csdata(2,chunkid,eptr->peerip,&version,&count,cs_data,&split);
 		} else if (eptr->version>=VERSION2INT(1,7,32)) {
@@ -348,6 +366,7 @@ static inline int matoclserv_fuse_write_chunk_common(matoclserventry *eptr,uint3
 		} else {
 			status = chunk_get_version_and_csdata(0,chunkid,eptr->peerip,&version,&count,cs_data,&split);
 		}
+#endif
 		if (status==MFS_STATUS_OK && split) {
 			status=MFS_ERROR_EAGAIN;
 		}
@@ -358,31 +377,85 @@ static inline int matoclserv_fuse_write_chunk_common(matoclserventry *eptr,uint3
 			fs_writeend(0,0,chunkid,0,NULL);	// ignore status - just do it.
 			return 0;
 		}
-		if (eptr->version>=VERSION2INT(3,0,10)) {
-			ptr = matoclserv_create_packet(eptr,MATOCL_FUSE_WRITE_CHUNK,25+count*14);
-		} else if (eptr->version>=VERSION2INT(1,7,32)) {
-			ptr = matoclserv_create_packet(eptr,MATOCL_FUSE_WRITE_CHUNK,25+count*10);
-		} else {
-			ptr = matoclserv_create_packet(eptr,MATOCL_FUSE_WRITE_CHUNK,24+count*6);
+#ifdef ENABLE_IPV6
+		// For mode 3 (version >= 3.0.10), we ALWAYS use the new format now
+		// This avoids ambiguity when trying to detect the format
+		uint8_t using_ipv6_protocol = 0;
+		if (count > 0 && eptr->version>=VERSION2INT(3,0,10)) {
+			// Mode 3 always uses new format with address family prefix
+			using_ipv6_protocol = 1;
 		}
-		put32bit(&ptr,msgid);
-		if (eptr->version>=VERSION2INT(3,0,10)) {
-			put8bit(&ptr,2);
-		} else if (eptr->version>=VERSION2INT(1,7,32)) {
-			put8bit(&ptr,1);
-		}
-		put64bit(&ptr,fleng);
-		put64bit(&ptr,chunkid);
-		put32bit(&ptr,version);
-		if (count>0) {
-			if (eptr->version>=VERSION2INT(3,0,10)) {
-				memcpy(ptr,cs_data,count*14);
-			} else if (eptr->version>=VERSION2INT(1,7,32)) {
-				memcpy(ptr,cs_data,count*10);
-			} else {
-				memcpy(ptr,cs_data,count*6);
+		
+		if (using_ipv6_protocol) {
+			// Calculate actual size for IPv6 protocol
+			uint32_t cs_data_size = 0;
+			const uint8_t *rptr = cs_data;
+			uint8_t j;
+			for (j = 0; j < count; j++) {
+				uint8_t family = get8bit(&rptr);
+				if (family == AF_INET6) {
+					rptr += 16 + 2 + 4 + 4;  // IPv6 address + port + csver + labelmask
+					cs_data_size += 1 + 16 + 2 + 4 + 4;  // family + ip + port + csver + labelmask
+				} else {
+					rptr += 4 + 2 + 4 + 4;   // IPv4 address + port + csver + labelmask
+					cs_data_size += 1 + 4 + 2 + 4 + 4;   // family + ip + port + csver + labelmask
+				}
 			}
+			
+			ptr = matoclserv_create_packet(eptr,MATOCL_FUSE_WRITE_CHUNK_V6,21+cs_data_size);
+			put32bit(&ptr,msgid);
+			put8bit(&ptr,3);  // protocol version 3 for IPv6
+			put64bit(&ptr,fleng);
+			put64bit(&ptr,chunkid);
+			put32bit(&ptr,version);
+			if (count>0) {
+				// Reset pointer to beginning of cs_data
+				rptr = cs_data;
+				for (j = 0; j < count; j++) {
+					uint8_t family = get8bit(&rptr);
+					put8bit(&ptr,family);
+					if (family == AF_INET6) {
+						memcpy(ptr,rptr,16);
+						ptr += 16;
+						rptr += 16;
+					} else {
+						put32bit(&ptr,get32bit(&rptr));
+					}
+					put16bit(&ptr,get16bit(&rptr));
+					put32bit(&ptr,get32bit(&rptr));
+					put32bit(&ptr,get32bit(&rptr));
+				}
+			}
+		} else {
+#endif
+			if (eptr->version>=VERSION2INT(3,0,10)) {
+				ptr = matoclserv_create_packet(eptr,MATOCL_FUSE_WRITE_CHUNK,25+count*14);
+			} else if (eptr->version>=VERSION2INT(1,7,32)) {
+				ptr = matoclserv_create_packet(eptr,MATOCL_FUSE_WRITE_CHUNK,25+count*10);
+			} else {
+				ptr = matoclserv_create_packet(eptr,MATOCL_FUSE_WRITE_CHUNK,24+count*6);
+			}
+			put32bit(&ptr,msgid);
+			if (eptr->version>=VERSION2INT(3,0,10)) {
+				put8bit(&ptr,2);
+			} else if (eptr->version>=VERSION2INT(1,7,32)) {
+				put8bit(&ptr,1);
+			}
+			put64bit(&ptr,fleng);
+			put64bit(&ptr,chunkid);
+			put32bit(&ptr,version);
+			if (count>0) {
+				if (eptr->version>=VERSION2INT(3,0,10)) {
+					memcpy(ptr,cs_data,count*14);
+				} else if (eptr->version>=VERSION2INT(1,7,32)) {
+					memcpy(ptr,cs_data,count*10);
+				} else {
+					memcpy(ptr,cs_data,count*6);
+				}
+			}
+#ifdef ENABLE_IPV6
 		}
+#endif
 		matoclserv_fuse_chunk_has_changed(eptr,inode,indx,chunkid,version,fleng,0,0,0);
 	}
 	return 0;
@@ -398,7 +471,11 @@ static inline int matoclserv_fuse_read_chunk_common(matoclserventry *eptr,uint32
 	uint32_t i;
 	uint8_t split;
 	uint8_t count;
-	uint8_t cs_data[100*14];
+#ifdef ENABLE_IPV6
+	uint8_t cs_data[100*27];
+#else
+	uint8_t cs_data[100*27];  // Match function signature even for non-IPv6
+#endif
 
 	if (sessions_get_disables(eptr->sesdata)&DISABLE_READ) {
 		status = MFS_ERROR_EPERM;
@@ -432,6 +509,15 @@ static inline int matoclserv_fuse_read_chunk_common(matoclserventry *eptr,uint32
 		sessions_inc_stats(eptr->sesdata,SES_OP_READCHUNK);
 		split = 0;
 		if (chunkid>0) {
+#ifdef ENABLE_IPV6
+			if (eptr->version>=VERSION2INT(3,0,10)) {
+				status = chunk_get_version_and_csdata(3,chunkid,eptr->peerip,&version,&count,cs_data,&split);
+			} else if (eptr->version>=VERSION2INT(1,7,32)) {
+				status = chunk_get_version_and_csdata(1,chunkid,eptr->peerip,&version,&count,cs_data,&split);
+			} else {
+				status = chunk_get_version_and_csdata(0,chunkid,eptr->peerip,&version,&count,cs_data,&split);
+			}
+#else
 			if (eptr->version>=VERSION2INT(3,0,10)) {
 				status = chunk_get_version_and_csdata(2,chunkid,eptr->peerip,&version,&count,cs_data,&split);
 			} else if (eptr->version>=VERSION2INT(1,7,32)) {
@@ -439,6 +525,7 @@ static inline int matoclserv_fuse_read_chunk_common(matoclserventry *eptr,uint32
 			} else {
 				status = chunk_get_version_and_csdata(0,chunkid,eptr->peerip,&version,&count,cs_data,&split);
 			}
+#endif
 			if (status==MFS_STATUS_OK && count==0 && split==0 && version==0) { // special case - allow reading zeros from missing chunk
 				chunkid = 0;
 			}
@@ -457,35 +544,97 @@ static inline int matoclserv_fuse_read_chunk_common(matoclserventry *eptr,uint32
 		return 0;
 	}
 	dcm_access(inode,sessions_get_id(eptr->sesdata));
-	if (eptr->version>=VERSION2INT(3,0,10)) {
-		ptr = matoclserv_create_packet(eptr,MATOCL_FUSE_READ_CHUNK,25+count*14);
-	} else if (eptr->version>=VERSION2INT(1,7,32)) {
-		ptr = matoclserv_create_packet(eptr,MATOCL_FUSE_READ_CHUNK,25+count*10);
-	} else {
-		ptr = matoclserv_create_packet(eptr,MATOCL_FUSE_READ_CHUNK,24+count*6);
+#ifdef ENABLE_IPV6
+	// Check if we used mode 3 (IPv6) - if first byte is AF_INET or AF_INET6
+	uint8_t using_ipv6_protocol = 0;
+	if (count > 0 && eptr->version>=VERSION2INT(3,0,10)) {
+		// If mode 3 was used, first byte would be address family
+		uint8_t first_byte = cs_data[0];
+		if (first_byte == AF_INET || first_byte == AF_INET6) {
+			using_ipv6_protocol = 1;
+		}
 	}
-	put32bit(&ptr,msgid);
-	if (eptr->version>=VERSION2INT(3,0,10)) {
+	
+	if (using_ipv6_protocol) {
+		// Calculate actual size for IPv6 protocol
+		uint32_t cs_data_size = 0;
+		const uint8_t *rptr = cs_data;
+		uint8_t j;
+		for (j = 0; j < count; j++) {
+			uint8_t family = get8bit(&rptr);
+			if (family == AF_INET6) {
+				rptr += 16;  // IPv6 address
+				cs_data_size += 1 + 16 + 2 + 4 + 4;  // family + ip + port + csver + labelmask
+			} else {
+				rptr += 4;   // IPv4 address
+				cs_data_size += 1 + 4 + 2 + 4 + 4;   // family + ip + port + csver + labelmask
+			}
+			rptr += 2 + 4 + 4;  // port + csver + labelmask
+		}
+		
+		ptr = matoclserv_create_packet(eptr,MATOCL_FUSE_READ_CHUNK_V6,21+cs_data_size);
+		put32bit(&ptr,msgid);
 		if (split) {
-			put8bit(&ptr,3);
+			put8bit(&ptr,3);  // split mode
 		} else {
-			put8bit(&ptr,2);
+			put8bit(&ptr,3);  // protocol version 3 for IPv6
 		}
-	} else if (eptr->version>=VERSION2INT(1,7,32)) {
-		put8bit(&ptr,1);
-	}
-	put64bit(&ptr,fleng);
-	put64bit(&ptr,chunkid);
-	put32bit(&ptr,version);
-	if (count>0) {
+		put64bit(&ptr,fleng);
+		put64bit(&ptr,chunkid);
+		put32bit(&ptr,version);
+		if (count>0) {
+			// Reset pointer to beginning of cs_data
+			rptr = cs_data;
+			for (j = 0; j < count; j++) {
+				uint8_t family = get8bit(&rptr);
+				put8bit(&ptr,family);
+				if (family == AF_INET6) {
+					memcpy(ptr,rptr,16);
+					ptr += 16;
+					rptr += 16;
+				} else {
+					put32bit(&ptr,get32bit(&rptr));
+				}
+				put16bit(&ptr,get16bit(&rptr));
+				put32bit(&ptr,get32bit(&rptr));
+				put32bit(&ptr,get32bit(&rptr));
+			}
+		}
+	} else {
+#endif
+		// Original IPv4 protocol
 		if (eptr->version>=VERSION2INT(3,0,10)) {
-			memcpy(ptr,cs_data,count*14);
+			ptr = matoclserv_create_packet(eptr,MATOCL_FUSE_READ_CHUNK,25+count*14);
 		} else if (eptr->version>=VERSION2INT(1,7,32)) {
-			memcpy(ptr,cs_data,count*10);
+			ptr = matoclserv_create_packet(eptr,MATOCL_FUSE_READ_CHUNK,25+count*10);
 		} else {
-			memcpy(ptr,cs_data,count*6);
+			ptr = matoclserv_create_packet(eptr,MATOCL_FUSE_READ_CHUNK,24+count*6);
 		}
+		put32bit(&ptr,msgid);
+		if (eptr->version>=VERSION2INT(3,0,10)) {
+			if (split) {
+				put8bit(&ptr,3);
+			} else {
+				put8bit(&ptr,2);
+			}
+		} else if (eptr->version>=VERSION2INT(1,7,32)) {
+			put8bit(&ptr,1);
+		}
+		put64bit(&ptr,fleng);
+		put64bit(&ptr,chunkid);
+		put32bit(&ptr,version);
+		if (count>0) {
+			if (eptr->version>=VERSION2INT(3,0,10)) {
+				memcpy(ptr,cs_data,count*14);
+			} else if (eptr->version>=VERSION2INT(1,7,32)) {
+				memcpy(ptr,cs_data,count*10);
+			} else {
+				memcpy(ptr,cs_data,count*6);
+			}
+		}
+#ifdef ENABLE_IPV6
 	}
+#endif
 	return 0;
 }
 
@@ -672,7 +821,11 @@ void matoclserv_chunk_status(uint64_t chunkid,uint8_t status) {
 	uint8_t *ptr;
 	uint8_t split;
 	uint8_t count;
-	uint8_t cs_data[100*14];
+#ifdef ENABLE_IPV6
+	uint8_t cs_data[100*27];
+#else
+	uint8_t cs_data[100*27];  // Match function signature even for non-IPv6
+#endif
 	matoclserventry *eptr;
 	swchunks *swc,**pswc;
 
@@ -729,6 +882,15 @@ void matoclserv_chunk_status(uint64_t chunkid,uint8_t status) {
 		return;
 	case FUSE_WRITE:
 		if (status==MFS_STATUS_OK) {
+#ifdef ENABLE_IPV6
+			if (eptr->version>=VERSION2INT(3,0,10)) {
+				status = chunk_get_version_and_csdata(3,chunkid,eptr->peerip,&version,&count,cs_data,&split);
+			} else if (eptr->version>=VERSION2INT(1,7,32)) {
+				status = chunk_get_version_and_csdata(1,chunkid,eptr->peerip,&version,&count,cs_data,&split);
+			} else {
+				status = chunk_get_version_and_csdata(0,chunkid,eptr->peerip,&version,&count,cs_data,&split);
+			}
+#else
 			if (eptr->version>=VERSION2INT(3,0,10)) {
 				status = chunk_get_version_and_csdata(2,chunkid,eptr->peerip,&version,&count,cs_data,&split);
 			} else if (eptr->version>=VERSION2INT(1,7,32)) {
@@ -736,6 +898,7 @@ void matoclserv_chunk_status(uint64_t chunkid,uint8_t status) {
 			} else {
 				status = chunk_get_version_and_csdata(0,chunkid,eptr->peerip,&version,&count,cs_data,&split);
 			}
+#endif
 			//mfs_log(MFSLOG_SYSLOG,MFSLOG_DEBUG,"get version for chunk %"PRIu64" -> %"PRIu32,chunkid,version);
 		}
 		if (status==MFS_STATUS_OK && split) {
@@ -748,31 +911,86 @@ void matoclserv_chunk_status(uint64_t chunkid,uint8_t status) {
 			fs_rollback(inode,indx,prevchunkid,chunkid);	// ignore status - it's error anyway
 			return;
 		}
-		if (eptr->version>=VERSION2INT(3,0,10)) {
-			ptr = matoclserv_create_packet(eptr,MATOCL_FUSE_WRITE_CHUNK,25+count*14);
-		} else if (eptr->version>=VERSION2INT(1,7,32)) {
-			ptr = matoclserv_create_packet(eptr,MATOCL_FUSE_WRITE_CHUNK,25+count*10);
-		} else {
-			ptr = matoclserv_create_packet(eptr,MATOCL_FUSE_WRITE_CHUNK,24+count*6);
+#ifdef ENABLE_IPV6
+		// For mode 3 (version >= 3.0.10), we ALWAYS use the new format now
+		// This avoids ambiguity when trying to detect the format
+		uint8_t using_ipv6_protocol = 0;
+		if (count > 0 && eptr->version>=VERSION2INT(3,0,10)) {
+			// Mode 3 always uses new format with address family prefix
+			using_ipv6_protocol = 1;
 		}
-		put32bit(&ptr,msgid);
-		if (eptr->version>=VERSION2INT(3,0,10)) {
-			put8bit(&ptr,2);
-		} else if (eptr->version>=VERSION2INT(1,7,32)) {
-			put8bit(&ptr,1);
-		}
-		put64bit(&ptr,fleng);
-		put64bit(&ptr,chunkid);
-		put32bit(&ptr,version);
-		if (count>0) {
-			if (eptr->version>=VERSION2INT(3,0,10)) {
-				memcpy(ptr,cs_data,count*14);
-			} else if (eptr->version>=VERSION2INT(1,7,32)) {
-				memcpy(ptr,cs_data,count*10);
-			} else {
-				memcpy(ptr,cs_data,count*6);
+		
+		if (using_ipv6_protocol) {
+			// Calculate actual size for IPv6 protocol
+			uint32_t cs_data_size = 0;
+			const uint8_t *rptr = cs_data;
+			uint8_t j;
+			for (j = 0; j < count; j++) {
+				uint8_t family = get8bit(&rptr);
+				if (family == AF_INET6) {
+					rptr += 16 + 2 + 4 + 4;  // IPv6 address + port + csver + labelmask
+					cs_data_size += 1 + 16 + 2 + 4 + 4;  // family + ip + port + csver + labelmask
+				} else {
+					rptr += 4 + 2 + 4 + 4;   // IPv4 address + port + csver + labelmask
+					cs_data_size += 1 + 4 + 2 + 4 + 4;   // family + ip + port + csver + labelmask
+				}
 			}
+			
+			ptr = matoclserv_create_packet(eptr,MATOCL_FUSE_WRITE_CHUNK_V6,21+cs_data_size);
+			put32bit(&ptr,msgid);
+			put8bit(&ptr,3);  // protocol version 3 for IPv6
+			put64bit(&ptr,fleng);
+			put64bit(&ptr,chunkid);
+			put32bit(&ptr,version);
+			if (count>0) {
+				// Reset pointer to beginning of cs_data
+				rptr = cs_data;
+				for (j = 0; j < count; j++) {
+					uint8_t family = get8bit(&rptr);
+					put8bit(&ptr,family);
+					if (family == AF_INET6) {
+						memcpy(ptr,rptr,16);
+						ptr += 16;
+						rptr += 16;
+					} else {
+						put32bit(&ptr,get32bit(&rptr));
+					}
+					put16bit(&ptr,get16bit(&rptr));
+					put32bit(&ptr,get32bit(&rptr));
+					put32bit(&ptr,get32bit(&rptr));
+				}
+			}
+		} else {
+#endif
+			// Original IPv4 protocol
+			if (eptr->version>=VERSION2INT(3,0,10)) {
+				ptr = matoclserv_create_packet(eptr,MATOCL_FUSE_WRITE_CHUNK,25+count*14);
+			} else if (eptr->version>=VERSION2INT(1,7,32)) {
+				ptr = matoclserv_create_packet(eptr,MATOCL_FUSE_WRITE_CHUNK,25+count*10);
+			} else {
+				ptr = matoclserv_create_packet(eptr,MATOCL_FUSE_WRITE_CHUNK,24+count*6);
+			}
+			put32bit(&ptr,msgid);
+			if (eptr->version>=VERSION2INT(3,0,10)) {
+				put8bit(&ptr,2);
+			} else if (eptr->version>=VERSION2INT(1,7,32)) {
+				put8bit(&ptr,1);
+			}
+			put64bit(&ptr,fleng);
+			put64bit(&ptr,chunkid);
+			put32bit(&ptr,version);
+			if (count>0) {
+				if (eptr->version>=VERSION2INT(3,0,10)) {
+					memcpy(ptr,cs_data,count*14);
+				} else if (eptr->version>=VERSION2INT(1,7,32)) {
+					memcpy(ptr,cs_data,count*10);
+				} else {
+					memcpy(ptr,cs_data,count*6);
+				}
+			}
+#ifdef ENABLE_IPV6
 		}
+#endif
 		matoclserv_fuse_chunk_has_changed(eptr,inode,indx,chunkid,version,fleng,0,0,0);
 //		for (i=0 ; i<count ; i++) {
 //			if (matocsserv_getlocation(sptr[i],&ip,&port)<0) {
@@ -2601,7 +2819,11 @@ void matoclserv_fuse_lookup(matoclserventry *eptr,const uint8_t *data,uint32_t l
 			uint32_t version;
 			uint8_t split;
 			uint8_t count;
-			uint8_t cs_data[100*14];
+#ifdef ENABLE_IPV6
+			uint8_t cs_data[100*27];
+#else
+			uint8_t cs_data[100*27];  // Match function signature even for non-IPv6
+#endif
 			uint8_t knowflags = ((eptr->version>=VERSION2INT(3,0,113) && eptr->version<VERSION2INT(4,0,0)) || eptr->version>=VERSION2INT(4,22,0)) ? 1 : 0;
 			lflags = (accmode & LOOKUP_ACCESS_BITS);
 			split = 0;
@@ -7181,8 +7403,25 @@ void matoclserv_serve(struct pollfd *pdesc) {
 			matoclservhead = eptr;
 			eptr->sock = ns;
 			eptr->pdescpos = -1;
+#ifdef ENABLE_IPV6
+			// Get IPv6-capable peer address
+			if (tcp6getpeer(ns, &(eptr->peerip_v6), NULL) == 0) {
+				eptr->strip = univ6allocstrip(&(eptr->peerip_v6));
+				// For compatibility, store IPv4 part if it's an IPv4 address
+				if (mfs_ip_is_v4(&(eptr->peerip_v6))) {
+					eptr->peerip = mfs_ip_to_ipv4(&(eptr->peerip_v6));
+				} else {
+					eptr->peerip = 0; // Indicates IPv6 client
+				}
+			} else {
+				// Fallback to IPv4 only
+				tcpgetpeer(ns,&(eptr->peerip),NULL);
+				eptr->strip = univallocstrip(eptr->peerip);
+			}
+#else
 			tcpgetpeer(ns,&(eptr->peerip),NULL);
 			eptr->strip = univallocstrip(eptr->peerip);
+#endif
 			eptr->registered = NOTREGISTERED;
 			eptr->version = 0;
 			eptr->asize = 0;

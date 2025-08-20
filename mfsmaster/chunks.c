@@ -34,6 +34,9 @@
 #include <string.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#ifdef ENABLE_IPV6
+#include <sys/socket.h>
+#endif
 
 #include "MFSCommunication.h"
 
@@ -4084,6 +4087,10 @@ int chunk_mr_set_version(uint64_t chunkid,uint32_t version) {
 
 typedef struct locsort {
 	uint32_t ip;
+#ifdef ENABLE_IPV6
+	uint8_t is_ipv6;
+	uint8_t ipv6[16];
+#endif
 	uint16_t port;
 	uint32_t csver;
 	uint32_t labelmask;
@@ -4106,7 +4113,7 @@ int chunk_locsort_cmp(const void *aa,const void *bb) {
 	return 0;
 }
 
-uint8_t chunk_get_version_and_csdata(uint8_t mode,uint64_t chunkid,uint32_t clientip,uint32_t *version,uint8_t *count,uint8_t cs_data[100*14],uint8_t *split) {
+uint8_t chunk_get_version_and_csdata(uint8_t mode,uint64_t chunkid,uint32_t clientip,uint32_t *version,uint8_t *count,uint8_t cs_data[100*27],uint8_t *split) {
 	chunk *c;
 	slist *s;
 	uint8_t i;
@@ -4115,6 +4122,7 @@ uint8_t chunk_get_version_and_csdata(uint8_t mode,uint64_t chunkid,uint32_t clie
 	uint8_t dmask4,dmask8,minecid,maxecid;
 	uint8_t *wptr;
 	locsort lstab[100];
+	memset(lstab, 0, sizeof(lstab));  // Initialize to avoid uninitialized memory issues
 
 	c = chunk_find(chunkid);
 	if (c==NULL) {
@@ -4128,6 +4136,10 @@ uint8_t chunk_get_version_and_csdata(uint8_t mode,uint64_t chunkid,uint32_t clie
 		if (s->valid!=INVALID && s->valid!=DEL && s->valid!=WVER && s->valid!=TDWVER && cstab[s->csid].valid) {
 			if (s->ecid==0) {
 				if (cnt<100 && matocsserv_get_csdata(cstab[s->csid].ptr,clientip,&(lstab[cnt].ip),&(lstab[cnt].port),&(lstab[cnt].csver),&(lstab[cnt].labelmask))==0) {
+#ifdef ENABLE_IPV6
+					// Also get IPv6 info if available
+					matocsserv_get_ipv6_addr(cstab[s->csid].ptr,&(lstab[cnt].is_ipv6),&(lstab[cnt].ip),lstab[cnt].ipv6);
+#endif
 					lstab[cnt].dist = topology_distance(lstab[cnt].ip,clientip);	// in the future prepare more sophisticated distance function
 					lstab[cnt].rnd = rndu32();
 					cnt++;
@@ -4168,10 +4180,15 @@ uint8_t chunk_get_version_and_csdata(uint8_t mode,uint64_t chunkid,uint32_t clie
 			if (s->ecid>=minecid && s->ecid<=maxecid && (s->valid!=INVALID && s->valid!=DEL && s->valid!=WVER && s->valid!=TDWVER && cstab[s->csid].valid)) {
 				i = s->ecid & 0x7;
 				if ((dmask & (1 << i))==0) {
-					matocsserv_get_csdata(cstab[s->csid].ptr,clientip,&(lstab[i].ip),&(lstab[i].port),&(lstab[i].csver),&(lstab[i].labelmask));
-					lstab[i].dist = i;
-					lstab[i].rnd = 0;
-					dmask |= (1 << i);
+					if (matocsserv_get_csdata(cstab[s->csid].ptr,clientip,&(lstab[i].ip),&(lstab[i].port),&(lstab[i].csver),&(lstab[i].labelmask))==0) {
+#ifdef ENABLE_IPV6
+						// Also get IPv6 info if available
+						matocsserv_get_ipv6_addr(cstab[s->csid].ptr,&(lstab[i].is_ipv6),&(lstab[i].ip),lstab[i].ipv6);
+#endif
+						lstab[i].dist = i;
+						lstab[i].rnd = 0;
+						dmask |= (1 << i);
+					}
 				}
 			}
 		}
@@ -4179,6 +4196,47 @@ uint8_t chunk_get_version_and_csdata(uint8_t mode,uint64_t chunkid,uint32_t clie
 	}
 	qsort(lstab,cnt,sizeof(locsort),chunk_locsort_cmp);
 	wptr = cs_data;
+#ifdef ENABLE_IPV6
+	// Check if we have ANY IPv6 servers (not just IPv6-only)
+	// We need to use the new protocol if any server is IPv6
+	uint8_t has_ipv6 = 0;
+	for (i=0 ; i<cnt ; i++) {
+		if (lstab[i].is_ipv6) {
+			has_ipv6 = 1;
+			break;
+		}
+	}
+	
+	if (mode >= 3) {  // Always use new format for mode 3, even if all servers are IPv4
+		// New protocol mode 3: includes IPv6 support
+		// Format: family:8 ip:(32 for IPv4, 128 for IPv6) port:16 csver:32 labelmask:32
+		for (i=0 ; i<cnt ; i++) {
+			if (lstab[i].is_ipv6) {
+				put8bit(&wptr, AF_INET6);
+				memcpy(wptr, lstab[i].ipv6, 16);
+				wptr += 16;
+			} else {
+				put8bit(&wptr, AF_INET);
+				put32bit(&wptr, lstab[i].ip);
+			}
+			put16bit(&wptr, lstab[i].port);
+			put32bit(&wptr, lstab[i].csver);
+			put32bit(&wptr, lstab[i].labelmask);
+		}
+	} else {
+		// Original protocol - IPv4 only
+		for (i=0 ; i<cnt ; i++) {
+			put32bit(&wptr,lstab[i].ip);
+			put16bit(&wptr,lstab[i].port);
+			if (mode>0) {
+				put32bit(&wptr,lstab[i].csver);
+			}
+			if (mode>1) {
+				put32bit(&wptr,lstab[i].labelmask);
+			}
+		}
+	}
+#else
 	for (i=0 ; i<cnt ; i++) {
 		put32bit(&wptr,lstab[i].ip);
 		put16bit(&wptr,lstab[i].port);
@@ -4189,6 +4247,7 @@ uint8_t chunk_get_version_and_csdata(uint8_t mode,uint64_t chunkid,uint32_t clie
 			put32bit(&wptr,lstab[i].labelmask);
 		}
 	}
+#endif
 	*count = cnt;
 	return MFS_STATUS_OK;
 }

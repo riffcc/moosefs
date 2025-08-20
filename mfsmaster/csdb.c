@@ -685,6 +685,11 @@ uint8_t csdb_mr_op(uint8_t op,uint32_t ip,uint16_t port, uint32_t arg) {
 //			csptr->fastreplication = 1;
 			csptr->load = 0;
 			csptr->eptr = NULL;
+#ifdef ENABLE_IPV6
+			// Initialize IPv6 fields for backward compatibility
+			ipv4_to_mfs_ip(&csptr->ip_addr, ip);
+			csptr->use_ipv6 = 0;
+#endif
 			csptr->next = csdbhash[hash];
 			csdbhash[hash] = csptr;
 			servers++;

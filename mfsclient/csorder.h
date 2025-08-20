@@ -23,6 +23,10 @@
 
 typedef struct _cspri {
 	uint32_t ip;
+#ifdef ENABLE_IPV6
+	uint8_t is_ipv6;
+	uint8_t ipv6[16];
+#endif
 	uint16_t port;
 	uint32_t version;
 	uint32_t labelmask;

@@ -39,5 +39,8 @@ endif
 		--localstatedir=/var/lib \
 		--with-default-user=mfs \
 		--with-default-group=mfs \
+		--enable-ipv6 \
+		CFLAGS="$(dpkg-buildflags --get CFLAGS) -DENABLE_IPV6" \
+		CXXFLAGS="$(dpkg-buildflags --get CXXFLAGS) -DENABLE_IPV6" \
 		$(shell if dpkg-buildflags --export=configure > /dev/null 2> /dev/null; then dpkg-buildflags --export=configure ; fi)
 

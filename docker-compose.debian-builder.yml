@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  # Build MooseFS Debian packages
+  moosefs-debian-builder:
+    build:
+      context: .
+      dockerfile: Dockerfile.debian-builder
+      target: builder
+    container_name: moosefs-debian-builder
+    volumes:
+      # Mount output directory to host for easy access to built packages
+      - ./debian-packages:/output:Z
+    environment:
+      - DEBIAN_FRONTEND=noninteractive
+    
+  # Serve built packages via HTTP
+  moosefs-package-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.debian-builder
+      target: server
+    container_name: moosefs-package-server
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./debian-packages:/packages
+    depends_on:
+      - moosefs-debian-builder
+    environment:
+      - DEBIAN_FRONTEND=noninteractive
+
+# Create volume for package storage
+volumes:
+  debian-packages:
+    driver: local

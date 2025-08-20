@@ -57,6 +57,14 @@ uint32_t job_replicate_split(void (*callback)(uint8_t status,void *extra),void *
 uint32_t job_replicate_recover(void (*callback)(uint8_t status,void *extra),void *extra,uint64_t chunkid,uint32_t version,uint8_t parts,uint32_t srcip[MAX_EC_PARTS],uint16_t srcport[MAX_EC_PARTS],uint64_t srcchunkid[MAX_EC_PARTS]);
 uint32_t job_replicate_join(void (*callback)(uint8_t status,void *extra),void *extra,uint64_t chunkid,uint32_t version,uint8_t parts,uint32_t srcip[MAX_EC_PARTS],uint16_t srcport[MAX_EC_PARTS],uint64_t srcchunkid[MAX_EC_PARTS]);
 
+#ifdef ENABLE_IPV6
+#include "sockets_ipv6.h"
+uint32_t job_replicate_simple_v6(void (*callback)(uint8_t status,void *extra),void *extra,uint64_t chunkid,uint32_t version,const mfs_ip *srcip,uint16_t srcport);
+uint32_t job_replicate_split_v6(void (*callback)(uint8_t status,void *extra),void *extra,uint64_t chunkid,uint32_t version,const mfs_ip *srcip,uint16_t srcport,uint64_t srcchunkid,uint8_t partno,uint8_t parts);
+uint32_t job_replicate_recover_v6(void (*callback)(uint8_t status,void *extra),void *extra,uint64_t chunkid,uint32_t version,uint8_t parts,const mfs_ip srcip[MAX_EC_PARTS],uint16_t srcport[MAX_EC_PARTS],uint64_t srcchunkid[MAX_EC_PARTS]);
+uint32_t job_replicate_join_v6(void (*callback)(uint8_t status,void *extra),void *extra,uint64_t chunkid,uint32_t version,uint8_t parts,const mfs_ip srcip[MAX_EC_PARTS],uint16_t srcport[MAX_EC_PARTS],uint64_t srcchunkid[MAX_EC_PARTS]);
+#endif
+
 uint32_t job_get_chunk_info(void (*callback)(uint8_t status,void *extra),void *extra,uint64_t chunkid,uint32_t version,uint8_t requested_info,uint8_t *info_buff);
 #define job_get_chunk_blocks(_cb,_ex,_chunkid,_version,_blocks) job_get_chunk_info(_cb,_ex,_chunkid,_version,REQUEST_BLOCKS,_blocks)
 #define job_get_chunk_checksum(_cb,_ex,_chunkid,_version,_checksum) job_get_chunk_info(_cb,_ex,_chunkid,_version,REQUEST_CHECKSUM,_checksum)

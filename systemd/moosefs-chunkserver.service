@@ -1,0 +1,15 @@
+[Unit]
+Description=MooseFS Chunkserver
+Wants=network-online.target
+After=network.target network-online.target
+
+[Service]
+Type=forking
+ExecStart=/usr/sbin/mfschunkserver start
+ExecStop=/usr/sbin/mfschunkserver stop
+ExecReload=/usr/sbin/mfschunkserver reload
+PIDFile=/var/lib/mfs/.mfschunkserver.lock
+Restart=on-abnormal
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,17 @@
+[Unit]
+Description=MooseFS Master server
+Wants=network-online.target
+After=network.target network-online.target
+
+[Service]
+Type=forking
+ExecStart=/usr/sbin/mfsmaster start
+ExecStop=/usr/sbin/mfsmaster stop
+ExecReload=/usr/sbin/mfsmaster reload
+PIDFile=/var/lib/mfs/.mfsmaster.lock
+TimeoutStopSec=1800
+TimeoutStartSec=1800
+Restart=no
+
+[Install]
+WantedBy=multi-user.target

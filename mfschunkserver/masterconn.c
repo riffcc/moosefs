@@ -1117,6 +1117,96 @@ void masterconn_replicate(masterconn *eptr,const uint8_t *data,uint32_t length) 
 	}
 }
 
+#ifdef ENABLE_IPV6
+void masterconn_replicate_v6(masterconn *eptr,const uint8_t *data,uint32_t length) {
+	uint64_t chunkid;
+	uint32_t version;
+	mfs_ip srcip;
+	uint16_t port;
+	uint8_t family;
+	uint8_t *ptr;
+	void *packet;
+	
+	// Minimum size check (8+4+1+2 = 15 bytes minimum)
+	if (length < 15) {
+		mfs_log(MFSLOG_SYSLOG,MFSLOG_WARNING,"MATOCS_REPLICATE_V6 - wrong size (%"PRIu32"/<15)",length);
+		eptr->mode = KILL;
+		return;
+	}
+	
+	chunkid = get64bit(&data);
+	version = get32bit(&data);
+	family = get8bit(&data);
+	
+	memset(&srcip, 0, sizeof(mfs_ip));
+	srcip.family = family;
+	
+	if (family == AF_INET6) {
+		if (length != 31) { // 8+4+1+16+2
+			mfs_log(MFSLOG_SYSLOG,MFSLOG_WARNING,"MATOCS_REPLICATE_V6 - wrong size for IPv6 (%"PRIu32"/31)",length);
+			eptr->mode = KILL;
+			return;
+		}
+		for (int i = 0; i < 16; i++) {
+			srcip.addr.v6[i] = get8bit(&data);
+		}
+	} else if (family == AF_INET) {
+		if (length != 19) { // 8+4+1+4+2
+			mfs_log(MFSLOG_SYSLOG,MFSLOG_WARNING,"MATOCS_REPLICATE_V6 - wrong size for IPv4 (%"PRIu32"/19)",length);
+			eptr->mode = KILL;
+			return;
+		}
+		srcip.addr.v4 = get32bit(&data);
+	} else {
+		mfs_log(MFSLOG_SYSLOG,MFSLOG_WARNING,"MATOCS_REPLICATE_V6 - unknown family (%"PRIu8")",family);
+		eptr->mode = KILL;
+		return;
+	}
+	
+	port = get16bit(&data);
+	
+	packet = masterconn_create_detached_packet(eptr,CSTOMA_REPLICATE,8+4+1);
+	ptr = masterconn_get_packet_data(packet);
+	put64bit(&ptr,chunkid);
+	put32bit(&ptr,version);
+	
+	if (eptr->registerstate==REGISTERED) {
+		job_replicate_simple_v6(masterconn_replicationfinished,busychunk_start(packet,chunkid),chunkid,version,&srcip,port);
+	} else {
+		mfs_log(MFSLOG_SYSLOG,MFSLOG_WARNING,"MATOCS_REPLICATE_V6 - got command while still registering");
+		put8bit(&ptr,MFS_ERROR_NOTDONE);
+		masterconn_attach_packet(eptr,packet);
+	}
+}
+
+void masterconn_replicate_split_v6(masterconn *eptr,const uint8_t *data,uint32_t length) {
+	// TODO: Implement IPv6 version
+	(void)eptr;
+	(void)data;
+	(void)length;
+	mfs_log(MFSLOG_SYSLOG,MFSLOG_WARNING,"MATOCS_REPLICATE_SPLIT_V6 - not yet implemented");
+	eptr->mode = KILL;
+}
+
+void masterconn_replicate_recover_v6(masterconn *eptr,const uint8_t *data,uint32_t length) {
+	// TODO: Implement IPv6 version
+	(void)eptr;
+	(void)data;
+	(void)length;
+	mfs_log(MFSLOG_SYSLOG,MFSLOG_WARNING,"MATOCS_REPLICATE_RECOVER_V6 - not yet implemented");
+	eptr->mode = KILL;
+}
+
+void masterconn_replicate_join_v6(masterconn *eptr,const uint8_t *data,uint32_t length) {
+	// TODO: Implement IPv6 version
+	(void)eptr;
+	(void)data;
+	(void)length;
+	mfs_log(MFSLOG_SYSLOG,MFSLOG_WARNING,"MATOCS_REPLICATE_JOIN_V6 - not yet implemented");
+	eptr->mode = KILL;
+}
+#endif
+
 void masterconn_replicate_split(masterconn *eptr,const uint8_t *data,uint32_t length) {
 	uint64_t chunkid;
 	uint32_t version;
@@ -1404,6 +1494,20 @@ void masterconn_gotpacket(masterconn *eptr,uint32_t type,const uint8_t *data,uin
 		case MATOCS_REPLICATE:
 			masterconn_replicate(eptr,data,length);
 			break;
+#ifdef ENABLE_IPV6
+		case MATOCS_REPLICATE_V6:
+			masterconn_replicate_v6(eptr,data,length);
+			break;
+		case MATOCS_REPLICATE_SPLIT_V6:
+			masterconn_replicate_split_v6(eptr,data,length);
+			break;
+		case MATOCS_REPLICATE_RECOVER_V6:
+			masterconn_replicate_recover_v6(eptr,data,length);
+			break;
+		case MATOCS_REPLICATE_JOIN_V6:
+			masterconn_replicate_join_v6(eptr,data,length);
+			break;
+#endif
 		case MATOCS_REPLICATE_SPLIT:
 			masterconn_replicate_split(eptr,data,length);
 			break;

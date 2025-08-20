@@ -1160,7 +1160,8 @@ int fs_resolve(uint8_t oninit,const char *bindhostname,const char *masterhostnam
 				use_ipv6_src = 1;
 				univ6makestrip(srcstrip_v6, &src_ip_addr);
 				srcip = 0;
-				strcpy(srcstrip, srcstrip_v6);
+				// Don't copy IPv6 string to IPv4 buffer - causes buffer overflow
+				// srcstrip is only used for IPv4, srcstrip_v6 for IPv6
 			} else if (!is_ipv6_bind) {
 				// Fall back to IPv4 for DNS hostnames
 				if (tcpresolve(bindhostname, NULL, &srcip, NULL, 1) < 0) {
@@ -1208,7 +1209,8 @@ int fs_resolve(uint8_t oninit,const char *bindhostname,const char *masterhostnam
 			use_ipv6_master = 1;
 			univ6makestrip(masterstrip_v6, &master_ip_addr);
 			masterip = 0;
-			strcpy(masterstrip, masterstrip_v6);
+			// Don't copy IPv6 string to IPv4 buffer - causes buffer overflow
+			// masterstrip is only used for IPv4, masterstrip_v6 for IPv6
 		} else if (!is_ipv6_master) {
 			// Fall back to IPv4 for DNS hostnames
 			if (tcpresolve(masterhostname, masterportname, &masterip, &masterport, 0) < 0) {
@@ -4204,12 +4206,36 @@ uint8_t fs_readchunk(uint32_t inode,uint32_t indx,uint8_t chunkopflags,uint8_t *
 	if (packetver>=1) {
 		put8bit(&wptr,chunkopflags);
 	}
-	rptr = fs_sendandreceive(rec,MATOCL_FUSE_READ_CHUNK,&i);
+	// First try to receive either the old or new message type
+	uint32_t received_cmd;
+	rptr = fs_sendandreceive_any(rec,&received_cmd,&i);
 	if (rptr==NULL) {
 		ret = MFS_ERROR_IO;
 	} else if (i==1) {
 		ret = rptr[0];
-	} else {
+	} else if (received_cmd == MATOCL_FUSE_READ_CHUNK_V6) {
+		// Handle IPv6 protocol (version 3)
+		if (i>=21) {
+			*csdataver = get8bit(&rptr);
+			if (*csdataver == 3) {
+				// IPv6 protocol - variable size entries
+				*length = get64bit(&rptr);
+				*chunkid = get64bit(&rptr);
+				*version = get32bit(&rptr);
+				*csdata = rptr;
+				*csdatasize = i-21;
+				ret = MFS_STATUS_OK;
+			} else {
+				ret = MFS_ERROR_IO;
+			}
+		} else {
+			ret = MFS_ERROR_IO;
+		}
+		if (ret!=MFS_STATUS_OK) {
+			fs_disconnect();
+		}
+	} else if (received_cmd == MATOCL_FUSE_READ_CHUNK) {
+		// Handle old IPv4 protocol
 		if (i&1) {
 			*csdataver = get8bit(&rptr);
 			if (i<21 || ((*csdataver)==1 && ((i-21)%10)!=0) || ((*csdataver)==2 && ((i-21)%14)!=0) || ((*csdataver)==3 && i!=21+14*8 && i!=21+14*4)) {
@@ -4235,6 +4261,10 @@ uint8_t fs_readchunk(uint32_t inode,uint32_t indx,uint8_t chunkopflags,uint8_t *
 			*version = get32bit(&rptr);
 			*csdata = rptr;
 		}
+	} else {
+		// Unknown message type
+		fs_disconnect();
+		ret = MFS_ERROR_IO;
 	}
 	return ret;
 }
@@ -4262,12 +4292,36 @@ uint8_t fs_writechunk(uint32_t inode,uint32_t indx,uint8_t chunkopflags,uint8_t 
 	if (master_version()>=VERSION2INT(3,0,4)) {
 		put8bit(&wptr,chunkopflags);
 	}
-	rptr = fs_sendandreceive(rec,MATOCL_FUSE_WRITE_CHUNK,&i);
+	// First try to receive either the old or new message type
+	uint32_t received_cmd;
+	rptr = fs_sendandreceive_any(rec,&received_cmd,&i);
 	if (rptr==NULL) {
 		ret = MFS_ERROR_IO;
 	} else if (i==1) {
 		ret = rptr[0];
-	} else {
+	} else if (received_cmd == MATOCL_FUSE_WRITE_CHUNK_V6) {
+		// Handle IPv6 protocol (version 3)
+		if (i>=21) {
+			*csdataver = get8bit(&rptr);
+			if (*csdataver == 3) {
+				// IPv6 protocol - variable size entries
+				*length = get64bit(&rptr);
+				*chunkid = get64bit(&rptr);
+				*version = get32bit(&rptr);
+				*csdata = rptr;
+				*csdatasize = i-21;
+				ret = MFS_STATUS_OK;
+			} else {
+				ret = MFS_ERROR_IO;
+			}
+		} else {
+			ret = MFS_ERROR_IO;
+		}
+		if (ret!=MFS_STATUS_OK) {
+			fs_disconnect();
+		}
+	} else if (received_cmd == MATOCL_FUSE_WRITE_CHUNK) {
+		// Handle old IPv4 protocol
 		if (i&1) {
 			*csdataver = get8bit(&rptr);
 			if (i<21 || ((*csdataver)==1 && ((i-21)%10)!=0) || ((*csdataver)==2 && ((i-21)%14)!=0)) {
@@ -4293,6 +4347,10 @@ uint8_t fs_writechunk(uint32_t inode,uint32_t indx,uint8_t chunkopflags,uint8_t 
 			*version = get32bit(&rptr);
 			*csdata = rptr;
 		}
+	} else {
+		// Unknown message type
+		fs_disconnect();
+		ret = MFS_ERROR_IO;
 	}
 	return ret;
 }

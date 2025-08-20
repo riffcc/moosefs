@@ -1,0 +1,52 @@
+Format: 1.8
+Date: Sat, 10 Aug 2025 12:45:00 +0100
+Source: moosefs
+Binary: moosefs-chunkserver moosefs-cli moosefs-client moosefs-gui moosefs-master moosefs-metalogger moosefs-netdump
+Architecture: amd64
+Version: 4.57.7-3
+Distribution: unstable
+Urgency: medium
+Maintainer: MooseFS Team <contact@moosefs.com>
+Changed-By: Benjamin Arntzen <zorlin@gmail.com>
+Description:
+ moosefs-chunkserver - MooseFS data server
+ moosefs-cli - MooseFS CLI utility
+ moosefs-client - MooseFS client tools
+ moosefs-gui - MooseFS web-based GUI
+ moosefs-master - MooseFS master (metadata) server
+ moosefs-metalogger - MooseFS metalogger server
+ moosefs-netdump - MooseFS network packet dump utility
+Changes:
+ moosefs (4.57.7-3) unstable; urgency=medium
+ .
+   * (master) Fixed mode 3 to always use IPv6 format avoiding detection ambiguity
+   * (master) Fixed all buffer sizes to 100*27 bytes for IPv6 chunk data
+   * (master) Fixed memory initialization issues in locsort and csdb
+   * (all) Fixed debian packaging to properly include IPv6 support
+Checksums-Sha1:
+ 28a67d05c19d411b8d01c6e78d156b8bc2bd755b 803780 moosefs-chunkserver_4.57.7-3_amd64.deb
+ 100861f90b8ff2542acd18c649d1dfd3bea4b5aa 72784 moosefs-cli_4.57.7-3_amd64.deb
+ b874cc44caa30cb78e4090a21cdedd9169dd072e 2386004 moosefs-client_4.57.7-3_amd64.deb
+ 0657c9e6dfae1dff92ac3ab946bfd4c49ba52705 284356 moosefs-gui_4.57.7-3_amd64.deb
+ af553416a947de8b96cfbd90d9f3ab2004f1df93 1692624 moosefs-master_4.57.7-3_amd64.deb
+ 33399944358b6e911d95673db50d5aea508b712c 158624 moosefs-metalogger_4.57.7-3_amd64.deb
+ 52c50206b66e2a86bd1184513f17112d3f4c5296 39584 moosefs-netdump_4.57.7-3_amd64.deb
+ 8f3f960a81e36de4bf17593c2ca365b6d1bc0e51 7711 moosefs_4.57.7-3_amd64.buildinfo
+Checksums-Sha256:
+ a4fc1108b403c7a2fa92649fd5880e36b25897b39ea102b43f1b0feabad5eab7 803780 moosefs-chunkserver_4.57.7-3_amd64.deb
+ ff7b4d6802f5293845918520b5a0fd7c919b1a6f271ea7db52f34edadb7fd1cc 72784 moosefs-cli_4.57.7-3_amd64.deb
+ df0c9cd05b22d623156c69dfdb4e438b74e0ab15f9219a57fc18d2fee326d68a 2386004 moosefs-client_4.57.7-3_amd64.deb
+ 115714fb4a659700babb9318cadc7d9f5bc45cc517e3992233e41c2d44ff3355 284356 moosefs-gui_4.57.7-3_amd64.deb
+ a8661f6301f17ed0a3503f97cbddd0ea970efa767f298bc22eeb937e7de3422c 1692624 moosefs-master_4.57.7-3_amd64.deb
+ 77053a30f7ee92055da5aef4e29c68504986869d92e2d7e06ebb6750fdda7fed 158624 moosefs-metalogger_4.57.7-3_amd64.deb
+ 8682052dfe995381799a2615e41df3eae21e1000ffceef53164ed8c08bc42724 39584 moosefs-netdump_4.57.7-3_amd64.deb
+ a805bff008a4a5292c797ef45d980a089b3c22c7f7a19269d5abe61c1cf75af9 7711 moosefs_4.57.7-3_amd64.buildinfo
+Files:
+ 6d880d5eb960c90bfad088144fe13a03 803780 admin extra moosefs-chunkserver_4.57.7-3_amd64.deb
+ 18cd75a12461896411faafca2bbea054 72784 admin extra moosefs-cli_4.57.7-3_amd64.deb
+ ddba940f1d7cc6a2bbd7c67e32a0d36b 2386004 admin extra moosefs-client_4.57.7-3_amd64.deb
+ 10b79e9647eaed9c4351511be23ddcec 284356 admin extra moosefs-gui_4.57.7-3_amd64.deb
+ 5dbd1ee2718f456ecf1820d8e5407df6 1692624 admin extra moosefs-master_4.57.7-3_amd64.deb
+ e21c4e401bcc8b6b739b71601400e838 158624 admin extra moosefs-metalogger_4.57.7-3_amd64.deb
+ af038c7eab5580117ab479e91ffe708b 39584 admin extra moosefs-netdump_4.57.7-3_amd64.deb
+ e3b126e59708845b781744ea13ce58dd 7711 admin extra moosefs_4.57.7-3_amd64.buildinfo

@@ -1,0 +1,15 @@
+[Unit]
+Description=MooseFS Metalogger server
+Wants=network-online.target
+After=network.target network-online.target
+
+[Service]
+Type=forking
+ExecStart=/usr/sbin/mfsmetalogger -c /etc/mfs-%I/mfsmetalogger.cfg start
+ExecStop=/usr/sbin/mfsmetalogger -c /etc/mfs-%I/mfsmetalogger.cfg stop
+ExecReload=/usr/sbin/mfsmetalogger -c /etc/mfs-%I/mfsmetalogger.cfg reload
+PIDFile=/var/lib/mfs-%I/.mfsmetalogger.lock
+Restart=on-abnormal
+
+[Install]
+WantedBy=multi-user.target

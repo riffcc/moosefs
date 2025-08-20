@@ -100,7 +100,7 @@ int chunk_locked_or_busy(void *cptr);
 void chunk_do_extra_job(uint64_t chunkid);
 /* ---- */
 
-uint8_t chunk_get_version_and_csdata(uint8_t mode,uint64_t chunkid,uint32_t clientip,uint32_t *version,uint8_t *count,uint8_t cs_data[100*14],uint8_t *split);
+uint8_t chunk_get_version_and_csdata(uint8_t mode,uint64_t chunkid,uint32_t clientip,uint32_t *version,uint8_t *count,uint8_t cs_data[100*27],uint8_t *split);
 uint8_t chunk_get_version_and_copies(uint8_t mode,uint64_t chunkid,uint32_t clientip,uint32_t *version,uint32_t *chunkmtime,uint8_t *count,uint8_t cs_data[100*8]);
 uint8_t chunk_get_eights_copies(uint64_t chunkid,uint8_t *count);
 uint8_t chunk_get_version(uint64_t chunkid,uint32_t *version);

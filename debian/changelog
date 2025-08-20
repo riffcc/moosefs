@@ -1,3 +1,23 @@
+moosefs (4.57.7-3) unstable; urgency=medium
+
+  * (master) Fixed mode 3 to always use IPv6 format avoiding detection ambiguity
+  * (master) Fixed all buffer sizes to 100*27 bytes for IPv6 chunk data
+  * (master) Fixed memory initialization issues in locsort and csdb
+  * (all) Fixed debian packaging to properly include IPv6 support
+
+ -- Benjamin Arntzen <zorlin@gmail.com>  Sat, 10 Aug 2025 12:45:00 +0100
+
+moosefs (4.57.7-2) unstable; urgency=medium
+
+  * (all) Native IPv6 dual-stack support implementation
+  * (master) Extended CSDB with IPv6 addresses and backward-compatible wire protocol
+  * (client) IPv6-aware hostname resolution and intelligent address format detection
+  * (gui) IPv6 address display support for chunkservers
+  * (chunkserver) IPv6 socket binding and connection handling
+  * (common) Added comprehensive IPv6 socket abstraction layer
+
+ -- Benjamin Arntzen <zorlin@gmail.com>  Sun, 10 Aug 2025 03:35:10 +0100
+
 moosefs (4.57.7-1) unstable; urgency=medium
 
   * (all) joined packages cgi and cgiserv to a new gui package

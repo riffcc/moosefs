@@ -113,8 +113,9 @@ am_mfsgui_OBJECTS = mfsgui.$(OBJEXT) ../mfscommon/main.$(OBJEXT) \
 	../mfscommon/processname.$(OBJEXT) \
 	../mfscommon/timeparser.$(OBJEXT) ../mfscommon/cfg.$(OBJEXT) \
 	../mfscommon/crc.$(OBJEXT) ../mfscommon/md5.$(OBJEXT) \
-	../mfscommon/sockets.$(OBJEXT) ../mfscommon/strerr.$(OBJEXT) \
-	../mfscommon/mfslog.$(OBJEXT)
+	../mfscommon/sockets.$(OBJEXT) \
+	../mfscommon/sockets_ipv6.$(OBJEXT) \
+	../mfscommon/strerr.$(OBJEXT) ../mfscommon/mfslog.$(OBJEXT)
 mfsgui_OBJECTS = $(am_mfsgui_OBJECTS)
 mfsgui_LDADD = $(LDADD)
 AM_V_lt = $(am__v_lt_@AM_V@)
@@ -170,6 +171,7 @@ am__depfiles_remade = ../mfscommon/$(DEPDIR)/cfg.Po \
 	../mfscommon/$(DEPDIR)/mfslog.Po \
 	../mfscommon/$(DEPDIR)/processname.Po \
 	../mfscommon/$(DEPDIR)/sockets.Po \
+	../mfscommon/$(DEPDIR)/sockets_ipv6.Po \
 	../mfscommon/$(DEPDIR)/strerr.Po \
 	../mfscommon/$(DEPDIR)/timeparser.Po ./$(DEPDIR)/mfsgui.Po
 am__mv = mv -f
@@ -395,6 +397,7 @@ mfsgui_SOURCES = \
 	../mfscommon/crc.c ../mfscommon/crc.h \
 	../mfscommon/md5.c ../mfscommon/md5.h \
 	../mfscommon/sockets.c ../mfscommon/sockets.h \
+	../mfscommon/sockets_ipv6.c ../mfscommon/sockets_ipv6.h \
 	../mfscommon/strerr.c ../mfscommon/strerr.h \
 	../mfscommon/hash_begin.h ../mfscommon/hash_end.h \
 	../mfscommon/mfslog.c ../mfscommon/mfslog.h \
@@ -506,6 +509,8 @@ clean-sbinPROGRAMS:
 	../mfscommon/$(DEPDIR)/$(am__dirstamp)
 ../mfscommon/sockets.$(OBJEXT): ../mfscommon/$(am__dirstamp) \
 	../mfscommon/$(DEPDIR)/$(am__dirstamp)
+../mfscommon/sockets_ipv6.$(OBJEXT): ../mfscommon/$(am__dirstamp) \
+	../mfscommon/$(DEPDIR)/$(am__dirstamp)
 ../mfscommon/strerr.$(OBJEXT): ../mfscommon/$(am__dirstamp) \
 	../mfscommon/$(DEPDIR)/$(am__dirstamp)
 ../mfscommon/mfslog.$(OBJEXT): ../mfscommon/$(am__dirstamp) \
@@ -565,6 +570,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@../mfscommon/$(DEPDIR)/mfslog.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@../mfscommon/$(DEPDIR)/processname.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@../mfscommon/$(DEPDIR)/sockets.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@../mfscommon/$(DEPDIR)/sockets_ipv6.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@../mfscommon/$(DEPDIR)/strerr.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@../mfscommon/$(DEPDIR)/timeparser.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/mfsgui.Po@am__quote@ # am--include-marker
@@ -742,6 +748,7 @@ distclean: distclean-am
 	-rm -f ../mfscommon/$(DEPDIR)/mfslog.Po
 	-rm -f ../mfscommon/$(DEPDIR)/processname.Po
 	-rm -f ../mfscommon/$(DEPDIR)/sockets.Po
+	-rm -f ../mfscommon/$(DEPDIR)/sockets_ipv6.Po
 	-rm -f ../mfscommon/$(DEPDIR)/strerr.Po
 	-rm -f ../mfscommon/$(DEPDIR)/timeparser.Po
 	-rm -f ./$(DEPDIR)/mfsgui.Po
@@ -798,6 +805,7 @@ maintainer-clean: maintainer-clean-am
 	-rm -f ../mfscommon/$(DEPDIR)/mfslog.Po
 	-rm -f ../mfscommon/$(DEPDIR)/processname.Po
 	-rm -f ../mfscommon/$(DEPDIR)/sockets.Po
+	-rm -f ../mfscommon/$(DEPDIR)/sockets_ipv6.Po
 	-rm -f ../mfscommon/$(DEPDIR)/strerr.Po
 	-rm -f ../mfscommon/$(DEPDIR)/timeparser.Po
 	-rm -f ./$(DEPDIR)/mfsgui.Po

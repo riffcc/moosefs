@@ -1,0 +1,167 @@
+# MooseFS Debian Package Builder
+# Builds .deb packages for MooseFS with IPv6 support on Debian 12
+# Author: Benjamin Arntzen <zorlin@gmail.com>
+
+FROM debian:12-slim AS builder
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    debhelper \
+    autotools-dev \
+    autoconf \
+    automake \
+    libtool \
+    pkg-config \
+    zlib1g-dev \
+    libfuse3-dev \
+    libpcap0.8-dev \
+    python3 \
+    python3-dev \
+    devscripts \
+    fakeroot \
+    lintian \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set up build environment
+WORKDIR /build
+RUN mkdir -p /output
+
+# Copy source code
+COPY . /build/
+
+# Ensure we have the latest source changes
+RUN if [ -d .git ]; then git status; fi
+
+# Build script
+RUN cat > /build/build-debs.sh << 'EOF'
+#!/bin/bash
+set -e
+
+echo "=== MooseFS Debian Package Builder ==="
+echo ""
+
+# Show source info
+echo "Source directory contents:"
+ls -la /build/
+
+echo ""
+echo "Debian package info:"
+head -n 20 debian/changelog
+
+echo ""
+echo "Building MooseFS .deb packages with IPv6 support..."
+
+# Don't clean - keep existing binaries
+rm -rf debian/tmp debian/.debhelper debian/files
+
+# Always regenerate autotools files with the Docker container's automake version
+echo "Regenerating autotools files with container's automake..."
+autoreconf -fiv
+
+# Configure the build
+echo "Configuring build with IPv6 support..."
+./configure --prefix=/usr \
+    --mandir=/usr/share/man \
+    --sysconfdir=/etc \
+    --localstatedir=/var/lib \
+    --with-default-user=mfs \
+    --with-default-group=mfs \
+    --enable-ipv6 \
+    CFLAGS="-g -O2 -DENABLE_IPV6" \
+    CXXFLAGS="-g -O2 -DENABLE_IPV6"
+
+# Build
+echo "Building MooseFS..."
+make -j$(nproc)
+
+# Now build packages
+echo ""
+echo "Building binary packages..."
+dpkg-buildpackage -b -us -uc -j$(nproc)
+
+# Move packages to output directory
+echo ""
+echo "Moving packages to output directory..."
+cd /build/..
+ls -la *.deb *.dsc *.changes *.tar.* 2>/dev/null || echo "Some files may not exist"
+
+# Ensure output directory exists and is writable
+mkdir -p /output
+chmod 777 /output
+
+# Copy all package files to output
+echo "Copying .deb files:"
+find . -maxdepth 1 -name "*.deb" -exec cp -v {} /output/ \;
+echo "Copying .dsc files:"  
+find . -maxdepth 1 -name "*.dsc" -exec cp -v {} /output/ \;
+echo "Copying .changes files:"
+find . -maxdepth 1 -name "*.changes" -exec cp -v {} /output/ \;
+echo "Copying .tar files:"
+find . -maxdepth 1 -name "*.tar.*" -exec cp -v {} /output/ \;
+
+echo ""
+echo "Package build complete!"
+echo "Output files:"
+ls -la /output/
+
+# Show package details
+echo ""
+echo "Package information:"
+for deb in /output/*.deb; do
+    if [ -f "$deb" ]; then
+        echo "=== $(basename $deb) ==="
+        dpkg-deb --info "$deb" | head -20
+        echo ""
+    fi
+done
+
+# Test package installation (dry run)
+echo "Testing package dependencies:"
+for deb in /output/*.deb; do
+    if [ -f "$deb" ]; then
+        echo "Testing $(basename $deb):"
+        dpkg-deb --contents "$deb" | head -10
+        echo ""
+    fi
+done
+
+echo "✓ MooseFS Debian packages built successfully with IPv6 support!"
+EOF
+
+RUN chmod +x /build/build-debs.sh
+
+# Set up proper file ownership for debian package building
+RUN chown -R root:root /build
+
+# Set the build script as the default command
+WORKDIR /build
+CMD ["./build-debs.sh"]
+
+# Runtime image for serving packages
+FROM debian:12-slim AS server
+
+RUN apt-get update && apt-get install -y \
+    python3 \
+    dpkg-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /packages
+COPY --from=builder /output/* ./
+
+# Create package repository
+RUN dpkg-scanpackages . /dev/null | gzip -9c > Packages.gz
+
+# Show what we built
+RUN echo "=== Built Packages ===" && \
+    ls -la *.deb && \
+    echo "" && \
+    echo "=== Package Repository ===" && \
+    ls -la Packages.gz
+
+# Expose port for package server
+EXPOSE 8080
+
+# Start simple HTTP server to serve packages
+CMD ["python3", "-m", "http.server", "8080", "--bind", "0.0.0.0"]

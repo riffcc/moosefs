@@ -581,7 +581,28 @@ static int mfs_opt_proc_stage2(void *data, const char *arg, int key, struct fuse
 		if (mfsopts.masterhost!=NULL) {
 			free(mfsopts.masterhost);
 		}
+#ifdef ENABLE_IPV6
+		// Handle IPv6 bracketed notation [address] immediately
+		{
+			const char *hostarg = arg+2;
+			size_t hostlen = strlen(hostarg);
+			if (hostlen > 0 && hostarg[0] == '[' && hostarg[hostlen-1] == ']') {
+				// Strip brackets from IPv6 address
+				char *stripped = malloc(hostlen-1);
+				if (stripped) {
+					memcpy(stripped, hostarg+1, hostlen-2);
+					stripped[hostlen-2] = '\0';
+					mfsopts.masterhost = stripped;
+				} else {
+					mfsopts.masterhost = strdup(hostarg);
+				}
+			} else {
+				mfsopts.masterhost = strdup(hostarg);
+			}
+		}
+#else
 		mfsopts.masterhost = strdup(arg+2);
+#endif
 		return 0;
 	case KEY_PORT:
 		if (mfsopts.masterport!=NULL) {
